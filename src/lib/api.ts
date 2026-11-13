@@ -1,3 +1,4 @@
+import { DEFAULT_AUTH_BASE_URL, withAuth } from "./auth";
 import { fetchUsgsInBrowser } from "./usgs";
 import type {
   AppState,
@@ -37,6 +38,13 @@ function defaultState(): AppState {
     boards: [{ id: "home", title: "Home", panels: [] }],
     sources: {},
     editMode: false,
+    auth: {
+      enabled: true,
+      baseUrl: DEFAULT_AUTH_BASE_URL,
+      allowInsecureHttp: false,
+      caFile: null,
+      tlsPinSha256: null,
+    },
   };
 }
 
@@ -54,7 +62,7 @@ function readBrowser(): AppState {
   try {
     const raw = localStorage.getItem(BROWSER_KEY);
     if (!raw) return defaultState();
-    return JSON.parse(raw) as AppState;
+    return withAuth(JSON.parse(raw) as AppState);
   } catch {
     return defaultState();
   }
@@ -71,7 +79,8 @@ export async function loadAppState(): Promise<LoadResult> {
     if (!existing) writeBrowser(state);
     return { state, paths: defaultPaths(), created: !existing };
   }
-  return invoke<LoadResult>("load_app_state");
+  const result = await invoke<LoadResult>("load_app_state");
+  return { ...result, state: withAuth(result.state) };
 }
 
 export async function getConfigPaths(): Promise<ConfigPaths> {
@@ -135,7 +144,7 @@ export async function upsertSource(
     }
     return state;
   }
-  return invoke<AppState>("upsert_source", { args: { id, source, secrets } });
+  return withAuth(await invoke<AppState>("upsert_source", { args: { id, source, secrets } }));
 }
 
 export async function storeSecrets(secrets: Record<string, string>): Promise<void> {
@@ -732,7 +741,7 @@ export async function addPanelToBoard(
     writeBrowser(state);
     return state;
   }
-  return invoke<AppState>("add_panel_to_board", { args: { boardId, panel } });
+  return withAuth(await invoke<AppState>("add_panel_to_board", { args: { boardId, panel } }));
 }
 
 export async function createBoard(title: string): Promise<AppState> {
@@ -750,7 +759,7 @@ export async function createBoard(title: string): Promise<AppState> {
     writeBrowser(state);
     return state;
   }
-  return invoke<AppState>("create_board", { title });
+  return withAuth(await invoke<AppState>("create_board", { title }));
 }
 
 export async function setActiveBoard(boardId: string): Promise<AppState> {
@@ -763,7 +772,7 @@ export async function setActiveBoard(boardId: string): Promise<AppState> {
     writeBrowser(state);
     return state;
   }
-  return invoke<AppState>("set_active_board", { boardId });
+  return withAuth(await invoke<AppState>("set_active_board", { boardId }));
 }
 
 export async function setEditMode(enabled: boolean): Promise<AppState> {
@@ -773,7 +782,7 @@ export async function setEditMode(enabled: boolean): Promise<AppState> {
     writeBrowser(state);
     return state;
   }
-  return invoke<AppState>("set_edit_mode", { enabled });
+  return withAuth(await invoke<AppState>("set_edit_mode", { enabled }));
 }
 
 export async function validateSourceFields(

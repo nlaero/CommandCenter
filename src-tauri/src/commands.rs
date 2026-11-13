@@ -1,5 +1,6 @@
+use crate::auth::{self, AuthProbe, AuthService, AuthSession};
 use crate::config::{
-    self, AppState, ConfigPaths, GridItem, LoadResult, SourceConfig,
+    self, AppState, AuthSettings, ConfigPaths, GridItem, LoadResult, SourceConfig,
 };
 use crate::secrets;
 use crate::sources::{self, SourcePayload};
@@ -22,6 +23,14 @@ impl From<config::ConfigError> for CommandError {
 
 impl From<sources::SourceError> for CommandError {
     fn from(value: sources::SourceError) -> Self {
+        Self {
+            message: value.to_string(),
+        }
+    }
+}
+
+impl From<auth::AuthError> for CommandError {
+    fn from(value: auth::AuthError) -> Self {
         Self {
             message: value.to_string(),
         }
@@ -391,6 +400,50 @@ pub fn validate_source_fields(
             message: format!("missing required fields: {}", missing.join(", ")),
         }
     }
+}
+
+fn auth_service() -> AuthService<auth::KeyringStore> {
+    AuthService::keyring()
+}
+
+#[tauri::command]
+pub fn auth_session() -> Result<AuthSession, CommandError> {
+    let loaded = config::load_or_create()?;
+    Ok(auth_service().session(&loaded.state.auth))
+}
+
+#[tauri::command]
+pub fn auth_probe() -> Result<AuthProbe, CommandError> {
+    let loaded = config::load_or_create()?;
+    Ok(auth_service().probe(&loaded.state.auth))
+}
+
+#[tauri::command]
+pub fn auth_save_settings(settings: AuthSettings) -> Result<AppState, CommandError> {
+    let mut loaded = config::load_or_create()?;
+    let normalized = auth_service().prepare_settings(&loaded.state.auth, settings)?;
+    loaded.state.auth = normalized;
+    let paths = config::resolve_paths()?;
+    config::save_state(&paths, &loaded.state)?;
+    Ok(loaded.state)
+}
+
+#[tauri::command]
+pub fn auth_register(username: String, password: String) -> Result<AuthSession, CommandError> {
+    let loaded = config::load_or_create()?;
+    Ok(auth_service().register(&loaded.state.auth, &username, &password)?)
+}
+
+#[tauri::command]
+pub fn auth_login(username: String, password: String) -> Result<AuthSession, CommandError> {
+    let loaded = config::load_or_create()?;
+    Ok(auth_service().login(&loaded.state.auth, &username, &password)?)
+}
+
+#[tauri::command]
+pub fn auth_logout() -> Result<AuthSession, CommandError> {
+    let loaded = config::load_or_create()?;
+    Ok(auth_service().logout(&loaded.state.auth)?)
 }
 
 fn slugify(input: &str) -> String {
