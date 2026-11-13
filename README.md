@@ -124,9 +124,9 @@ npm run build
 
 ## auth-server (separate service)
 
-Username/password login is served by **auth-server** (not part of the Tauri process). Interim extract-ready scaffold:
+Username/password login is served by **auth-server** (not part of the Tauri process).
 
-[`services/auth-server/`](./services/auth-server/) → intended repo [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth)
+**Repo:** [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth)
 
 Fedora on a Raspberry Pi is a **test host only** — the service name is always `auth-server`. Source API secrets (Broadcastify, etc.) stay on the desktop keyring and are not sent to auth-server.
 
