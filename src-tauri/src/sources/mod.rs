@@ -1,5 +1,6 @@
 pub mod broadcastify;
 pub mod incident;
+pub mod weather;
 
 use crate::config::SourceConfig;
 use crate::secrets;
@@ -15,9 +16,12 @@ pub struct SourcePayload {
     pub fetched_at: String,
     pub attribution: Option<String>,
     pub note: Option<String>,
+    #[serde(default)]
     pub incidents: Vec<incident::Incident>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub feed: Option<broadcastify::FeedStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weather: Option<weather::WeatherPayload>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -47,6 +51,7 @@ pub fn fetch_source(
                 note: result.note,
                 incidents: result.incidents,
                 feed: None,
+                weather: None,
             })
         }
         "broadcastify.owner" => {
@@ -60,6 +65,21 @@ pub fn fetch_source(
                 note: result.note,
                 incidents: result.incidents,
                 feed: Some(result.feed),
+                weather: None,
+            })
+        }
+        "weather.openmeteo" => {
+            let secrets = resolve_secrets(&source.secrets)?;
+            let result = weather::fetch(source, &secrets)?;
+            Ok(SourcePayload {
+                source_id: source_id.to_string(),
+                type_id: source.type_id.clone(),
+                fetched_at: result.fetched_at,
+                attribution: Some(result.attribution),
+                note: result.note,
+                incidents: vec![],
+                feed: None,
+                weather: Some(result.weather),
             })
         }
         other => Err(SourceError::Message(format!(

@@ -132,6 +132,65 @@ export type FeedStatus = {
   state?: string;
 };
 
+export type WeatherConditions = {
+  tempC: number;
+  tempF: number;
+  feelsLikeC: number;
+  feelsLikeF: number;
+  humidity: number;
+  windKmh: number;
+  windMph: number;
+  windDir?: number;
+  pressureHpa?: number;
+  weatherCode: number;
+  description: string;
+  lat: number;
+  lon: number;
+  observedAt?: string;
+};
+
+export type HourlyPoint = {
+  time: string;
+  tempC: number;
+  tempF: number;
+  weatherCode: number;
+  description: string;
+};
+
+export type MapTile = {
+  x: number;
+  y: number;
+  z: number;
+  baseUrl: string;
+  radarUrl?: string;
+};
+
+export type ScopeView = {
+  id: string;
+  label: string;
+  zoom: number;
+  centerLat: number;
+  centerLon: number;
+  tiles: MapTile[];
+  gridSize: number;
+  satelliteImageUrl?: string;
+};
+
+export type WeatherLayers = {
+  showRadar: boolean;
+  showSatellite: boolean;
+  radarTime?: number;
+  satelliteImageUrl?: string;
+};
+
+export type WeatherPayload = {
+  units: string;
+  conditions: WeatherConditions;
+  hourly: HourlyPoint[];
+  scopes: ScopeView[];
+  layers: WeatherLayers;
+};
+
 export type SourcePayload = {
   sourceId: string;
   typeId: string;
@@ -140,4 +199,5 @@ export type SourcePayload = {
   note?: string;
   incidents: Incident[];
   feed?: FeedStatus;
+  weather?: WeatherPayload;
 };

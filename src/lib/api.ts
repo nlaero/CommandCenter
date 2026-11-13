@@ -3,12 +3,17 @@ import type {
   ConfigPaths,
   FeedStatus,
   GridItem,
+  HourlyPoint,
   Incident,
   LoadResult,
+  MapTile,
   Panel,
+  ScopeView,
   SourceConfig,
   SourcePayload,
   ValidationResult,
+  WeatherConditions,
+  WeatherPayload,
 } from "../types";
 
 const BROWSER_KEY = "command-center.app-state.v1";
@@ -265,6 +270,252 @@ async function browserFetchIncident(source: SourceConfig): Promise<SourcePayload
   };
 }
 
+const WMO: Record<number, string> = {
+  0: "Clear",
+  1: "Mainly clear",
+  2: "Partly cloudy",
+  3: "Overcast",
+  45: "Fog",
+  48: "Fog",
+  51: "Drizzle",
+  53: "Drizzle",
+  55: "Drizzle",
+  61: "Rain",
+  63: "Rain",
+  65: "Rain",
+  71: "Snow",
+  73: "Snow",
+  75: "Snow",
+  80: "Rain showers",
+  81: "Rain showers",
+  82: "Rain showers",
+  95: "Thunderstorm",
+  96: "Thunderstorm with hail",
+  99: "Thunderstorm with hail",
+};
+
+function wmoDescription(code: number): string {
+  return WMO[code] ?? "Unknown";
+}
+
+function cToF(c: number): number {
+  return (c * 9) / 5 + 32;
+}
+
+function parseScopes(raw: string): string[] {
+  const out: string[] = [];
+  for (const part of raw.split(/[,+| ]+/)) {
+    const p = part.trim().toLowerCase();
+    if ((p === "local" || p === "regional" || p === "nationwide") && !out.includes(p)) {
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+function latLonToTile(lat: number, lon: number, zoom: number): { x: number; y: number } {
+  const n = 2 ** zoom;
+  const x = Math.floor(((lon + 180) / 360) * n);
+  const latRad = (Math.min(85.0511, Math.max(-85.0511, lat)) * Math.PI) / 180;
+  const y = Math.floor(
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n,
+  );
+  return { x, y };
+}
+
+function browserProxyUrl(
+  kind: "carto" | "rainviewer-tiles" | "goes",
+  absoluteHttpsUrl: string,
+): string {
+  // Rewrite absolute provider URLs through Vite middleware for the browser mock only.
+  if (kind === "carto") {
+    return absoluteHttpsUrl.replace(
+      "https://basemaps.cartocdn.com",
+      "/proxy/carto",
+    );
+  }
+  if (kind === "goes") {
+    return absoluteHttpsUrl.replace(
+      "https://cdn.star.nesdis.noaa.gov",
+      "/proxy/goes",
+    );
+  }
+  return absoluteHttpsUrl.replace(
+    "https://tilecache.rainviewer.com",
+    "/proxy/rainviewer-tiles",
+  );
+}
+
+const GOES_CONUS =
+  "https://cdn.star.nesdis.noaa.gov/GOES16/ABI/CONUS/GEOCOLOR/latest.jpg";
+const GOES_FULL_DISK =
+  "https://cdn.star.nesdis.noaa.gov/GOES16/ABI/FD/GEOCOLOR/latest.jpg";
+
+function buildScope(
+  id: string,
+  lat: number,
+  lon: number,
+  radarHost: string,
+  radarPath: string | null,
+  showSatellite: boolean,
+): ScopeView {
+  // RainViewer free personal API max zoom is 7 (2026 transition).
+  const meta =
+    id === "regional"
+      ? { label: "Regional", zoom: 5, grid: 3, sat: GOES_CONUS }
+      : id === "nationwide"
+        ? { label: "Nationwide", zoom: 3, grid: 3, sat: GOES_FULL_DISK }
+        : { label: "Local", zoom: 7, grid: 3, sat: GOES_CONUS };
+  const { x: cx, y: cy } = latLonToTile(lat, lon, meta.zoom);
+  const half = Math.floor(meta.grid / 2);
+  const n = 2 ** meta.zoom;
+  const tiles: MapTile[] = [];
+  const host = radarHost.replace(/\/$/, "");
+  for (let dy = -half; dy <= half; dy++) {
+    for (let dx = -half; dx <= half; dx++) {
+      const y = cy + dy;
+      if (y < 0 || y >= n) continue;
+      const x = (((cx + dx) % n) + n) % n;
+      const baseUrl = browserProxyUrl(
+        "carto",
+        `https://basemaps.cartocdn.com/dark_all/${meta.zoom}/${x}/${y}.png`,
+      );
+      tiles.push({
+        x,
+        y,
+        z: meta.zoom,
+        baseUrl,
+        radarUrl: radarPath
+          ? browserProxyUrl(
+              "rainviewer-tiles",
+              `${host}${radarPath}/256/${meta.zoom}/${x}/${y}/2/1_1.png`,
+            )
+          : undefined,
+      });
+    }
+  }
+  return {
+    id,
+    label: meta.label,
+    zoom: meta.zoom,
+    centerLat: lat,
+    centerLon: lon,
+    tiles,
+    gridSize: meta.grid,
+    satelliteImageUrl: showSatellite
+      ? browserProxyUrl("goes", meta.sat)
+      : undefined,
+  };
+}
+
+async function browserFetchWeather(source: SourceConfig): Promise<SourcePayload> {
+  const lat = Number(source.params.lat);
+  const lon = Number(source.params.lon);
+  if (Number.isNaN(lat) || Number.isNaN(lon)) {
+    throw new Error("latitude and longitude are required");
+  }
+  const units = String(source.params.units ?? "imperial");
+  const scopes = parseScopes(String(source.params.scopes ?? "local"));
+  if (!scopes.length) throw new Error("at least one scope is required");
+  const showRadar = source.params.showRadar !== false;
+  const showSatellite = source.params.showSatellite !== false;
+
+  const omUrl =
+    `/proxy/open-meteo/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,` +
+    `wind_speed_10m,wind_direction_10m,surface_pressure` +
+    `&hourly=temperature_2m,weather_code&forecast_hours=12&timezone=auto&wind_speed_unit=kmh`;
+  const omRes = await fetch(omUrl);
+  if (!omRes.ok) throw new Error(`HTTP ${omRes.status} fetching Open-Meteo`);
+  const om = (await omRes.json()) as {
+    current?: Record<string, number | string>;
+    hourly?: { time?: string[]; temperature_2m?: number[]; weather_code?: number[] };
+  };
+  const cur = om.current ?? {};
+  const tempC = Number(cur.temperature_2m ?? 0);
+  const feelsC = Number(cur.apparent_temperature ?? tempC);
+  const code = Number(cur.weather_code ?? 0);
+  const windKmh = Number(cur.wind_speed_10m ?? 0);
+  const conditions: WeatherConditions = {
+    tempC,
+    tempF: cToF(tempC),
+    feelsLikeC: feelsC,
+    feelsLikeF: cToF(feelsC),
+    humidity: Number(cur.relative_humidity_2m ?? 0),
+    windKmh,
+    windMph: windKmh * 0.621371,
+    windDir: cur.wind_direction_10m != null ? Number(cur.wind_direction_10m) : undefined,
+    pressureHpa: cur.surface_pressure != null ? Number(cur.surface_pressure) : undefined,
+    weatherCode: code,
+    description: wmoDescription(code),
+    lat,
+    lon,
+    observedAt: typeof cur.time === "string" ? cur.time : undefined,
+  };
+  const hourly: HourlyPoint[] = [];
+  const times = om.hourly?.time ?? [];
+  for (let i = 0; i < Math.min(12, times.length); i++) {
+    const tC = om.hourly?.temperature_2m?.[i] ?? 0;
+    const c = om.hourly?.weather_code?.[i] ?? 0;
+    hourly.push({
+      time: times[i],
+      tempC: tC,
+      tempF: cToF(tC),
+      weatherCode: c,
+      description: wmoDescription(c),
+    });
+  }
+
+  let radarPath: string | null = null;
+  let radarHost = "https://tilecache.rainviewer.com";
+  let radarTime: number | undefined;
+  if (showRadar) {
+    try {
+      const mapsRes = await fetch("/proxy/rainviewer-api/public/weather-maps.json");
+      if (mapsRes.ok) {
+        const maps = (await mapsRes.json()) as {
+          host?: string;
+          radar?: { past?: { time: number; path: string }[] };
+        };
+        if (maps.host) radarHost = maps.host;
+        const radarFrames = maps.radar?.past ?? [];
+        if (radarFrames.length) {
+          const last = radarFrames[radarFrames.length - 1];
+          radarTime = last.time;
+          radarPath = last.path;
+        }
+      }
+    } catch {
+      // conditions still useful
+    }
+  }
+
+  const satelliteImageUrl = showSatellite
+    ? browserProxyUrl("goes", GOES_CONUS)
+    : undefined;
+
+  const weather: WeatherPayload = {
+    units,
+    conditions,
+    hourly,
+    scopes: scopes.map((id) =>
+      buildScope(id, lat, lon, radarHost, radarPath, showSatellite),
+    ),
+    layers: { showRadar, showSatellite, radarTime, satelliteImageUrl },
+  };
+
+  return {
+    sourceId: "browser",
+    typeId: source.type,
+    fetchedAt: new Date().toISOString(),
+    attribution:
+      "Open-Meteo · RainViewer radar · NOAA GOES / NESDIS satellite · CARTO basemap",
+    note: "Browser mock fetch via Vite proxy. Prefer npm run tauri:dev for the native path.",
+    incidents: [],
+    weather,
+  };
+}
+
 export async function fetchSourcePayload(
   sourceId: string,
   source?: SourceConfig,
@@ -280,6 +531,10 @@ export async function fetchSourcePayload(
     }
     if (src.type === "broadcastify.owner") {
       const payload = browserFetchBroadcastify(src, overrides);
+      return { ...payload, sourceId };
+    }
+    if (src.type === "weather.openmeteo") {
+      const payload = await browserFetchWeather(src);
       return { ...payload, sourceId };
     }
     throw new Error(`live fetch not implemented for source type: ${src.type}`);
