@@ -1,6 +1,7 @@
 import type {
   AppState,
   ConfigPaths,
+  FeedStatus,
   GridItem,
   Incident,
   LoadResult,
@@ -267,18 +268,126 @@ async function browserFetchIncident(source: SourceConfig): Promise<SourcePayload
 export async function fetchSourcePayload(
   sourceId: string,
   source?: SourceConfig,
+  overrides: Record<string, unknown> = {},
 ): Promise<SourcePayload> {
   if (!isTauri()) {
     const state = readBrowser();
     const src = source ?? state.sources[sourceId];
     if (!src) throw new Error(`source not found: ${sourceId}`);
-    if (src.type !== "incident.opendata") {
-      throw new Error(`live fetch not implemented for source type: ${src.type}`);
+    if (src.type === "incident.opendata") {
+      const payload = await browserFetchIncident(src);
+      return { ...payload, sourceId };
     }
-    const payload = await browserFetchIncident(src);
-    return { ...payload, sourceId };
+    if (src.type === "broadcastify.owner") {
+      const payload = browserFetchBroadcastify(src, overrides);
+      return { ...payload, sourceId };
+    }
+    throw new Error(`live fetch not implemented for source type: ${src.type}`);
   }
-  return invoke<SourcePayload>("fetch_source_payload", { args: { sourceId } });
+  return invoke<SourcePayload>("fetch_source_payload", {
+    args: { sourceId, overrides },
+  });
+}
+
+/** Browser UI mock — fixture only (Owner API is not CORS-friendly). Prefer tauri:dev. */
+function browserFetchBroadcastify(
+  source: SourceConfig,
+  overrides: Record<string, unknown>,
+): SourcePayload {
+  const secrets = readBrowserSecrets();
+  const user = secrets["broadcastify.username"]?.trim();
+  const pass = secrets["broadcastify.password"]?.trim();
+  if (!user || !pass) {
+    throw new Error(
+      "Broadcastify username/password required (stored as secrets; never in config). Browser mock cannot call the Owner API — use npm run tauri:dev for live fetch.",
+    );
+  }
+  const feedId = String(source.params.feedId ?? "0");
+  const dayRaw = overrides.archiveDay ?? source.params.archiveDay;
+  const day =
+    typeof dayRaw === "string" && dayRaw.trim() ? dayRaw.trim() : undefined;
+
+  const feed: FeedStatus = {
+    feedId,
+    online: true,
+    listeners: 3,
+    descr: `Demo feed ${feedId}`,
+    genre: "Public Safety",
+    bitrate: 16,
+    county: "Demo",
+    state: "XX",
+    lat: 30.27,
+    lon: -97.74,
+  };
+
+  const status: Incident = {
+    id: `feed-status-${feedId}`,
+    title: `Online · ${feed.descr}`,
+    category: feed.genre,
+    description: "3 listeners · 16 kbps",
+    occurredAt: new Date().toISOString(),
+    address: "Demo, XX",
+    lat: feed.lat,
+    lon: feed.lon,
+    detailUrl: `https://www.broadcastify.com/listen/feed/${feedId}`,
+    severity: "info",
+  };
+
+  let incidents: Incident[] = [status];
+  if (source.params.includeArchives !== false) {
+    if (!day) {
+      const today = new Date();
+      for (let i = 0; i < 3; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const iso = d.toISOString().slice(0, 10);
+        incidents.push({
+          id: `archive-day-${iso}`,
+          title: `Archives · ${iso}`,
+          category: "archive-day",
+          description: "Browser fixture date — pick day to load demo clips.",
+          occurredAt: `${iso}T00:00:00Z`,
+          severity: i === 0 ? "warn" : "info",
+        });
+      }
+    } else {
+      incidents = [
+        status,
+        {
+          id: `archive-${day}-a`,
+          title: `Archive ${day}T10:00:00 – ${day}T10:30:00`,
+          category: "archive",
+          description: `Ends ${day}T10:30:00`,
+          occurredAt: `${day}T10:00:00Z`,
+          address: day,
+          audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+          detailUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+          severity: "info",
+        },
+        {
+          id: `archive-${day}-b`,
+          title: `Archive ${day}T09:30:00 – ${day}T10:00:00`,
+          category: "archive",
+          description: `Ends ${day}T10:00:00`,
+          occurredAt: `${day}T09:30:00Z`,
+          address: day,
+          audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+          detailUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+          severity: "info",
+        },
+      ];
+    }
+  }
+
+  return {
+    sourceId: "browser",
+    typeId: source.type,
+    fetchedAt: new Date().toISOString(),
+    attribution: `Broadcastify Feed Owner · feed ${feedId}`,
+    note: "Browser fixture (CORS). Prefer npm run tauri:dev for live Owner API. Archives personal-use only.",
+    incidents,
+    feed,
+  };
 }
 
 export async function addPanelToBoard(

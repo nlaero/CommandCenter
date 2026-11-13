@@ -2,7 +2,7 @@
 
 **Standalone native desktop app** for Windows and Linux (Tauri 2 shell + React/TypeScript UI). Not a browser or hosted web app — the product runs as a local OS application with config on disk.
 
-Phase A: empty board on first launch, fine-grid layout with persistence, multi-board model, Settings catalog, and the first **live** product source — crime / incident open data.
+Phase A: empty board on first launch, fine-grid layout with persistence, multi-board model, Settings catalog, and live product sources — crime / incident open data plus **Broadcastify Feed Owner** (personal feed status + archives).
 
 ## Requirements
 
@@ -97,15 +97,38 @@ Seattle preset: `https://data.seattle.gov/resource/tazs-3rd5.json`
 
 Open-data portals often lag hours–days vs live CAD/scanner apps — the panel labels the feed accordingly.
 
+## Broadcastify Feed Owner (live, personal)
+
+**API:** [Feed Owner API v0.9](https://support.broadcastify.com/hc/en-us/articles/204172369-Feed-Owner-API-v0-9-Documentation) — `https://api.broadcastify.com/owner/` with `a=feed` / `a=archives`, `feedId`, `u`, `p`, `type=json`.
+
+**Scope:** Nathan’s **own** uploaded feed only. **Not** the $2500 Catalog API and **not** Calls. Archive listings/URLs are **personal use only** (no commercial use or redistribution).
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Feed ID | yes | From your feed management / listen URL |
+| Archive day | no | `YYYY-MM-DD`; blank lists available dates |
+| Include archives | no | Default on |
+| Username | yes | Secret `broadcastify.username` — OS keyring |
+| Password | yes | Secret `broadcastify.password` — OS keyring only (never `config.yaml`) |
+
+### Configure in the app
+
+1. **Settings → Source catalog → Broadcastify (Feed Owner) → Configure**
+2. Enter feed ID; paste username/password (keyring / `secrets.local.json` fallback).
+3. Optionally set an archive day, then **Save** or **Save & add to board**.
+4. Panel shows live online/offline + listeners; archive dates or clips (with audio when a day is selected). Day can also be changed in the panel toolbar.
+
+Live Owner API calls run in the **Tauri** app. The browser Vite mock only serves a fixture (CORS).
+
 ## MVP shell behavior
 
 - First launch: **empty board** (no default widgets)
-- **Settings → Source catalog**: weather, ADS-B, cameras, ham, **crime/incident (live open data)**, plus foundation adapters (file, HTTP, SQLite, system metrics)
+- **Settings → Source catalog**: weather, ADS-B, cameras, ham, **crime/incident**, **Broadcastify Feed Owner**, plus foundation adapters (file, HTTP, SQLite, system metrics)
 - Configure required fields → **Save** or **Save & add to board**
 - **Edit layout** (toolbar or `Ctrl/Cmd+E`): drag/resize on a fine 48-column grid; layout persists on drag/resize stop
 - Board switcher in the chrome (+ to create another empty board)
 
-Other product sources remain stubs until their adapters are wired; crime/incident open data is the first live feed.
+Other product sources remain stubs until their adapters are wired.
 
 ## Build desktop installers
 

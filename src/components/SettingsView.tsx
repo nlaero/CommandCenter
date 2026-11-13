@@ -75,6 +75,9 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
       initial.limit = 50;
       initial.attribution = "City of Chicago Open Data — Crimes 2001 to Present";
     }
+    if (typeId === "broadcastify.owner") {
+      initial.includeArchives = true;
+    }
     setParams(initial);
     setSecrets({});
     setMessage(
@@ -85,7 +88,12 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
               kind: "warn",
               text: "Uses municipal open data (not CrimeRadar/Squawster). Optional Socrata token stays in the OS keyring.",
             }
-          : null,
+          : typeId === "broadcastify.owner"
+            ? {
+                kind: "warn",
+                text: "Feed Owner API for your own feed only. Password stays in the OS keyring. Archives are personal-use — no Catalog/Calls APIs.",
+              }
+            : null,
     );
   }
 
@@ -198,6 +206,9 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
           .find((b) => b.id === next.activeBoardId)
           ?.panels.reduce((max, p) => Math.max(max, p.layout.y + p.layout.h), 0) ?? 0;
 
+        const wide =
+          adapter.typeId === "incident.opendata" ||
+          adapter.typeId === "broadcastify.owner";
         const panel: Panel = {
           id: panelId,
           title: adapter.name,
@@ -208,10 +219,10 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
             i: panelId,
             x: 0,
             y: yMax,
-            w: adapter.typeId === "incident.opendata" ? 24 : 16,
-            h: adapter.typeId === "incident.opendata" ? 22 : 14,
-            minW: adapter.typeId === "incident.opendata" ? 12 : 8,
-            minH: adapter.typeId === "incident.opendata" ? 12 : 8,
+            w: wide ? 24 : 16,
+            h: wide ? 22 : 14,
+            minW: wide ? 12 : 8,
+            minH: wide ? 12 : 8,
           },
         };
         next = await addPanelToBoard(next.activeBoardId, panel);
@@ -251,7 +262,8 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
         state.boards
           .find((b) => b.id === state.activeBoardId)
           ?.panels.reduce((max, p) => Math.max(max, p.layout.y + p.layout.h), 0) ?? 0;
-      const incident = source.type === "incident.opendata";
+      const wide =
+        source.type === "incident.opendata" || source.type === "broadcastify.owner";
       const panel: Panel = {
         id: panelId,
         title: def?.name ?? source.type,
@@ -262,10 +274,10 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
           i: panelId,
           x: 0,
           y: yMax,
-          w: incident ? 24 : 16,
-          h: incident ? 22 : 14,
-          minW: incident ? 12 : 8,
-          minH: incident ? 12 : 8,
+          w: wide ? 24 : 16,
+          h: wide ? 22 : 14,
+          minW: wide ? 12 : 8,
+          minH: wide ? 12 : 8,
         },
       };
       const next = await addPanelToBoard(state.activeBoardId, panel);

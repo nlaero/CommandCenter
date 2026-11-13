@@ -107,6 +107,20 @@ export type Incident = {
   severity?: IncidentSeverity;
 };
 
+export type FeedStatus = {
+  feedId: string;
+  online: boolean;
+  listeners?: number;
+  descr?: string;
+  genre?: string;
+  bitrate?: number;
+  mount?: string;
+  lat?: number;
+  lon?: number;
+  county?: string;
+  state?: string;
+};
+
 export type SourcePayload = {
   sourceId: string;
   typeId: string;
@@ -114,4 +128,5 @@ export type SourcePayload = {
   attribution?: string;
   note?: string;
   incidents: Incident[];
+  feed?: FeedStatus;
 };

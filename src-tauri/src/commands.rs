@@ -54,6 +54,9 @@ pub struct StoreSecretsArgs {
 #[serde(rename_all = "camelCase")]
 pub struct FetchSourceArgs {
     pub source_id: String,
+    /// Optional runtime overrides (e.g. archiveDay for Broadcastify).
+    #[serde(default)]
+    pub overrides: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,7 +145,11 @@ pub fn fetch_source_payload(args: FetchSourceArgs) -> Result<SourcePayload, Comm
             message: "source is draft or disabled".into(),
         });
     }
-    Ok(sources::fetch_source(&args.source_id, source)?)
+    Ok(sources::fetch_source(
+        &args.source_id,
+        source,
+        &args.overrides,
+    )?)
 }
 
 #[tauri::command]
