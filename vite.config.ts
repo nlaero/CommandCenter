@@ -12,6 +12,7 @@ function weatherBrowserProxy(): Plugin {
     "/proxy/rainviewer-tiles": "https://tilecache.rainviewer.com",
     "/proxy/carto": "https://basemaps.cartocdn.com",
     "/proxy/goes": "https://cdn.star.nesdis.noaa.gov",
+    "/proxy/nws": "https://api.weather.gov",
   };
 
   return {

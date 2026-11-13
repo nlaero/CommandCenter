@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertsPane } from "./components/AlertsPane";
 import { BoardSwitcher } from "./components/BoardSwitcher";
 import { BoardView } from "./components/BoardView";
 import { SettingsView } from "./components/SettingsView";
+import { AlertsProvider } from "./lib/alerts";
 import {
   createBoard,
   loadAppState,
@@ -27,6 +29,7 @@ function AppShell() {
   const [error, setError] = useState<string | null>(null);
   const [width, setWidth] = useState(1200);
   const stageRef = useRef<HTMLDivElement>(null);
+  const boardMainRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -49,7 +52,7 @@ function AppShell() {
   }, []);
 
   useEffect(() => {
-    const el = stageRef.current;
+    const el = boardMainRef.current ?? stageRef.current;
     if (!el) return;
     const update = () => setWidth(el.clientWidth);
     update();
@@ -142,63 +145,70 @@ function AppShell() {
   }
 
   return (
-    <div className="app-shell">
-      <header className="chrome">
-        <div className="brand">
-          Command <span>Center</span>
-        </div>
-        <BoardSwitcher
-          boards={state.boards}
-          activeBoardId={activeBoard.id}
-          onSelect={(id) => {
-            void setActiveBoard(id).then(setState);
-          }}
-          onCreate={() => {
-            const title = window.prompt("New board name", "Ops");
-            if (!title?.trim()) return;
-            void createBoard(title.trim()).then(setState);
-          }}
-        />
-        <div className="chrome-spacer" />
-        <div className="chrome-meta" title={paths.root}>
-          {paths.overrideActive ? "portable · " : ""}
-          {paths.root}
-        </div>
-        <button
-          type="button"
-          className={`btn${state.editMode ? " active" : ""}`}
-          onClick={() => void toggleEdit()}
-          title="Toggle edit layout (Ctrl/Cmd+E)"
-        >
-          {state.editMode ? "Editing layout" : "Edit layout"}
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => setSettingsOpen(true)}
-          title="Settings (Ctrl/Cmd+,)"
-        >
-          Settings
-        </button>
-      </header>
-
-      <main className="main-stage" ref={stageRef}>
-        <BoardView
-          state={state}
-          board={activeBoard}
-          width={width}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onLayoutChange={onLayoutChange}
-        />
-        {settingsOpen ? (
-          <SettingsView
-            state={state}
-            paths={paths}
-            onClose={() => setSettingsOpen(false)}
-            onState={setState}
+    <AlertsProvider>
+      <div className="app-shell">
+        <header className="chrome">
+          <div className="brand">
+            Command <span>Center</span>
+          </div>
+          <BoardSwitcher
+            boards={state.boards}
+            activeBoardId={activeBoard.id}
+            onSelect={(id) => {
+              void setActiveBoard(id).then(setState);
+            }}
+            onCreate={() => {
+              const title = window.prompt("New board name", "Ops");
+              if (!title?.trim()) return;
+              void createBoard(title.trim()).then(setState);
+            }}
           />
-        ) : null}
-      </main>
-    </div>
+          <div className="chrome-spacer" />
+          <div className="chrome-meta" title={paths.root}>
+            {paths.overrideActive ? "portable · " : ""}
+            {paths.root}
+          </div>
+          <button
+            type="button"
+            className={`btn${state.editMode ? " active" : ""}`}
+            onClick={() => void toggleEdit()}
+            title="Toggle edit layout (Ctrl/Cmd+E)"
+          >
+            {state.editMode ? "Editing layout" : "Edit layout"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setSettingsOpen(true)}
+            title="Settings (Ctrl/Cmd+,)"
+          >
+            Settings
+          </button>
+        </header>
+
+        <main className="main-stage" ref={stageRef}>
+          <div className="board-with-alerts">
+            <div className="board-with-alerts-main" ref={boardMainRef}>
+              <BoardView
+                state={state}
+                board={activeBoard}
+                width={width}
+                onOpenSettings={() => setSettingsOpen(true)}
+                onLayoutChange={onLayoutChange}
+              />
+            </div>
+            <AlertsPane />
+          </div>
+          {settingsOpen ? (
+            <SettingsView
+              state={state}
+              paths={paths}
+              onClose={() => setSettingsOpen(false)}
+              onState={setState}
+            />
+          ) : null}
+        </main>
+      </div>
+    </AlertsProvider>
   );
 }

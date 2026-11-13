@@ -79,6 +79,33 @@ pub struct WeatherLayers {
     pub satellite_image_url: Option<String>,
 }
 
+/// NWS active alert at the weather source lat/lon (watches, warnings, advisories).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeatherAlert {
+    pub id: String,
+    pub event: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headline: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub severity: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub urgency: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub area: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub onset: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ends: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail_url: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WeatherPayload {
@@ -87,6 +114,8 @@ pub struct WeatherPayload {
     pub hourly: Vec<HourlyPoint>,
     pub scopes: Vec<ScopeView>,
     pub layers: WeatherLayers,
+    #[serde(default)]
+    pub alerts: Vec<WeatherAlert>,
 }
 
 #[derive(Debug, Clone)]
@@ -194,6 +223,8 @@ pub fn fetch(
         })
         .collect();
 
+    let alerts = fetch_nws_alerts(&client, lat, lon);
+
     Ok(FetchResult {
         weather: WeatherPayload {
             units,
@@ -206,18 +237,87 @@ pub fn fetch(
                 radar_time,
                 satellite_image_url,
             },
+            alerts,
         },
-        attribution: "Open-Meteo · RainViewer radar · NOAA GOES / NESDIS satellite · CARTO basemap"
-            .into(),
+        attribution:
+            "Open-Meteo · RainViewer radar · NOAA GOES / NESDIS satellite · NWS alerts · CARTO basemap"
+                .into(),
         fetched_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         note: Some(
             "Free personal use: Open-Meteo (attribution required; commercial needs a plan). \
              RainViewer public radar tiles (personal/educational; max zoom 7). \
              Satellite via NOAA GOES public imagery (RainViewer IR ended 2026). \
+             Local severe weather watches/warnings via api.weather.gov (NWS). \
              Optional weather.optional_key for paid Open-Meteo — OS keyring only, never in config.yaml."
                 .into(),
         ),
     })
+}
+
+fn fetch_nws_alerts(client: &reqwest::blocking::Client, lat: f64, lon: f64) -> Vec<WeatherAlert> {
+    let url = format!("https://api.weather.gov/alerts/active?point={lat},{lon}");
+    match client.get(&url).send().and_then(|r| r.error_for_status()) {
+        Ok(resp) => match resp.json::<Value>() {
+            Ok(body) => parse_nws_alerts(&body),
+            Err(err) => {
+                eprintln!("nws alerts json failed: {err}");
+                vec![]
+            }
+        },
+        Err(err) => {
+            eprintln!("nws alerts fetch failed: {err}");
+            vec![]
+        }
+    }
+}
+
+pub fn parse_nws_alerts(body: &Value) -> Vec<WeatherAlert> {
+    let Some(features) = body.get("features").and_then(|v| v.as_array()) else {
+        return vec![];
+    };
+    let mut out = Vec::new();
+    for feature in features {
+        let props = feature.get("properties").unwrap_or(feature);
+        let id = props
+            .get("id")
+            .and_then(|v| v.as_str())
+            .or_else(|| feature.get("id").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
+        if id.is_empty() {
+            continue;
+        }
+        let event = props
+            .get("event")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Weather alert")
+            .to_string();
+        let severity = props
+            .get("severity")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+        let detail_url = props
+            .get("@id")
+            .and_then(|v| v.as_str())
+            .or_else(|| props.get("id").and_then(|v| v.as_str()))
+            .map(|s| s.to_string());
+        out.push(WeatherAlert {
+            id,
+            event,
+            headline: str_field(props, &["headline"]),
+            description: str_field(props, &["description"]),
+            severity,
+            urgency: str_field(props, &["urgency"]),
+            area: str_field(props, &["areaDesc"]),
+            onset: str_field(props, &["onset"]),
+            ends: str_field(props, &["ends"]).or_else(|| str_field(props, &["expires"])),
+            expires: str_field(props, &["expires"]),
+            sender: str_field(props, &["senderName"]),
+            detail_url,
+        });
+    }
+    out
 }
 
 fn parse_scopes(raw: &str) -> Vec<String> {
@@ -520,5 +620,44 @@ mod tests {
     fn wmo_codes_cover_storm() {
         assert_eq!(wmo_description(95), "Thunderstorm");
         assert_eq!(wmo_description(0), "Clear");
+    }
+
+    #[test]
+    fn parses_nws_active_alerts() {
+        let body = json!({
+            "features": [{
+                "id": "https://api.weather.gov/alerts/urn:oid:1",
+                "properties": {
+                    "id": "urn:oid:1",
+                    "@id": "https://api.weather.gov/alerts/urn:oid:1",
+                    "event": "Flood Warning",
+                    "headline": "Flood Warning for McMullen",
+                    "description": "The Flood Warning continues...",
+                    "severity": "Severe",
+                    "urgency": "Immediate",
+                    "areaDesc": "McMullen, TX",
+                    "onset": "2026-11-15T13:00:00-06:00",
+                    "ends": "2026-11-18T14:00:00-06:00",
+                    "expires": "2026-11-13T23:30:00-06:00",
+                    "senderName": "NWS Corpus Christi TX"
+                }
+            }]
+        });
+        let alerts = parse_nws_alerts(&body);
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].event, "Flood Warning");
+        assert_eq!(alerts[0].severity, "Severe");
+        assert_eq!(alerts[0].area.as_deref(), Some("McMullen, TX"));
+        assert!(alerts[0]
+            .detail_url
+            .as_deref()
+            .unwrap_or("")
+            .contains("api.weather.gov"));
+    }
+
+    #[test]
+    fn parses_empty_nws_collection() {
+        assert!(parse_nws_alerts(&json!({ "features": [] })).is_empty());
+        assert!(parse_nws_alerts(&json!({})).is_empty());
     }
 }

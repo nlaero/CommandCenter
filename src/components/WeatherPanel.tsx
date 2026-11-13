@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAlerts } from "../lib/alerts";
+import { weatherAlertsToBoardAlerts } from "../lib/boardAlerts";
 import { fetchSourcePayload } from "../lib/api";
 import type { ScopeView, SourceConfig, SourcePayload, WeatherPayload } from "../types";
 
 type Props = {
   sourceId: string;
   source: SourceConfig;
+  /** Bumped when Settings saves this source — forces an immediate refetch. */
+  configRevision?: number;
 };
 
 type OverlayMode = "radar" | "satellite" | "both" | "none";
@@ -47,12 +51,13 @@ function defaultOverlay(weather: WeatherPayload | undefined): OverlayMode {
   return "none";
 }
 
-export function WeatherPanel({ sourceId, source }: Props) {
+export function WeatherPanel({ sourceId, source, configRevision = 0 }: Props) {
   const [payload, setPayload] = useState<SourcePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [overlay, setOverlay] = useState<OverlayMode>("both");
   const [activeScope, setActiveScope] = useState<string | null>(null);
+  const { publishSourceAlerts, clearSourceAlerts } = useAlerts();
 
   const weather = payload?.weather;
   const imperial = (weather?.units ?? "imperial") !== "metric";
@@ -82,6 +87,15 @@ export function WeatherPanel({ sourceId, source }: Props) {
           if (cur && scopes.some((s) => s.id === cur)) return cur;
           return scopes[0]?.id ?? null;
         });
+        publishSourceAlerts(
+          sourceId,
+          weatherAlertsToBoardAlerts({
+            sourceId,
+            sourceType: source.type,
+            sourceLabel: "Weather",
+            alerts: next.weather?.alerts ?? [],
+          }),
+        );
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
@@ -97,9 +111,17 @@ export function WeatherPanel({ sourceId, source }: Props) {
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      clearSourceAlerts(sourceId);
     };
+    // Intentionally depend on source identity + Settings revision.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceId, source.refresh, source.type, JSON.stringify(source.params)]);
+  }, [
+    sourceId,
+    source.refresh,
+    source.type,
+    JSON.stringify(source.params),
+    configRevision,
+  ]);
 
   const conditions = weather?.conditions;
   const scopes = weather?.scopes ?? [];
@@ -155,6 +177,11 @@ export function WeatherPanel({ sourceId, source }: Props) {
             </button>
           ) : null}
         </div>
+        <span className="weather-meta" title="NWS alerts for this source point">
+          {weather?.alerts?.length
+            ? `${weather.alerts.length} NWS alert${weather.alerts.length === 1 ? "" : "s"}`
+            : null}
+        </span>
         <button
           type="button"
           className="btn btn-ghost weather-refresh"
@@ -163,6 +190,15 @@ export function WeatherPanel({ sourceId, source }: Props) {
               .then((next) => {
                 setPayload(next);
                 setError(null);
+                publishSourceAlerts(
+                  sourceId,
+                  weatherAlertsToBoardAlerts({
+                    sourceId,
+                    sourceType: source.type,
+                    sourceLabel: "Weather",
+                    alerts: next.weather?.alerts ?? [],
+                  }),
+                );
               })
               .catch((err) => setError(err instanceof Error ? err.message : String(err)));
           }}

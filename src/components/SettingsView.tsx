@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ADAPTER_CATALOG, getAdapter } from "../adapters/catalog";
+import { useAlerts } from "../lib/alerts";
 import {
   addPanelToBoard,
   newId,
@@ -16,7 +17,7 @@ import type {
   SourceConfig,
 } from "../types";
 
-type Tab = "sources" | "configured" | "rotation" | "paths";
+type Tab = "sources" | "configured" | "rotation" | "alerts" | "paths";
 
 const ROTATION_PRESETS = [
   { label: "15s", value: 15 },
@@ -70,6 +71,11 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
   const [rotateTitle, setRotateTitle] = useState("Rotating panel");
   const [rotateIntervalSec, setRotateIntervalSec] = useState(30);
   const [rotateSourceIds, setRotateSourceIds] = useState<string[]>([]);
+  const {
+    prefs: alertsPrefs,
+    updatePrefs: updateAlertsPrefs,
+    clearPersistentIgnores,
+  } = useAlerts();
 
   const adapter = selectedType ? getAdapter(selectedType) : undefined;
   const readySources = useMemo(
@@ -135,7 +141,7 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
             : typeId === "weather.openmeteo"
               ? {
                   kind: "warn",
-                  text: "Open-Meteo conditions + RainViewer radar + NOAA GOES satellite. Optional Open-Meteo API key stays in the OS keyring.",
+                  text: "Open-Meteo conditions + RainViewer radar + NOAA GOES satellite + local NWS alerts (when this source is on the board). Optional Open-Meteo API key stays in the OS keyring.",
                 }
               : null,
     );
@@ -481,6 +487,13 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
             </button>
             <button
               type="button"
+              className={tab === "alerts" ? "active" : ""}
+              onClick={() => setTab("alerts")}
+            >
+              Alerts pane
+            </button>
+            <button
+              type="button"
               className={tab === "paths" ? "active" : ""}
               onClick={() => setTab("paths")}
             >
@@ -689,6 +702,56 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
                       Add rotating panel to board
                     </button>
                   </div>
+                </div>
+              </>
+            ) : null}
+
+            {tab === "alerts" ? (
+              <>
+                <p className="section-label">Right-side alerts pane</p>
+                <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
+                  Lists alerts from <strong style={{ color: "var(--cc-text)", fontWeight: 500 }}>active
+                  source windows</strong> on the board (for example NWS watches/warnings from Weather,
+                  or crime / scanner items with text and audio). Changing options below clears
+                  alerts ignored “until Settings change.”
+                </p>
+
+                <label className="rotate-optin">
+                  <input
+                    type="checkbox"
+                    checked={alertsPrefs.pinned}
+                    onChange={(e) => updateAlertsPrefs({ pinned: e.target.checked })}
+                  />
+                  <span>Pin alerts pane open</span>
+                </label>
+
+                <label className="rotate-optin">
+                  <input
+                    type="checkbox"
+                    checked={alertsPrefs.autoOpen}
+                    onChange={(e) => updateAlertsPrefs({ autoOpen: e.target.checked })}
+                  />
+                  <span>Auto-open when new alerts arrive</span>
+                </label>
+
+                <div className="form-actions" style={{ marginTop: 16 }}>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={alertsPrefs.ignoredPersistent.length === 0}
+                    onClick={() => {
+                      clearPersistentIgnores();
+                      setMessage({
+                        kind: "ok",
+                        text: "Cleared persistent alert ignores.",
+                      });
+                    }}
+                  >
+                    Clear ignored alerts
+                    {alertsPrefs.ignoredPersistent.length
+                      ? ` (${alertsPrefs.ignoredPersistent.length})`
+                      : ""}
+                  </button>
                 </div>
               </>
             ) : null}
