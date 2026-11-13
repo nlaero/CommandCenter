@@ -1,4 +1,3 @@
-pub mod alerts;
 pub mod broadcastify;
 pub mod incident;
 pub mod quake;
@@ -27,10 +26,6 @@ pub struct SourcePayload {
     /// Present for `usgs.earthquake`. Map, poll interval, and full event list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quake: Option<quake::QuakePayload>,
-    /// Notable rows for the shared alerts pane. Empty for sources that do not emit any.
-    /// The pane is not on main yet — subscribe from `src/lib/alertsBus.ts`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub alerts: Vec<alerts::SourceAlert>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -62,7 +57,6 @@ pub fn fetch_source(
                 feed: None,
                 weather: None,
                 quake: None,
-                alerts: Vec::new(),
             })
         }
         "broadcastify.owner" => {
@@ -78,7 +72,6 @@ pub fn fetch_source(
                 feed: Some(result.feed),
                 weather: None,
                 quake: None,
-                alerts: Vec::new(),
             })
         }
         "weather.openmeteo" => {
@@ -94,11 +87,10 @@ pub fn fetch_source(
                 feed: None,
                 weather: Some(result.weather),
                 quake: None,
-                alerts: Vec::new(),
             })
         }
         "usgs.earthquake" => {
-            let result = quake::fetch(source_id, source)?;
+            let result = quake::fetch(source)?;
             Ok(SourcePayload {
                 source_id: source_id.to_string(),
                 type_id: source.type_id.clone(),
@@ -109,7 +101,6 @@ pub fn fetch_source(
                 feed: None,
                 weather: None,
                 quake: Some(result.quake),
-                alerts: result.alerts,
             })
         }
         other => Err(SourceError::Message(format!(

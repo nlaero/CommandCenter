@@ -152,7 +152,7 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
               : typeId === "usgs.earthquake"
                 ? {
                     kind: "warn",
-                    text: "Free USGS summary feed. The panel polls on Cache-Control (never faster than once a minute) and pans the map to each new earthquake, tsunami flag, or other event.",
+                    text: "Free USGS summary feed. The panel polls on Cache-Control (never faster than once a minute) and pans the map to each new earthquake, tsunami flag, or other event. Notable rows also show in the alerts pane while this window is on the board.",
                   }
                 : null,
     );
@@ -730,9 +730,9 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
                 <p className="section-label">Right-side alerts pane</p>
                 <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
                   Lists alerts from <strong style={{ color: "var(--cc-text)", fontWeight: 500 }}>active
-                  source windows</strong> on the board (for example NWS watches/warnings from Weather,
-                  or crime / scanner items with text and audio). Changing options below clears
-                  alerts ignored “until Settings change.”
+                  source windows</strong> on the board (NWS watches and warnings, notable USGS
+                  earthquakes and tsunami flags, or crime / scanner items with text and audio).
+                  Changing options below clears alerts ignored “until Settings change.”
                 </p>
 
                 <label className="rotate-optin">

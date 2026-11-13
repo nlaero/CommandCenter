@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { publishSourceAlerts } from "../lib/alertsBus";
+import { useAlerts } from "../lib/alerts";
+import { quakesToBoardAlerts } from "../lib/boardAlerts";
 import { fetchSourcePayload } from "../lib/api";
 import type { QuakeEvent, SourceConfig, SourcePayload } from "../types";
 
@@ -106,6 +107,7 @@ export function QuakePanel({ sourceId, source, configRevision = 0 }: Props) {
   const moveGen = useRef(0);
   const timerRef = useRef(0);
   const loadRef = useRef<(manual: boolean) => void>(() => {});
+  const { publishSourceAlerts, clearSourceAlerts } = useAlerts();
 
   const events = payload?.quake?.events ?? [];
   const selected = useMemo(
@@ -197,7 +199,15 @@ export function QuakePanel({ sourceId, source, configRevision = 0 }: Props) {
         knownIds.current = new Set(batch.map((event) => event.id));
         setPayload(next);
         setError(null);
-        publishSourceAlerts(sourceId, next.alerts ?? []);
+        publishSourceAlerts(
+          sourceId,
+          quakesToBoardAlerts({
+            sourceId,
+            sourceType: source.type,
+            sourceLabel: "USGS earthquakes",
+            events: batch,
+          }),
+        );
         if (incoming.length) {
           setFlashIds(new Set(incoming));
           window.setTimeout(() => {
@@ -225,7 +235,7 @@ export function QuakePanel({ sourceId, source, configRevision = 0 }: Props) {
       cancelled = true;
       window.clearTimeout(timerRef.current);
       moveGen.current += 1;
-      publishSourceAlerts(sourceId, []);
+      clearSourceAlerts(sourceId);
     };
     // Settings save remounts the panel (PanelCard key) and bumps configRevision.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -356,7 +366,7 @@ function QuakeDetail({ event }: { event: QuakeEvent }) {
           <div className={`incident-sev ${severityClass(event.severity)}`}>
             {event.tsunami ? "tsunami" : event.eventType}
             {event.alert ? ` · pager ${event.alert}` : ""}
-            {event.notable ? " · alerts" : ""}
+            {event.notable ? " · in alerts" : ""}
           </div>
           <h4 className="incident-detail-title">{event.title}</h4>
         </div>

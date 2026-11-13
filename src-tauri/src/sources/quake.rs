@@ -6,7 +6,6 @@
 //! CloudFront) plus `Last-Modified`, which returns 304 when the body is unchanged.
 
 use crate::config::SourceConfig;
-use crate::sources::alerts::SourceAlert;
 use crate::sources::incident::{Incident, IncidentSeverity};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -91,7 +90,6 @@ pub struct QuakePayload {
 pub struct FetchResult {
     pub incidents: Vec<Incident>,
     pub quake: QuakePayload,
-    pub alerts: Vec<SourceAlert>,
     pub attribution: String,
     pub fetched_at: String,
     pub note: Option<String>,
@@ -155,7 +153,7 @@ pub fn parse_cache_control(header: &str) -> Option<u64> {
     None
 }
 
-pub fn fetch(source_id: &str, source: &SourceConfig) -> Result<FetchResult, super::SourceError> {
+pub fn fetch(source: &SourceConfig) -> Result<FetchResult, super::SourceError> {
     let feed_id = param_str(source, "feed").unwrap_or_else(|| "all_day".into());
     let url = feed_url(&feed_id)?;
     let limit = param_u32(source, "limit").unwrap_or(50).clamp(1, 300);
@@ -165,7 +163,6 @@ pub fn fetch(source_id: &str, source: &SourceConfig) -> Result<FetchResult, supe
 
     if let Some(hit) = fresh_hit(&url) {
         return assemble(
-            source_id,
             &feed_id,
             &url,
             &hit.body,
@@ -207,7 +204,6 @@ pub fn fetch(source_id: &str, source: &SourceConfig) -> Result<FetchResult, supe
         Err(err) => {
             if let Some(hit) = any_hit(&url) {
                 let mut result = assemble(
-                    source_id,
                     &feed_id,
                     &url,
                     &hit.body,
@@ -259,7 +255,6 @@ pub fn fetch(source_id: &str, source: &SourceConfig) -> Result<FetchResult, supe
             max_age_secs,
         );
         return assemble(
-            source_id,
             &feed_id,
             &url,
             &body,
@@ -289,7 +284,6 @@ pub fn fetch(source_id: &str, source: &SourceConfig) -> Result<FetchResult, supe
                 hit.max_age_secs,
             );
             return assemble(
-                source_id,
                 &feed_id,
                 &url,
                 &hit.body,
@@ -325,7 +319,6 @@ pub fn fetch(source_id: &str, source: &SourceConfig) -> Result<FetchResult, supe
         max_age_secs,
     );
     assemble(
-        source_id,
         &feed_id,
         &url,
         &body,
@@ -402,7 +395,6 @@ fn store_entry(
 }
 
 fn assemble(
-    source_id: &str,
     feed_id: &str,
     url: &str,
     body: &Value,
@@ -416,12 +408,6 @@ fn assemble(
 ) -> Result<FetchResult, super::SourceError> {
     let parsed = parse_feed(body, limit, notable_min)?;
     let incidents = parsed.events.iter().map(event_to_incident).collect();
-    let alerts = parsed
-        .events
-        .iter()
-        .filter(|event| event.notable)
-        .map(|event| event_to_alert(source_id, event))
-        .collect();
     let title = parsed.feed_title.clone();
     let attribution = match &title {
         Some(title) => format!("USGS Earthquake Hazards Program — {title}"),
@@ -446,7 +432,6 @@ fn assemble(
             from_cache,
             not_modified,
         },
-        alerts,
         attribution,
         fetched_at: chrono_like_now(),
         note,
@@ -611,27 +596,6 @@ fn event_to_incident(event: &QuakeEvent) -> Incident {
         audio_url: None,
         detail_url: event.url.clone(),
         severity: event.severity,
-    }
-}
-
-fn event_to_alert(source_id: &str, event: &QuakeEvent) -> SourceAlert {
-    let kind = if event.tsunami {
-        "tsunami".into()
-    } else {
-        event.event_type.clone()
-    };
-    SourceAlert {
-        id: format!("{source_id}:{}", event.id),
-        source_id: source_id.to_string(),
-        source_type: "usgs.earthquake".into(),
-        title: event.title.clone(),
-        summary: Some(summary_text(event)),
-        severity: event.severity,
-        occurred_at: event.occurred_at.clone(),
-        lat: Some(event.lat),
-        lon: Some(event.lon),
-        detail_url: event.url.clone(),
-        kind,
     }
 }
 
@@ -857,6 +821,12 @@ mod tests {
         assert_eq!(by_id("ak-slide").severity, IncidentSeverity::Warn);
         assert!(by_id("big").notable);
         assert_eq!(by_id("big").severity, IncidentSeverity::Alert);
+        let incident = event_to_incident(by_id("us-tsu"));
+        assert_eq!(
+            incident.detail_url.as_deref(),
+            Some("https://earthquake.usgs.gov/earthquakes/eventpage/us-tsu")
+        );
+        assert_eq!(incident.lat, Some(49.1));
         assert!(by_id("us-small")
             .occurred_at
             .as_ref()
@@ -889,25 +859,5 @@ mod tests {
         assert!(feed_url("4.5_week").unwrap().contains("4.5_week"));
         assert!(feed_url("../secret").is_err());
         assert!(feed_url("https://example.com/feed").is_err());
-    }
-
-    #[test]
-    fn alerts_keep_tsunami_kind() {
-        let parsed = parse_feed(&sample_feed(), 10, 4.5).unwrap();
-        let event = parsed
-            .events
-            .iter()
-            .find(|event| event.id == "us-tsu")
-            .unwrap();
-        let alert = event_to_alert("src.quake", event);
-        assert_eq!(alert.kind, "tsunami");
-        assert_eq!(alert.source_type, "usgs.earthquake");
-        assert!(alert.summary.unwrap().contains("tsunami flag"));
-        let incident = event_to_incident(event);
-        assert_eq!(
-            incident.detail_url.as_deref(),
-            Some("https://earthquake.usgs.gov/earthquakes/eventpage/us-tsu")
-        );
-        assert_eq!(incident.lat, Some(49.1));
     }
 }

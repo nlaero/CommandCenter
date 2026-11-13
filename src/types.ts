@@ -275,26 +275,6 @@ export type QuakePayload = {
   notModified: boolean;
 };
 
-/**
- * One row for the shared alerts pane.
- * The pane is not on main yet. `src/lib/alertsBus.ts` publishes these,
- * and `fetch_source_payload` includes the same shape on `SourcePayload.alerts`.
- */
-export type SourceAlert = {
-  id: string;
-  sourceId: string;
-  sourceType: string;
-  title: string;
-  summary?: string;
-  severity: IncidentSeverity;
-  occurredAt?: string;
-  lat?: number;
-  lon?: number;
-  detailUrl?: string;
-  /** earthquake, tsunami, landslide, explosion, … */
-  kind: string;
-};
-
 export type SourcePayload = {
   sourceId: string;
   typeId: string;
@@ -305,6 +285,4 @@ export type SourcePayload = {
   feed?: FeedStatus;
   weather?: WeatherPayload;
   quake?: QuakePayload;
-  /** Notable items only. Empty or omitted when the source has nothing to raise. */
-  alerts?: SourceAlert[];
 };

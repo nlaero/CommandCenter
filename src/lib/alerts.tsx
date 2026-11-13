@@ -84,6 +84,25 @@ function writePrefs(prefs: AlertsPrefs): void {
   localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
 }
 
+/** Same rows, including USGS magnitude revisions that keep the event id. */
+function sameBoardAlerts(prev: BoardAlert[], next: BoardAlert[]): boolean {
+  if (prev.length !== next.length) return false;
+  return prev.every((item, i) => {
+    const other = next[i];
+    return (
+      other != null &&
+      item.id === other.id &&
+      item.title === other.title &&
+      item.summary === other.summary &&
+      item.body === other.body &&
+      item.severity === other.severity &&
+      item.category === other.category &&
+      item.occurredAt === other.occurredAt &&
+      item.detailUrl === other.detailUrl
+    );
+  });
+}
+
 export function AlertsProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<AlertsPrefs>(() =>
     typeof window === "undefined" ? defaultPrefs() : readPrefs(),
@@ -158,12 +177,7 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
   const publishSourceAlerts = useCallback((sourceId: string, alerts: BoardAlert[]) => {
     setBySource((prev) => {
       const prevList = prev[sourceId] ?? [];
-      if (
-        prevList.length === alerts.length &&
-        prevList.every((item, i) => item.id === alerts[i]?.id)
-      ) {
-        return prev;
-      }
+      if (sameBoardAlerts(prevList, alerts)) return prev;
       return { ...prev, [sourceId]: alerts };
     });
   }, []);

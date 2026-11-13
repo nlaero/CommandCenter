@@ -94,9 +94,10 @@ export function AlertsPane() {
         <div className="alerts-list" role="list">
           {visible.length === 0 ? (
             <p className="alerts-empty">
-              Alerts appear here from source windows on this board (for example NWS
-              watches and warnings from a Weather panel, or crime / scanner incidents).
-              Configure a source in Settings and add it to the board to feed this pane.
+              Alerts appear here from source windows on this board (NWS watches and
+              warnings, notable USGS earthquakes and tsunami flags, or crime / scanner
+              incidents). Configure a source in Settings and add it to the board to feed
+              this pane.
             </p>
           ) : (
             visible.map((alert) => (

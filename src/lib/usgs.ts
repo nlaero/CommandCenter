@@ -3,7 +3,6 @@ import type {
   IncidentSeverity,
   QuakeEvent,
   QuakePayload,
-  SourceAlert,
   SourceConfig,
   SourcePayload,
 } from "../types";
@@ -142,11 +141,9 @@ export function parseUsgsFeed(
   body: unknown,
   limit: number,
   notableMinMag: number,
-  sourceId: string,
 ): {
   events: QuakeEvent[];
   incidents: Incident[];
-  alerts: SourceAlert[];
   feedTitle?: string;
   totalCount?: number;
 } {
@@ -230,22 +227,7 @@ export function parseUsgsFeed(
     detailUrl: event.url,
     severity: event.severity,
   }));
-  const alerts: SourceAlert[] = shown
-    .filter((event) => event.notable)
-    .map((event) => ({
-      id: `${sourceId}:${event.id}`,
-      sourceId,
-      sourceType: "usgs.earthquake",
-      title: event.title,
-      summary: summaryText(event),
-      severity: event.severity,
-      occurredAt: event.occurredAt,
-      lat: event.lat,
-      lon: event.lon,
-      detailUrl: event.url,
-      kind: event.tsunami ? "tsunami" : event.eventType,
-    }));
-  return { events: shown, incidents, alerts, feedTitle, totalCount };
+  return { events: shown, incidents, feedTitle, totalCount };
 }
 
 function cacheRemaining(entry: MemEntry): number | null {
@@ -268,7 +250,6 @@ function buildPayload(
     body,
     limit,
     Number.isFinite(notableMinMag) ? notableMinMag : 4.5,
-    sourceId,
   );
   const quake: QuakePayload = {
     feedId,
@@ -293,7 +274,6 @@ function buildPayload(
       note ??
       "Summary GeoJSON. Polled on the USGS cache lifetime, never faster than once a minute. Last-Modified conditional GET.",
     incidents: parsed.incidents,
-    alerts: parsed.alerts,
     quake,
   };
 }

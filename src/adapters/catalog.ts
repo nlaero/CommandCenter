@@ -366,7 +366,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         kind: "number",
         required: true,
         placeholder: "4.5",
-        help: "Magnitude that feeds the shared alerts list. Tsunami flags, orange/red PAGER, landslides, and volcanic eruptions are included even when smaller.",
+        help: "Magnitude that shows up in the alerts pane. Tsunami flags, PAGER yellow+, landslides, and volcanic eruptions are included even when smaller.",
       },
       {
         key: "autoPan",

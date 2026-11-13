@@ -2,7 +2,7 @@
 
 Native desktop board for Windows and Linux. Tauri 2 shell, React/TypeScript UI, config on disk.
 
-First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite), USGS earthquakes, crime/incident open data, and Broadcastify Feed Owner (personal feed status + archives).
+First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, and Broadcastify Feed Owner (personal feed status + archives). Mounted source windows publish into the right-side alerts pane.
 
 ## Audio rule
 
@@ -108,12 +108,12 @@ USGS updates these about once a minute and sends `Cache-Control: max-age=60` plu
 |---------|----------|--------|
 | Feed | yes | Past hour through significant month. Past day includes non-quake types. |
 | Max events | yes | Newest first (default 50, max 300) |
-| Alerts magnitude | yes | Default 4.5. Also alerts on tsunami flags, PAGER yellow+, landslides, and volcanic eruptions |
+| Alerts magnitude | yes | Default 4.5. Also sends tsunami flags, PAGER yellow+, landslides, and volcanic eruptions to the alerts pane |
 | Pan map to new events | no | Default on. Clicking a row always pans |
 
 **In the app:** Settings → Source catalog → USGS earthquakes → Configure. Pick a feed. Save, or Save & add to board. The map opens on the newest event. Later polls move it to each new earthquake, tsunami flag, or other event. Drag to look around; +/- zooms. Basemap is Esri Dark Gray (CARTO's keyless raster tiles now ask for an API key). Credit Esri / OSM on the map; USGS stays in the footer.
 
-Notable rows are also published for the shared alerts list (`SourcePayload.alerts`, and `subscribeAlerts` in `src/lib/alertsBus.ts`). The alerts pane itself is not in this build.
+While that window is on the board, notable rows (tsunami flag, PAGER yellow or higher, magnitude at or above the threshold, landslides, volcanic eruptions) show in the right-side alerts pane. Taking the window off the board removes them. Click a row in the pane for the USGS detail link.
 
 ## Crime / incident
 
