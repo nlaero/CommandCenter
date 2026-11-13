@@ -1,3 +1,4 @@
+import { fetchUsgsInBrowser } from "./usgs";
 import type {
   AppState,
   ConfigPaths,
@@ -576,6 +577,9 @@ export async function fetchSourcePayload(
     if (src.type === "weather.openmeteo") {
       const payload = await browserFetchWeather(src);
       return { ...payload, sourceId };
+    }
+    if (src.type === "usgs.earthquake") {
+      return fetchUsgsInBrowser(sourceId, src);
     }
     throw new Error(`live fetch not implemented for source type: ${src.type}`);
   }

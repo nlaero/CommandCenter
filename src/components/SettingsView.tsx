@@ -123,6 +123,12 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
       initial.showRadar = true;
       initial.showSatellite = true;
     }
+    if (typeId === "usgs.earthquake") {
+      initial.feed = "all_day";
+      initial.limit = 50;
+      initial.notableMinMag = 4.5;
+      initial.autoPan = true;
+    }
     setParams(initial);
     setSecrets({});
     setMessage(
@@ -143,7 +149,12 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
                   kind: "warn",
                   text: "Open-Meteo conditions + RainViewer radar + NOAA GOES satellite + local NWS alerts (when this source is on the board). Optional Open-Meteo API key stays in the OS keyring.",
                 }
-              : null,
+              : typeId === "usgs.earthquake"
+                ? {
+                    kind: "warn",
+                    text: "Free USGS summary feed. The panel polls on Cache-Control (never faster than once a minute) and pans the map to each new earthquake, tsunami flag, or other event. Notable rows also show in the alerts pane while this window is on the board.",
+                  }
+                : null,
     );
   }
 
@@ -154,7 +165,11 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
     setEditingSourceId(sourceId);
     setSelectedType(source.type);
     setTab("sources");
-    setParams({ ...source.params });
+    const nextParams = { ...source.params };
+    if (source.type === "usgs.earthquake" && nextParams.autoPan === undefined) {
+      nextParams.autoPan = true;
+    }
+    setParams(nextParams);
     setSecrets({});
     setMessage({
       kind: "warn",
@@ -376,7 +391,11 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
       const primaryId = rotateSourceIds[0];
       const hasRichPanel = rotateSourceIds.some((id) => {
         const type = state.sources[id]?.type;
-        return type === "incident.opendata" || type === "broadcastify.owner";
+        return (
+          type === "incident.opendata" ||
+          type === "broadcastify.owner" ||
+          type === "usgs.earthquake"
+        );
       });
 
       const panel: Panel = {
@@ -711,9 +730,9 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
                 <p className="section-label">Right-side alerts pane</p>
                 <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
                   Lists alerts from <strong style={{ color: "var(--cc-text)", fontWeight: 500 }}>active
-                  source windows</strong> on the board (for example NWS watches/warnings from Weather,
-                  or crime / scanner items with text and audio). Changing options below clears
-                  alerts ignored “until Settings change.”
+                  source windows</strong> on the board (NWS watches and warnings, notable USGS
+                  earthquakes and tsunami flags, or crime / scanner items with text and audio).
+                  Changing options below clears alerts ignored “until Settings change.”
                 </p>
 
                 <label className="rotate-optin">
@@ -796,6 +815,17 @@ function panelLayoutFor(
       w: 28,
       h: 32,
       minW: 16,
+      minH: 18,
+    };
+  }
+  if (typeId === "usgs.earthquake") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 32,
+      h: 34,
+      minW: 18,
       minH: 18,
     };
   }

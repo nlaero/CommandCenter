@@ -236,6 +236,45 @@ export type BoardAlert = {
   transcript?: string;
 };
 
+export type QuakeEvent = {
+  id: string;
+  title: string;
+  mag?: number;
+  magType?: string;
+  place?: string;
+  occurredAt?: string;
+  updatedAt?: string;
+  lat: number;
+  lon: number;
+  depthKm?: number;
+  tsunami: boolean;
+  /** PAGER alert: green, yellow, orange, red. */
+  alert?: string;
+  significance?: number;
+  /** earthquake, landslide, explosion, volcanic eruption, … */
+  eventType: string;
+  status?: string;
+  url?: string;
+  felt?: number;
+  mmi?: number;
+  severity: IncidentSeverity;
+  /** Tsunami, hazard type, PAGER yellow+, or magnitude at/above the source threshold. */
+  notable: boolean;
+};
+
+export type QuakePayload = {
+  feedId: string;
+  feedUrl: string;
+  feedTitle?: string;
+  totalCount?: number;
+  events: QuakeEvent[];
+  /** Milliseconds until the next USGS request is allowed. */
+  pollAfterMs: number;
+  cacheMaxAgeSec: number;
+  fromCache: boolean;
+  notModified: boolean;
+};
+
 export type SourcePayload = {
   sourceId: string;
   typeId: string;
@@ -245,4 +284,5 @@ export type SourcePayload = {
   incidents: Incident[];
   feed?: FeedStatus;
   weather?: WeatherPayload;
+  quake?: QuakePayload;
 };

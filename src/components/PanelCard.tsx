@@ -21,9 +21,11 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     source?.type === "incident.opendata" ||
     source?.type === "broadcastify.owner" ||
     source?.type === "weather.openmeteo" ||
+    source?.type === "usgs.earthquake" ||
     panel.widget === "incident" ||
     panel.widget === "broadcastify" ||
     panel.widget === "weather" ||
+    panel.widget === "quake" ||
     panel.widget === "rotate";
 
   return (

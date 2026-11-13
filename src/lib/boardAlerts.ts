@@ -2,6 +2,7 @@ import type {
   BoardAlert,
   Incident,
   IncidentSeverity,
+  QuakeEvent,
   WeatherAlert,
 } from "../types";
 
@@ -90,4 +91,42 @@ export function weatherAlertsToBoardAlerts(args: {
     endsAt: item.ends ?? item.expires,
     detailUrl: item.detailUrl,
   }));
+}
+
+function quakeSummary(event: QuakeEvent): string {
+  const parts: string[] = [];
+  if (event.mag != null) parts.push(`M${event.mag.toFixed(1)}`);
+  parts.push(event.tsunami ? "tsunami" : event.eventType);
+  if (event.alert) parts.push(`PAGER ${event.alert}`);
+  if (event.depthKm != null) parts.push(`${event.depthKm.toFixed(1)} km deep`);
+  if (event.place) parts.push(event.place);
+  return parts.join(" · ");
+}
+
+/** Notable USGS rows (tsunami, PAGER yellow+, magnitude threshold, landslides, eruptions). */
+export function quakesToBoardAlerts(args: {
+  sourceId: string;
+  sourceType: string;
+  sourceLabel: string;
+  events: QuakeEvent[];
+}): BoardAlert[] {
+  return args.events
+    .filter((event) => event.notable)
+    .map((event) => {
+      const summary = quakeSummary(event);
+      return {
+        id: boardAlertId(args.sourceId, event.id),
+        sourceId: args.sourceId,
+        sourceType: args.sourceType,
+        sourceLabel: args.sourceLabel,
+        title: event.title,
+        summary,
+        body: summary,
+        severity: event.severity,
+        category: event.tsunami ? "tsunami" : event.eventType,
+        area: event.place,
+        occurredAt: event.occurredAt,
+        detailUrl: event.url,
+      };
+    });
 }
