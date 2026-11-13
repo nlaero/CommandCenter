@@ -2,7 +2,17 @@
 
 **Standalone native desktop app** for Windows and Linux (Tauri 2 shell + React/TypeScript UI). Not a browser or hosted web app — the product runs as a local OS application with config on disk.
 
-Phase A: empty board on first launch, fine-grid layout with persistence, multi-board model, Settings catalog, and the first **live** product source — crime / incident open data.
+Phase A: empty board on first launch, fine-grid layout with persistence, multi-board model, Settings catalog, and live product sources — crime / incident open data plus **Broadcastify Feed Owner** (personal feed status + archives).
+
+## Global product rule: audio sources
+
+Any source that plays audio must:
+
+1. **Start muted by default** when a clip/player opens (user unmutes explicitly).
+2. **Support closed captioning** (local/on-device transcription preferred for personal-use archives).
+
+**Applied now:** Broadcastify Feed Owner (muted players + Settings captions toggle / panel CC + local stub ASR).  
+**Other audio sources:** follow the same rule when wired (crime/incident optional `audioUrl` already starts muted; captions still TODO for that path). Future scanner / Calls / camera-with-audio panels must ship mute-default + CC — do not merge audio playback without both.
 
 ## Requirements
 
@@ -97,15 +107,49 @@ Seattle preset: `https://data.seattle.gov/resource/tazs-3rd5.json`
 
 Open-data portals often lag hours–days vs live CAD/scanner apps — the panel labels the feed accordingly.
 
+## Broadcastify Feed Owner (live, personal)
+
+**API:** [Feed Owner API v0.9](https://support.broadcastify.com/hc/en-us/articles/204172369-Feed-Owner-API-v0-9-Documentation) — `https://api.broadcastify.com/owner/` with `a=feed` / `a=archives`, `feedId`, `u`, `p`, `type=json`.
+
+**Scope:** Nathan’s **own** uploaded feed only. **Not** the $2500 Catalog API and **not** Calls. Archive listings/URLs are **personal use only** (no commercial use or redistribution).
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Feed ID | yes | From your feed management / listen URL |
+| Archive day | no | `YYYY-MM-DD`; blank lists available dates |
+| Include archives | no | Default on |
+| Captions / transcription | no | Default off. Panel CC UI for archive audio |
+| Username | yes | Secret `broadcastify.username` — OS keyring |
+| Password | yes | Secret `broadcastify.password` — OS keyring only (never `config.yaml`) |
+
+### Audio + captions (local / on-device preferred)
+
+Per the [global audio rule](#global-product-rule-audio-sources): archive players **start muted**; unmute via the Muted control or native player. Personal-use archive audio should stay on-device — **no cloud ASR upload**.
+
+When **Captions / transcription** is enabled (default on for new Broadcastify sources), the panel shows a **CC** toggle and captions pane.
+
+**Current path (stub first):** `transcribe_audio_local` (Tauri) / browser twin returns structured offline stub segments so the UI can ship before a model is bundled.
+
+**Next:** wire on-device Whisper (whisper.cpp) or similar behind `transcribeArchiveLocal` — same Settings toggle and panel UI; no Catalog/Calls scope change.
+
+### Configure in the app
+
+1. **Settings → Source catalog → Broadcastify (Feed Owner) → Configure**
+2. Enter feed ID; paste username/password (keyring / `secrets.local.json` fallback).
+3. Optionally set an archive day and enable **Captions / transcription**, then **Save** or **Save & add to board**.
+4. Panel shows live online/offline + listeners; archive dates or clips (with audio when a day is selected). Day can also be changed in the panel toolbar. With captions on, use **CC** + **Transcribe local** on a clip.
+
+Live Owner API calls run in the **Tauri** app. The browser Vite mock only serves a fixture (CORS).
+
 ## MVP shell behavior
 
 - First launch: **empty board** (no default widgets)
-- **Settings → Source catalog**: weather, ADS-B, cameras, ham, **crime/incident (live open data)**, plus foundation adapters (file, HTTP, SQLite, system metrics)
+- **Settings → Source catalog**: weather, ADS-B, cameras, ham, **crime/incident**, **Broadcastify Feed Owner**, plus foundation adapters (file, HTTP, SQLite, system metrics)
 - Configure required fields → **Save** or **Save & add to board**
 - **Edit layout** (toolbar or `Ctrl/Cmd+E`): drag/resize on a fine 48-column grid; layout persists on drag/resize stop
 - Board switcher in the chrome (+ to create another empty board)
 
-Other product sources remain stubs until their adapters are wired; crime/incident open data is the first live feed.
+Other product sources remain stubs until their adapters are wired.
 
 ## Build desktop installers
 

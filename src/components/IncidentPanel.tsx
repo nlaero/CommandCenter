@@ -278,11 +278,16 @@ function IncidentDetail({ item }: { item: Incident }) {
           <div className="section-label" style={{ marginBottom: 6 }}>
             Audio
           </div>
-          <audio controls preload="none" src={item.audioUrl}>
+          {/* Global product rule: audio sources start muted on open. */}
+          <audio controls preload="none" muted src={item.audioUrl}>
             <a href={item.audioUrl} target="_blank" rel="noreferrer">
               Open audio
             </a>
           </audio>
+          <p className="bcfy-audio-hint">
+            Starts muted. Closed captions for open-data audio clips are not wired yet — required for
+            any future audio-playing source.
+          </p>
         </div>
       ) : null}
       {item.detailUrl ? (

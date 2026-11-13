@@ -20,6 +20,7 @@ pub fn run() {
             commands::set_active_board,
             commands::set_edit_mode,
             commands::validate_source_fields,
+            commands::transcribe_audio_local,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Command Center");

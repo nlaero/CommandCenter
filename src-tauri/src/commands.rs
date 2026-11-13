@@ -54,6 +54,36 @@ pub struct StoreSecretsArgs {
 #[serde(rename_all = "camelCase")]
 pub struct FetchSourceArgs {
     pub source_id: String,
+    /// Optional runtime overrides (e.g. archiveDay for Broadcastify).
+    #[serde(default)]
+    pub overrides: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscribeAudioArgs {
+    pub source_url: String,
+    pub clip_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionSegment {
+    pub id: String,
+    pub start_sec: f64,
+    pub end_sec: f64,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptionResult {
+    pub engine: String,
+    pub status: String,
+    pub source_url: String,
+    pub segments: Vec<CaptionSegment>,
+    pub note: String,
+    pub generated_at: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,7 +172,11 @@ pub fn fetch_source_payload(args: FetchSourceArgs) -> Result<SourcePayload, Comm
             message: "source is draft or disabled".into(),
         });
     }
-    Ok(sources::fetch_source(&args.source_id, source)?)
+    Ok(sources::fetch_source(
+        &args.source_id,
+        source,
+        &args.overrides,
+    )?)
 }
 
 #[tauri::command]
@@ -226,6 +260,61 @@ pub fn set_edit_mode(enabled: bool) -> Result<AppState, CommandError> {
     let paths = config::resolve_paths()?;
     config::save_state(&paths, &loaded.state)?;
     Ok(loaded.state)
+}
+
+/// Local / on-device captioning stub for Broadcastify archive audio (personal use).
+///
+/// Prefer keeping clips on-device — do not upload to cloud ASR. Full whisper.cpp
+/// (or similar) sidecar is not bundled yet; this returns structured stub segments
+/// so the panel UI can ship before the model path lands.
+#[tauri::command]
+pub fn transcribe_audio_local(args: TranscribeAudioArgs) -> Result<CaptionResult, CommandError> {
+    let url = args.source_url.trim();
+    if url.is_empty() {
+        return Err(CommandError {
+            message: "sourceUrl required for local transcription".into(),
+        });
+    }
+    if !(url.starts_with("https://") || url.starts_with("http://") || url.starts_with("file://")) {
+        return Err(CommandError {
+            message: "sourceUrl must be http(s) or file:// for local transcription".into(),
+        });
+    }
+
+    let clip = if args.clip_id.trim().is_empty() {
+        "clip".to_string()
+    } else {
+        args.clip_id.trim().to_string()
+    };
+    let seed = clip.len() + url.len();
+    let lines = [
+        "Dispatch, unit responding.",
+        "Traffic holding on the main.",
+        "Copy, standing by.",
+        "Clear the last.",
+    ];
+    let segments = lines
+        .iter()
+        .enumerate()
+        .map(|(i, text)| {
+            let start = (i * 8 + seed % 3) as f64;
+            CaptionSegment {
+                id: format!("{clip}-seg-{i}"),
+                start_sec: start,
+                end_sec: start + 7.0,
+                text: (*text).to_string(),
+            }
+        })
+        .collect();
+
+    Ok(CaptionResult {
+        engine: "local-stub".into(),
+        status: "stub".into(),
+        source_url: url.to_string(),
+        segments,
+        note: "Offline stub captions (personal use). On-device Whisper/local ASR not bundled yet — audio stays local; no cloud upload.".into(),
+        generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    })
 }
 
 /// Stub validation against a simple required-fields map from the UI.

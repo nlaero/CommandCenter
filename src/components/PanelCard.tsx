@@ -1,5 +1,6 @@
 import type { Panel, SourceConfig } from "../types";
 import { getAdapter } from "../adapters/catalog";
+import { BroadcastifyPanel } from "./BroadcastifyPanel";
 import { IncidentPanel } from "./IncidentPanel";
 
 type Props = {
@@ -11,6 +12,9 @@ type Props = {
 export function PanelCard({ panel, source, editMode }: Props) {
   const adapter = source ? getAdapter(source.type) : undefined;
   const isIncident = source?.type === "incident.opendata" || panel.widget === "incident";
+  const isBroadcastify =
+    source?.type === "broadcastify.owner" || panel.widget === "broadcastify";
+  const flush = isIncident || isBroadcastify;
 
   return (
     <article className={`panel${editMode ? " panel-editable" : ""}`}>
@@ -18,8 +22,10 @@ export function PanelCard({ panel, source, editMode }: Props) {
         <div className="panel-title">{panel.title}</div>
         <div className="panel-meta">{panel.widget}</div>
       </header>
-      <div className={`panel-body${isIncident ? " panel-body-flush" : ""}`}>
-        {isIncident && source ? (
+      <div className={`panel-body${flush ? " panel-body-flush" : ""}`}>
+        {isBroadcastify && source ? (
+          <BroadcastifyPanel sourceId={panel.source} source={source} />
+        ) : isIncident && source ? (
           <IncidentPanel sourceId={panel.source} source={source} />
         ) : (
           <>
