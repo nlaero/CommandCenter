@@ -122,6 +122,14 @@ npm run test:rust
 npm run build
 ```
 
+## auth-server (separate service)
+
+Username/password login is served by **auth-server** (not part of the Tauri process).
+
+**Repo:** [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth)
+
+Fedora on a Raspberry Pi is a **test host only** — the service name is always `auth-server`. Source API secrets (Broadcastify, etc.) stay on the desktop keyring and are not sent to auth-server.
+
 ## Contributor note: browser UI mock (not the product)
 
 `npm run dev` starts Vite in a normal browser with **localStorage mock persistence** and a CORS-dependent browser fetch for the incident source. It is a **demo / UI iteration aid only** — no Tauri window, no OS app-data config, no portable override. Do not treat it as a supported runtime or substitute for `npm run tauri:dev`.
