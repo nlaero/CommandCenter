@@ -1,7 +1,7 @@
 # auth-server moved
 
-The **auth-server** scaffold no longer lives in this repo.
+This scaffold lives in [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth).
 
-**Home:** [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth)
+Clone and run it there. Binary/service name is `auth-server`. A Fedora Pi (or any LAN Linux box) is only a test host.
 
-Clone and run from that repository. Service name is always **auth-server** (Fedora / Raspberry Pi are test hosts only). Source API secrets (Broadcastify, etc.) stay on the Command Center desktop keyring — not on auth-server.
+Source API secrets (Broadcastify, etc.) stay on the Command Center desktop keyring — not on auth-server.
