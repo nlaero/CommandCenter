@@ -76,16 +76,14 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
   const { publishSourceAlerts, clearSourceAlerts } = useAlerts();
 
   function publishIncidents(next: SourcePayload) {
-    // Scanner / archives: publish all rows so audio clips are reachable from the pane
-    // (not only warn/alert). Feed-status info rows without audio stay out via includeMediaInfo.
+    // Warn/alert rows, plus any clip that has audio so the detail popup can play it.
     publishSourceAlerts(
       sourceId,
       incidentsToBoardAlerts({
         sourceId,
         sourceType: source.type,
         sourceLabel: "Broadcastify",
-        incidents: next.incidents,
-        severities: ["info", "warn", "alert"],
+        incidents: next.incidents.filter((item) => item.category !== "archive-day"),
       }),
     );
   }
