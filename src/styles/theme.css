@@ -941,6 +941,14 @@ a {
   margin-top: 4px;
 }
 
+.source-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .rotate-optin {
   display: flex;
   align-items: flex-start;

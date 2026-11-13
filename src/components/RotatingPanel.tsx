@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getAdapter } from "../adapters/catalog";
+import { useSourceRefresh } from "../lib/sourceRefresh";
 import type { Panel, PanelRotation, SourceConfig } from "../types";
 import { SourceBody } from "./SourceBody";
 
@@ -15,6 +16,7 @@ function clampInterval(sec: number): number {
 }
 
 export function RotatingPanel({ panel, rotation, sources }: Props) {
+  const { revisionOf } = useSourceRefresh();
   const sourceIds = useMemo(
     () => rotation.sourceIds.filter((id) => Boolean(sources[id])),
     [rotation.sourceIds, sources],
@@ -28,6 +30,9 @@ export function RotatingPanel({ panel, rotation, sources }: Props) {
   const safeIndex = sourceIds.length ? index % sourceIds.length : 0;
   const activeId = sourceIds[safeIndex] ?? panel.source;
   const activeSource = sources[activeId];
+  const activeRevision = revisionOf(activeId);
+  // Remount the active slot when any rotation member’s Settings are saved.
+  const membersRevision = sourceIds.reduce((sum, id) => sum + revisionOf(id), 0);
 
   useEffect(() => {
     setIndex(0);
@@ -125,9 +130,13 @@ export function RotatingPanel({ panel, rotation, sources }: Props) {
         </div>
       </div>
 
-      <div className="rotate-stage" key={`${activeId}-${tickKey}`}>
+      <div className="rotate-stage" key={`${activeId}-${tickKey}-r${activeRevision}-m${membersRevision}`}>
         {activeSource ? (
-          <SourceBody sourceId={activeId} source={activeSource} />
+          <SourceBody
+            key={`${activeId}-r${activeRevision}`}
+            sourceId={activeId}
+            source={activeSource}
+          />
         ) : (
           <div className="alert error" style={{ margin: 10 }}>
             Source missing: {activeId}

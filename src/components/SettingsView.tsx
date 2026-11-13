@@ -6,6 +6,7 @@ import {
   upsertSource,
   validateSourceFields,
 } from "../lib/api";
+import { useSourceRefresh } from "../lib/sourceRefresh";
 import type {
   AdapterDefinition,
   AdapterField,
@@ -54,8 +55,11 @@ function fieldValue(
 }
 
 export function SettingsView({ state, paths, onClose, onState }: Props) {
+  const { notifySourceSaved } = useSourceRefresh();
   const [tab, setTab] = useState<Tab>("sources");
   const [selectedType, setSelectedType] = useState<string | null>(null);
+  /** When set, Save updates this existing source id (panels auto-refresh). */
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [params, setParams] = useState<Record<string, unknown>>({});
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ kind: "ok" | "error" | "warn"; text: string } | null>(
@@ -84,9 +88,18 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
     [],
   );
 
+  function resetForm() {
+    setSelectedType(null);
+    setEditingSourceId(null);
+    setParams({});
+    setSecrets({});
+  }
+
   function startAdd(typeId: string) {
     const def = getAdapter(typeId);
+    setEditingSourceId(null);
     setSelectedType(typeId);
+    setTab("sources");
     const initial: Record<string, unknown> = {};
     if (typeId === "incident.opendata") {
       initial.provider = "chicago";
@@ -126,6 +139,23 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
                 }
               : null,
     );
+  }
+
+  function startEdit(sourceId: string) {
+    const source = state.sources[sourceId];
+    if (!source) return;
+    const def = getAdapter(source.type);
+    setEditingSourceId(sourceId);
+    setSelectedType(source.type);
+    setTab("sources");
+    setParams({ ...source.params });
+    setSecrets({});
+    setMessage({
+      kind: "warn",
+      text: def?.stubNote
+        ? `Editing ${sourceId}. ${def.stubNote} Leave secret fields blank to keep stored values. Saving refreshes every board panel using this source.`
+        : `Editing ${sourceId}. Leave secret fields blank to keep stored values. Saving refreshes every board panel using this source.`,
+    });
   }
 
   function applyProviderDefaults(provider: string, prev: Record<string, unknown>) {
@@ -185,9 +215,21 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
     setBusy(true);
     setMessage(null);
     try {
+      const existing = editingSourceId ? state.sources[editingSourceId] : undefined;
+      const secretsProvided = Object.fromEntries(
+        Object.entries(secrets).filter(([, value]) => Boolean(value?.trim())),
+      );
+
       const required = requiredKeys(adapter).filter((key) => {
         if (adapter.typeId === "incident.opendata" && key === "endpoint") {
           return String(params.provider ?? "") === "custom";
+        }
+        // When editing, blank secret fields keep the stored keyring value.
+        if (existing && key.startsWith("secret:")) {
+          const name = key.slice("secret:".length);
+          if (existing.secrets.includes(name) && !secretsProvided[name]) {
+            return false;
+          }
         }
         return true;
       });
@@ -205,14 +247,20 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
           return;
         }
       }
-      const validation = await validateSourceFields(required, params, secrets);
+      const validation = await validateSourceFields(required, params, secretsProvided);
       if (!validation.ok) {
         setMessage({ kind: "error", text: validation.message });
         return;
       }
 
-      const sourceId = newId(`src.${adapter.typeId.split(".").pop()}`);
-      const secretRefs = Object.keys(secrets).filter((k) => secrets[k]?.trim());
+      const sourceId =
+        editingSourceId ?? newId(`src.${adapter.typeId.split(".").pop()}`);
+      const secretRefs = Array.from(
+        new Set([
+          ...(existing?.secrets ?? []),
+          ...Object.keys(secretsProvided),
+        ]),
+      );
       const cleanedParams = { ...params };
       if (
         adapter.typeId === "incident.opendata" &&
@@ -223,13 +271,16 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
       const source: SourceConfig = {
         type: adapter.typeId,
         params: cleanedParams,
-        refresh: adapter.defaultRefresh,
-        secrets: secretRefs.map((k) => k),
+        refresh: existing?.refresh ?? adapter.defaultRefresh,
+        secrets: secretRefs,
         enabled: true,
         draft: false,
       };
 
-      let next = await upsertSource(sourceId, source, secrets);
+      let next = await upsertSource(sourceId, source, secretsProvided);
+      // Remount/refetch every board panel bound to this source (all types).
+      // Always bump: covers param edits and secret-only updates alike.
+      notifySourceSaved(sourceId);
 
       if (addToBoard) {
         const panelId = newId("panel");
@@ -248,19 +299,21 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
         next = await addPanelToBoard(next.activeBoardId, panel);
         setMessage({
           kind: "ok",
-          text: `Saved ${sourceId} and added to the active board.`,
+          text: editingSourceId
+            ? `Updated ${sourceId}; panels refreshed and a new panel was added.`
+            : `Saved ${sourceId} and added to the active board.`,
         });
       } else {
         setMessage({
           kind: "ok",
-          text: `Saved ${sourceId}. Use Add to board when you want it on a board.`,
+          text: editingSourceId
+            ? `Updated ${sourceId}. Bound board panels refreshed.`
+            : `Saved ${sourceId}. Use Add to board when you want it on a board.`,
         });
       }
 
       onState(next);
-      setSelectedType(null);
-      setParams({});
-      setSecrets({});
+      resetForm();
     } catch (err) {
       setMessage({
         kind: "error",
@@ -461,10 +514,13 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
                 params={params}
                 secrets={secrets}
                 busy={busy}
+                editingSourceId={editingSourceId}
                 onChange={updateField}
                 onCancel={() => {
-                  setSelectedType(null);
+                  const wasEditing = Boolean(editingSourceId);
+                  resetForm();
                   setMessage(null);
+                  if (wasEditing) setTab("configured");
                 }}
                 onSave={() => void saveSource(false)}
                 onSaveAndAdd={() => void saveSource(true)}
@@ -474,6 +530,10 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
             {tab === "configured" ? (
               <>
                 <p className="section-label">Saved sources</p>
+                <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
+                  Edit a source to change its Settings — every board panel using that source
+                  refreshes automatically on save.
+                </p>
                 {Object.keys(state.sources).length === 0 ? (
                   <p style={{ color: "var(--cc-text-muted)" }}>
                     None yet. Configure a type under Source catalog.
@@ -489,14 +549,24 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
                           </h3>
                           <p>{source.type}</p>
                         </div>
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          disabled={busy || source.draft}
-                          onClick={() => void addConfiguredToBoard(id)}
-                        >
-                          Add to board
-                        </button>
+                        <div className="source-row-actions">
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={busy || source.draft}
+                            onClick={() => startEdit(id)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={busy || source.draft}
+                            onClick={() => void addConfiguredToBoard(id)}
+                          >
+                            Add to board
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -716,6 +786,7 @@ function SourceForm({
   params,
   secrets,
   busy,
+  editingSourceId,
   onChange,
   onCancel,
   onSave,
@@ -725,28 +796,39 @@ function SourceForm({
   params: Record<string, unknown>;
   secrets: Record<string, string>;
   busy: boolean;
+  editingSourceId: string | null;
   onChange: (field: AdapterField, raw: string | boolean) => void;
   onCancel: () => void;
   onSave: () => void;
   onSaveAndAdd: () => void;
 }) {
+  const editing = Boolean(editingSourceId);
   return (
     <div>
       <button type="button" className="btn btn-ghost" onClick={onCancel}>
-        ← Back to catalog
+        {editing ? "← Back to configured" : "← Back to catalog"}
       </button>
-      <h3 style={{ margin: "12px 0 4px" }}>{adapter.name}</h3>
+      <h3 style={{ margin: "12px 0 4px" }}>
+        {adapter.name}
+        {editing ? <span className="badge">editing</span> : null}
+      </h3>
       <p style={{ margin: 0, color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
-        {adapter.description}
+        {editing
+          ? `Updating ${editingSourceId}. Bound panels refresh as soon as you save.`
+          : adapter.description}
       </p>
       <div className="form-grid">
         {adapter.fields.map((field) => {
           const value = fieldValue(field, params, secrets);
+          const isSecret =
+            field.kind === "secret" || field.secret || field.key.startsWith("secret:");
           return (
             <div className="field" key={field.key}>
               <label htmlFor={field.key}>
                 {field.label}
-                {field.required ? <span className="req"> *</span> : null}
+                {field.required && !(editing && isSecret) ? (
+                  <span className="req"> *</span>
+                ) : null}
               </label>
               {field.kind === "boolean" ? (
                 <input
@@ -778,7 +860,11 @@ function SourceForm({
                         ? "number"
                         : "text"
                   }
-                  placeholder={field.placeholder}
+                  placeholder={
+                    editing && isSecret
+                      ? "Leave blank to keep stored secret"
+                      : field.placeholder
+                  }
                   value={String(value)}
                   onChange={(e) => onChange(field, e.target.value)}
                   autoComplete="off"
@@ -791,7 +877,7 @@ function SourceForm({
       </div>
       <div className="form-actions">
         <button type="button" className="btn" disabled={busy} onClick={onSave}>
-          Save source
+          {editing ? "Save changes" : "Save source"}
         </button>
         <button
           type="button"
@@ -799,7 +885,7 @@ function SourceForm({
           disabled={busy}
           onClick={onSaveAndAdd}
         >
-          Save & add to board
+          {editing ? "Save & add another panel" : "Save & add to board"}
         </button>
       </div>
     </div>

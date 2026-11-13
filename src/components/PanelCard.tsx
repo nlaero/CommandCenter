@@ -1,3 +1,4 @@
+import { useSourceRevision } from "../lib/sourceRefresh";
 import type { Panel, SourceConfig } from "../types";
 import { RotatingPanel } from "./RotatingPanel";
 import { SourceBody } from "./SourceBody";
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export function PanelCard({ panel, source, sources, editMode }: Props) {
+  const revision = useSourceRevision(panel.source);
   const rotation =
     panel.rotation?.enabled && panel.rotation.sourceIds.length >= 2
       ? panel.rotation
@@ -36,7 +38,12 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
         {rotation ? (
           <RotatingPanel panel={panel} rotation={rotation} sources={sources} />
         ) : source ? (
-          <SourceBody sourceId={panel.source} source={source} />
+          // Remount on Settings save so every source type (live + stub) refetches.
+          <SourceBody
+            key={`${panel.source}-r${revision}`}
+            sourceId={panel.source}
+            source={source}
+          />
         ) : (
           <div style={{ padding: 10 }}>
             Bound to <strong>{panel.source}</strong> — source missing from config.

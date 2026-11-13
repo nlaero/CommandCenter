@@ -5,6 +5,8 @@ import type { Incident, SourceConfig, SourcePayload } from "../types";
 type Props = {
   sourceId: string;
   source: SourceConfig;
+  /** Bumped when Settings saves this source — forces an immediate refetch. */
+  configRevision?: number;
 };
 
 function parseRefreshMs(refresh?: string): number {
@@ -36,7 +38,7 @@ function severityClass(severity?: Incident["severity"]): string {
   return "sev-info";
 }
 
-export function IncidentPanel({ sourceId, source }: Props) {
+export function IncidentPanel({ sourceId, source, configRevision = 0 }: Props) {
   const [payload, setPayload] = useState<SourcePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,9 +95,15 @@ export function IncidentPanel({ sourceId, source }: Props) {
       window.clearInterval(timer);
       if (flashTimer) window.clearTimeout(flashTimer);
     };
-    // Intentionally depend on source identity + refresh, not selection.
+    // Intentionally depend on source identity + Settings revision, not selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceId, source.refresh, source.type, JSON.stringify(source.params)]);
+  }, [
+    sourceId,
+    source.refresh,
+    source.type,
+    JSON.stringify(source.params),
+    configRevision,
+  ]);
 
   const mapped = useMemo(
     () => (payload?.incidents ?? []).filter((i) => i.lat != null && i.lon != null),
