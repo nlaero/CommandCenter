@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAlerts } from "../lib/alerts";
+import { incidentsToBoardAlerts } from "../lib/boardAlerts";
 import { fetchSourcePayload } from "../lib/api";
 import type { Incident, SourceConfig, SourcePayload } from "../types";
 
@@ -46,6 +48,19 @@ export function IncidentPanel({ sourceId, source, configRevision = 0 }: Props) {
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
   const knownIds = useRef<Set<string>>(new Set());
   const primed = useRef(false);
+  const { publishSourceAlerts, clearSourceAlerts } = useAlerts();
+
+  function publishIncidents(next: SourcePayload) {
+    publishSourceAlerts(
+      sourceId,
+      incidentsToBoardAlerts({
+        sourceId,
+        sourceType: source.type,
+        sourceLabel: "Crime / incidents",
+        incidents: next.incidents,
+      }),
+    );
+  }
 
   const selected = useMemo(
     () => payload?.incidents.find((i) => i.id === selectedId) ?? null,
@@ -72,6 +87,7 @@ export function IncidentPanel({ sourceId, source, configRevision = 0 }: Props) {
         knownIds.current = new Set(next.incidents.map((i) => i.id));
         setPayload(next);
         setError(null);
+        publishIncidents(next);
         if (incoming.length) {
           setFlashIds(new Set(incoming));
           if (flashTimer) window.clearTimeout(flashTimer);
@@ -94,6 +110,7 @@ export function IncidentPanel({ sourceId, source, configRevision = 0 }: Props) {
       cancelled = true;
       window.clearInterval(timer);
       if (flashTimer) window.clearTimeout(flashTimer);
+      clearSourceAlerts(sourceId);
     };
     // Intentionally depend on source identity + Settings revision, not selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -153,6 +170,7 @@ export function IncidentPanel({ sourceId, source, configRevision = 0 }: Props) {
               .then((next) => {
                 setPayload(next);
                 setError(null);
+                publishIncidents(next);
               })
               .catch((err) => setError(err instanceof Error ? err.message : String(err)));
           }}

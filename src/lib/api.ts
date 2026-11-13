@@ -12,6 +12,7 @@ import type {
   SourceConfig,
   SourcePayload,
   ValidationResult,
+  WeatherAlert,
   WeatherConditions,
   WeatherPayload,
 } from "../types";
@@ -494,6 +495,8 @@ async function browserFetchWeather(source: SourceConfig): Promise<SourcePayload>
     ? browserProxyUrl("goes", GOES_CONUS)
     : undefined;
 
+  const alerts = await browserFetchNwsAlerts(lat, lon);
+
   const weather: WeatherPayload = {
     units,
     conditions,
@@ -502,6 +505,7 @@ async function browserFetchWeather(source: SourceConfig): Promise<SourcePayload>
       buildScope(id, lat, lon, radarHost, radarPath, showSatellite),
     ),
     layers: { showRadar, showSatellite, radarTime, satelliteImageUrl },
+    alerts,
   };
 
   return {
@@ -509,11 +513,47 @@ async function browserFetchWeather(source: SourceConfig): Promise<SourcePayload>
     typeId: source.type,
     fetchedAt: new Date().toISOString(),
     attribution:
-      "Open-Meteo · RainViewer radar · NOAA GOES / NESDIS satellite · CARTO basemap",
+      "Open-Meteo · RainViewer radar · NOAA GOES / NESDIS satellite · NWS alerts · CARTO basemap",
     note: "Browser mock fetch via Vite proxy. Prefer npm run tauri:dev for the native path.",
     incidents: [],
     weather,
   };
+}
+
+async function browserFetchNwsAlerts(lat: number, lon: number): Promise<WeatherAlert[]> {
+  try {
+    const res = await fetch(`/proxy/nws/alerts/active?point=${lat},${lon}`);
+    if (!res.ok) return [];
+    const body = (await res.json()) as {
+      features?: Array<{
+        id?: string;
+        properties?: Record<string, string | null | undefined>;
+      }>;
+    };
+    const out: WeatherAlert[] = [];
+    for (const feature of body.features ?? []) {
+      const props = feature.properties ?? {};
+      const id = String(props.id ?? feature.id ?? "").trim();
+      if (!id) continue;
+      out.push({
+        id,
+        event: String(props.event ?? "Weather alert"),
+        headline: props.headline ?? undefined,
+        description: props.description ?? undefined,
+        severity: String(props.severity ?? "Unknown"),
+        urgency: props.urgency ?? undefined,
+        area: props.areaDesc ?? undefined,
+        onset: props.onset ?? undefined,
+        ends: props.ends ?? props.expires ?? undefined,
+        expires: props.expires ?? undefined,
+        sender: props.senderName ?? undefined,
+        detailUrl: props["@id"] ?? props.id ?? undefined,
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 export async function fetchSourcePayload(

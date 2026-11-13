@@ -5,6 +5,8 @@ import {
   type CaptionResult,
   type CaptionSegment,
 } from "../lib/captions";
+import { useAlerts } from "../lib/alerts";
+import { incidentsToBoardAlerts } from "../lib/boardAlerts";
 import { fetchSourcePayload } from "../lib/api";
 import type { Incident, SourceConfig, SourcePayload } from "../types";
 
@@ -71,6 +73,22 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
   const primed = useRef(false);
 
   const captionsOn = captionsEnabled(source);
+  const { publishSourceAlerts, clearSourceAlerts } = useAlerts();
+
+  function publishIncidents(next: SourcePayload) {
+    // Scanner / archives: publish all rows so audio clips are reachable from the pane
+    // (not only warn/alert). Feed-status info rows without audio stay out via includeMediaInfo.
+    publishSourceAlerts(
+      sourceId,
+      incidentsToBoardAlerts({
+        sourceId,
+        sourceType: source.type,
+        sourceLabel: "Broadcastify",
+        incidents: next.incidents,
+        severities: ["info", "warn", "alert"],
+      }),
+    );
+  }
 
   useEffect(() => {
     setDay(configuredDay);
@@ -107,6 +125,7 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
         knownIds.current = new Set(next.incidents.map((i) => i.id));
         setPayload(next);
         setError(null);
+        publishIncidents(next);
         if (incoming.length) {
           setFlashIds(new Set(incoming));
           if (flashTimer) window.clearTimeout(flashTimer);
@@ -129,6 +148,7 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
       cancelled = true;
       window.clearInterval(timer);
       if (flashTimer) window.clearTimeout(flashTimer);
+      clearSourceAlerts(sourceId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [

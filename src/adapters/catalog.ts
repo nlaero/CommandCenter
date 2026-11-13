@@ -7,7 +7,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     category: "product",
     name: "Weather",
     description:
-      "Live conditions (Open-Meteo), RainViewer radar, and NOAA GOES satellite at local, regional, nationwide, or combined scopes.",
+      "Live conditions (Open-Meteo), RainViewer radar, NOAA GOES satellite, and local NWS watches/warnings that feed the board alerts pane when this source is on the board.",
     defaultWidget: "weather",
     defaultRefresh: "10m",
     fields: [

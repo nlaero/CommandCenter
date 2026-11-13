@@ -183,12 +183,57 @@ export type WeatherLayers = {
   satelliteImageUrl?: string;
 };
 
+/** NWS active alert for the weather source home point (watches, warnings, advisories). */
+export type WeatherAlert = {
+  id: string;
+  event: string;
+  headline?: string;
+  description?: string;
+  /** NWS severity: Extreme | Severe | Moderate | Minor | Unknown */
+  severity: string;
+  urgency?: string;
+  area?: string;
+  onset?: string;
+  ends?: string;
+  expires?: string;
+  sender?: string;
+  detailUrl?: string;
+};
+
 export type WeatherPayload = {
   units: string;
   conditions: WeatherConditions;
   hourly: HourlyPoint[];
   scopes: ScopeView[];
   layers: WeatherLayers;
+  /** Local NWS alerts for this source's lat/lon; empty when none. */
+  alerts?: WeatherAlert[];
+};
+
+/** Shared board alerts feed item (published only by mounted source windows). */
+export type BoardAlertSeverity = "info" | "warn" | "alert";
+
+export type BoardAlert = {
+  id: string;
+  sourceId: string;
+  sourceType: string;
+  sourceLabel: string;
+  title: string;
+  /** Short list subtitle. */
+  summary?: string;
+  /** Full alert / incident text for the detail popup. */
+  body?: string;
+  severity: BoardAlertSeverity;
+  category?: string;
+  area?: string;
+  address?: string;
+  occurredAt?: string;
+  endsAt?: string;
+  detailUrl?: string;
+  /** Incident / archive audio when the source provides it. */
+  audioUrl?: string;
+  /** Plain transcript or caption text when already available. */
+  transcript?: string;
 };
 
 export type SourcePayload = {

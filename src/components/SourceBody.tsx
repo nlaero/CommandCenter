@@ -30,7 +30,9 @@ export function SourceBody({ sourceId, source }: Props) {
   }
 
   if (source.type === "weather.openmeteo") {
-    return <WeatherPanel sourceId={sourceId} source={source} />;
+    return (
+      <WeatherPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
   }
 
   return (
