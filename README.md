@@ -1,34 +1,31 @@
 # Command Center
 
-**Standalone native desktop app** for Windows and Linux (Tauri 2 shell + React/TypeScript UI). Not a browser or hosted web app — the product runs as a local OS application with config on disk.
+Native desktop board for Windows and Linux. Tauri 2 shell, React/TypeScript UI, config on disk.
 
-Phase A: empty board on first launch, fine-grid layout with persistence, multi-board model, Settings catalog, and live product sources — **weather** (conditions + radar/satellite), crime / incident open data, plus **Broadcastify Feed Owner** (personal feed status + archives).
+First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite), crime/incident open data, and Broadcastify Feed Owner (personal feed status + archives).
 
-## Global product rule: audio sources
+## Audio rule
 
-Any source that plays audio must:
+Anything that plays audio:
 
-1. **Start muted by default** when a clip/player opens (user unmutes explicitly).
-2. **Support closed captioning** (local/on-device transcription preferred for personal-use archives).
+1. Starts **muted** (user unmutes).
+2. Supports closed captions (on-device transcription preferred for personal archives).
 
-**Applied now:** Broadcastify Feed Owner (muted players + Settings captions toggle / panel CC + local stub ASR).  
-**Other audio sources:** follow the same rule when wired (crime/incident optional `audioUrl` already starts muted; captions still TODO for that path). Future scanner / Calls / camera-with-audio panels must ship mute-default + CC — do not merge audio playback without both.
+Broadcastify Feed Owner already follows this (muted players + Settings captions / panel CC; local ASR is still a stub). Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Do not ship new audio playback without both mute-default and CC.
 
 ## Requirements
 
-### Both platforms
+**All platforms**
 
-- [Node.js](https://nodejs.org/) 20+ and npm (build tooling only)
+- [Node.js](https://nodejs.org/) 20+ and npm
 - [Rust](https://rustup.rs/) stable (1.77+)
 
-### Windows
+**Windows**
 
 - [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-- [WebView2](https://microsoft.com/edge/webview2/) (usually preinstalled on Windows 10/11)
+- [WebView2](https://microsoft.com/edge/webview2/) (usually already on Windows 10/11)
 
-### Linux
-
-Install Tauri prerequisites (Debian/Ubuntu example):
+**Linux** (Debian/Ubuntu example)
 
 ```bash
 sudo apt update
@@ -38,18 +35,18 @@ sudo apt install -y \
   librsvg2-dev patchelf
 ```
 
-See [Tauri prerequisites](https://tauri.app/start/prerequisites/) for Fedora, Arch, and others.
+Other distros: [Tauri prerequisites](https://tauri.app/start/prerequisites/).
 
-## Run the desktop app (supported)
+## Run
 
 ```bash
-git clone <repo-url> CommandCenter
+git clone https://github.com/nlaero/CommandCenter.git
 cd CommandCenter
 npm install
 npm run tauri:dev
 ```
 
-This launches the **native Tauri window** (WebView2 on Windows / WebKitGTK on Linux) with real Rust-backed config under the OS app-data path.
+That opens the Tauri window (WebView2 / WebKitGTK) with Rust-backed config in the OS app-data path.
 
 ### Portable config
 
@@ -62,148 +59,118 @@ $env:COMMAND_CENTER_HOME = "D:\board-pack"
 npm run tauri:dev
 ```
 
-## Config location
+## Config paths
 
 | Mode | Path |
 |------|------|
-| Default (Windows) | `%AppData%\command-center\` |
-| Default (Linux) | `~/.config/command-center/` |
-| Portable override | Set `COMMAND_CENTER_HOME` to any writable folder |
+| Windows default | `%AppData%\command-center\` |
+| Linux default | `~/.config/command-center/` |
+| Portable | `COMMAND_CENTER_HOME` → any writable folder |
 
-Files written there:
+Files there:
 
-- `config.yaml` — boards, sources, layout settings (secret **refs** only)
+- `config.yaml` — boards, sources, layout (secret **refs** only)
 - `layouts/<board-id>.json` — fine-grid panel positions
-- `secrets.local.json` — fallback secret store if OS keyring is unavailable (do not commit)
-- `*.bak` — last-good backups before overwrite
+- `secrets.local.json` — fallback if the OS keyring is missing (do not commit)
+- `*.bak` — last-good copy before overwrite
 
-## Weather source (live)
+## Weather
 
-**Providers (free / personal use):**
+| Layer | Provider | Auth | Notes |
+|-------|----------|------|-------|
+| Conditions + hourly | [Open-Meteo](https://open-meteo.com/) | None for non-commercial | Attribution required. Commercial / high volume needs a plan + API key. |
+| Radar tiles | [RainViewer](https://www.rainviewer.com/api.html) | None | Personal/educational; credit RainViewer. Max zoom 7 on the 2026 public API. |
+| Satellite | [NOAA NESDIS GOES](https://www.star.nesdis.noaa.gov/goes/) GeoColor | None | CONUS / full-disk stills (RainViewer IR satellite ended 2026-01-01). |
+| Basemap | CARTO Dark Matter | None | Attribution in the panel footer. |
 
-| Layer | Provider | Auth | Notes / ToS |
-|-------|----------|------|-------------|
-| Conditions + hourly | [Open-Meteo](https://open-meteo.com/) Forecast API | None for non-commercial | Attribution required. Commercial / high-volume needs an Open-Meteo plan + API key. |
-| Radar tiles | [RainViewer](https://www.rainviewer.com/api.html) Weather Maps API | None | Free personal/educational use; credit RainViewer. Max zoom 7 (2026 public API). |
-| Satellite | [NOAA NESDIS GOES](https://www.star.nesdis.noaa.gov/goes/) GeoColor stills | None | Public CONUS / full-disk imagery (RainViewer IR satellite ended 2026-01-01). |
-| Basemap tiles | CARTO Dark Matter | None | Attribution in panel footer. |
-
-Secrets stay local: optional `weather.optional_key` (Open-Meteo commercial) is stored in the OS keyring / `secrets.local.json` fallback — never in `config.yaml`.
+Optional Open-Meteo commercial key goes in the keyring / `secrets.local.json` as `weather.optional_key` — never in `config.yaml`.
 
 | Setting | Required | Notes |
 |---------|----------|--------|
-| Latitude / Longitude | yes | Center point for all scopes |
-| Display scopes | yes | `local`, `regional`, `nationwide`, or combinations (multiple map windows in one panel) |
-| Units | yes | Imperial (°F, mph) or Metric (°C, km/h) |
-| Show weather radar | no | Default on |
+| Lat / lon | yes | Center for all scopes |
+| Display scopes | yes | `local`, `regional`, `nationwide`, or combinations |
+| Units | yes | Imperial or Metric |
+| Show radar | no | Default on |
 | Show satellite | no | Default on |
-| Open-Meteo API key | no | Secret `weather.optional_key` — only if your Open-Meteo plan requires it |
+| Open-Meteo API key | no | Secret `weather.optional_key` |
 
-### Configure in the app
+**In the app:** Settings → Source catalog → Weather → Configure. Enter lat/lon, scopes, units. Save, or Save & add to board. Panel shows conditions, a short hourly strip, and a map per selected scope. Radar / Satellite chips toggle layers.
 
-1. Open **Settings → Source catalog → Weather → Configure**
-2. Enter **latitude** and **longitude** (required). Pick scopes (single or combination) and units.
-3. Leave radar/satellite checked unless you only want conditions KPIs.
-4. Optionally paste an Open-Meteo API key (keyring / local secrets — never written to `config.yaml`).
-5. **Save source** or **Save & add to board** (required fields must validate first). Board stays empty until you add.
-6. The panel shows live conditions, a short hourly strip, and map windows for each selected scope with radar/satellite overlays. Use the Radar / Satellite chips to toggle layers.
+Add more Weather sources if you want separate panels per scope instead of a combo.
 
-Add multiple Weather sources (or panels) if you want separate display windows per scope instead of a combination in one panel.
+## Crime / incident
 
-## Crime / incident source (live)
-
-**Provider:** municipal open data via documented Socrata SODA APIs or a custom GeoJSON/JSON endpoint.  
-**Not used:** CrimeRadar / Squawster scraping (ToS blocks automated access). Licensed CrimeRadar Business / Incident Source APIs can be added later behind feature flags.
+Municipal open data via Socrata SODA or a custom GeoJSON/JSON URL. Not CrimeRadar / Squawster scraping (ToS). Licensed CrimeRadar APIs can come later behind flags.
 
 | Setting | Required | Notes |
 |---------|----------|--------|
 | Provider | yes | `chicago`, `seattle`, or `custom` |
-| Custom endpoint URL | if custom | HTTPS GeoJSON FeatureCollection, JSON array, or `{ incidents: [] }` |
+| Custom URL | if custom | HTTPS GeoJSON FeatureCollection, JSON array, or `{ incidents: [] }` |
 | Max incidents | yes | Newest first (default 50) |
-| Attribution | yes | Shown in the panel footer |
-| Socrata App Token | no | Secret `socrata.app_token` — OS keyring preferred; improves rate limits |
+| Attribution | yes | Panel footer |
+| Socrata App Token | no | Secret `socrata.app_token` — keyring preferred |
 
-### Configure in the app
+**In the app:** Settings → Source catalog → Crime / incident → Configure. Pick a provider (Chicago / Seattle fill attribution). Optional Socrata token. Save or Save & add to board. New IDs flash in-panel; click a row for detail. Rows with `audioUrl` / `audio` get a muted player in the detail pane.
 
-1. Open **Settings → Source catalog → Crime / incident (open data) → Configure**
-2. Pick a provider (Chicago / Seattle presets fill attribution). For Custom, paste the open-data URL.
-3. Optionally paste a Socrata App Token (stored in keyring / local secrets fallback — never in `config.yaml`).
-4. **Save source** or **Save & add to board** (required fields must validate first).
-5. The panel shows a **live feed** (newest first). New IDs flash as in-panel alerts; click an item for detail. If a feed row includes `audioUrl` / `audio`, an audio player appears in the detail pane.
+Normalized fields when present: `title`, `category`, `description`, `occurredAt`/`date`, `address`, `lat`/`lon`, `audioUrl`, `detailUrl`.
 
-### Example custom payload fields
+- Chicago: `https://data.cityofchicago.org/resource/ijzp-q8t2.json`
+- Seattle: `https://data.seattle.gov/resource/tazs-3rd5.json`
 
-Normalized when present: `title`, `category`, `description`, `occurredAt`/`date`, `address`, `lat`/`lon`, `audioUrl`, `detailUrl`.
+Open-data portals often lag hours–days vs live CAD; the panel labels the feed accordingly.
 
-Chicago preset: `https://data.cityofchicago.org/resource/ijzp-q8t2.json`  
-Seattle preset: `https://data.seattle.gov/resource/tazs-3rd5.json`
+## Broadcastify Feed Owner
 
-Open-data portals often lag hours–days vs live CAD/scanner apps — the panel labels the feed accordingly.
+[Feed Owner API v0.9](https://support.broadcastify.com/hc/en-us/articles/204172369-Feed-Owner-API-v0-9-Documentation) — `https://api.broadcastify.com/owner/` with `a=feed` / `a=archives`, `feedId`, `u`, `p`, `type=json`.
 
-## Broadcastify Feed Owner (live, personal)
-
-**API:** [Feed Owner API v0.9](https://support.broadcastify.com/hc/en-us/articles/204172369-Feed-Owner-API-v0-9-Documentation) — `https://api.broadcastify.com/owner/` with `a=feed` / `a=archives`, `feedId`, `u`, `p`, `type=json`.
-
-**Scope:** Nathan’s **own** uploaded feed only. **Not** the $2500 Catalog API and **not** Calls. Archive listings/URLs are **personal use only** (no commercial use or redistribution).
+Your own uploaded feed only. Not the Catalog API ($2500) and not Calls. Archives are personal use only.
 
 | Setting | Required | Notes |
 |---------|----------|--------|
-| Feed ID | yes | From your feed management / listen URL |
+| Feed ID | yes | From feed management / listen URL |
 | Archive day | no | `YYYY-MM-DD`; blank lists available dates |
 | Include archives | no | Default on |
-| Captions / transcription | no | Default off. Panel CC UI for archive audio |
-| Username | yes | Secret `broadcastify.username` — OS keyring |
-| Password | yes | Secret `broadcastify.password` — OS keyring only (never `config.yaml`) |
+| Captions / transcription | no | Default off; panel CC for archive audio |
+| Username | yes | Secret `broadcastify.username` |
+| Password | yes | Secret `broadcastify.password` (keyring only) |
 
-### Audio + captions (local / on-device preferred)
+Archive players start muted. Keep personal archive audio on-device — no cloud ASR upload.
 
-Per the [global audio rule](#global-product-rule-audio-sources): archive players **start muted**; unmute via the Muted control or native player. Personal-use archive audio should stay on-device — **no cloud ASR upload**.
+With captions enabled, the panel shows CC and a captions pane. Today `transcribe_audio_local` returns stub segments so the UI can ship; next step is whisper.cpp (or similar) behind the same toggle.
 
-When **Captions / transcription** is enabled (default on for new Broadcastify sources), the panel shows a **CC** toggle and captions pane.
+**In the app:** Settings → Source catalog → Broadcastify (Feed Owner) → Configure. Feed ID + credentials, optional archive day and captions. Panel shows online/offline + listeners and archives. Change day in the toolbar; use CC + Transcribe local on a clip when captions are on.
 
-**Current path (stub first):** `transcribe_audio_local` (Tauri) / browser twin returns structured offline stub segments so the UI can ship before a model is bundled.
+Live Owner API calls need the Tauri app. The browser Vite mock serves a fixture (CORS).
 
-**Next:** wire on-device Whisper (whisper.cpp) or similar behind `transcribeArchiveLocal` — same Settings toggle and panel UI; no Catalog/Calls scope change.
+## Timed panel rotation
 
-### Configure in the app
+Optional: cycle two or more saved sources in one panel on a timer.
 
-1. **Settings → Source catalog → Broadcastify (Feed Owner) → Configure**
-2. Enter feed ID; paste username/password (keyring / `secrets.local.json` fallback).
-3. Optionally set an archive day and enable **Captions / transcription**, then **Save** or **Save & add to board**.
-4. Panel shows live online/offline + listeners; archive dates or clips (with audio when a day is selected). Day can also be changed in the panel toolbar. With captions on, use **CC** + **Transcribe local** on a clip.
+1. Configure at least two sources under Settings → Source catalog.
+2. Settings → Panel rotation.
+3. Enable timed rotation.
+4. Set title + interval (15s / 30s / 1m / 5m, or custom 5–3600s), pick sources, Add rotating panel to board.
 
-Live Owner API calls run in the **Tauri** app. The browser Vite mock only serves a fixture (CORS).
+Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on the panel (`rotation.enabled`, `intervalSec`, `sourceIds`). Single-source panels are unchanged.
 
-## Timed multi-source rotation (one panel)
+## Shell behavior
 
-Optional Settings opt-in: cycle **two or more** configured sources (weather stubs, crime/incident, Broadcastify, etc.) inside a **single** board panel on a timer.
+- Empty board on first launch
+- Settings → Source catalog: weather, ADS-B, cameras, ham, crime/incident, Broadcastify Feed Owner, plus file / HTTP / SQLite / system-metrics stubs
+- Configure → Save or Save & add to board
+- Settings → Panel rotation for multi-source panels
+- Edit layout (toolbar or `Ctrl/Cmd+E`): 48-column fine grid; persists on drag/resize stop
+- Board switcher in the chrome (+ for another empty board)
 
-1. Configure and save at least two sources under **Settings → Source catalog**.
-2. Open **Settings → Panel rotation**.
-3. Check **Enable timed rotation of multiple sources in one panel**.
-4. Set title + interval (15s / 30s / 1m / 5m or custom 5–3600s), select sources, then **Add rotating panel to board**.
-5. The panel toolbar shows slot index, active source, countdown, pause/prev/next — chrome matches the crime feed look.
+Other catalog entries stay stubs until their adapters land.
 
-Rotation config is stored on the panel (`rotation.enabled`, `intervalSec`, `sourceIds`). Single-source panels are unchanged.
-
-## MVP shell behavior
-
-- First launch: **empty board** (no default widgets)
-- **Settings → Source catalog**: **weather (live)**, ADS-B, cameras, ham, **crime/incident (live open data)**, **Broadcastify Feed Owner**, plus foundation adapters (file, HTTP, SQLite, system metrics)
-- Configure required fields → **Save** or **Save & add to board**
-- **Settings → Panel rotation**: optional timed multi-source panel (opt-in)
-- **Edit layout** (toolbar or `Ctrl/Cmd+E`): drag/resize on a fine 48-column grid; layout persists on drag/resize stop
-- Board switcher in the chrome (+ to create another empty board)
-
-Other product sources remain stubs until their adapters are wired.
-
-## Build desktop installers
+## Build installers
 
 ```bash
 npm run tauri:build
 ```
 
-Artifacts land under `src-tauri/target/release/bundle/` (platform-dependent). Flatpak / `.deb` packaging is planned for a later phase — not part of this MVP shell.
+Output under `src-tauri/target/release/bundle/`. Flatpak / `.deb` later — not in this shell.
 
 ## Tests
 
@@ -212,14 +179,12 @@ npm run test:rust
 npm run build
 ```
 
-## auth-server (separate service)
+## auth-server
 
-Username/password login is served by **auth-server** (not part of the Tauri process).
+Login is a separate process: [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth).
 
-**Repo:** [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth)
+Fedora on a Pi is just a test host. Source API secrets (Broadcastify, etc.) stay on the desktop keyring and are never sent to auth-server.
 
-Fedora on a Raspberry Pi is a **test host only** — the service name is always `auth-server`. Source API secrets (Broadcastify, etc.) stay on the desktop keyring and are not sent to auth-server.
+## Browser mock (`npm run dev`)
 
-## Contributor note: browser UI mock (not the product)
-
-`npm run dev` starts Vite in a normal browser with **localStorage mock persistence** and CORS-dependent / proxied browser fetches for weather and incident sources (Broadcastify uses a fixture). It is a **demo / UI iteration aid only** — no Tauri window, no OS app-data config, no portable override. Do not treat it as a supported runtime or substitute for `npm run tauri:dev`.
+Vite in a normal browser with localStorage mocks. Useful for UI work only — no Tauri window, no OS app-data config, no portable override. Use `npm run tauri:dev` for the real app.
