@@ -315,9 +315,10 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
           .find((b) => b.id === state.activeBoardId)
           ?.panels.reduce((max, p) => Math.max(max, p.layout.y + p.layout.h), 0) ?? 0;
       const primaryId = rotateSourceIds[0];
-      const hasIncident = rotateSourceIds.some(
-        (id) => state.sources[id]?.type === "incident.opendata",
-      );
+      const hasRichPanel = rotateSourceIds.some((id) => {
+        const type = state.sources[id]?.type;
+        return type === "incident.opendata" || type === "broadcastify.owner";
+      });
 
       const panel: Panel = {
         id: panelId,
@@ -337,10 +338,10 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
           i: panelId,
           x: 0,
           y: yMax,
-          w: hasIncident ? 24 : 20,
-          h: hasIncident ? 24 : 16,
-          minW: hasIncident ? 12 : 10,
-          minH: hasIncident ? 12 : 10,
+          w: hasRichPanel ? 24 : 20,
+          h: hasRichPanel ? 24 : 16,
+          minW: hasRichPanel ? 12 : 10,
+          minH: hasRichPanel ? 12 : 10,
         },
       };
 
