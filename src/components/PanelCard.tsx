@@ -18,8 +18,10 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     Boolean(rotation) ||
     source?.type === "incident.opendata" ||
     source?.type === "broadcastify.owner" ||
+    source?.type === "weather.openmeteo" ||
     panel.widget === "incident" ||
     panel.widget === "broadcastify" ||
+    panel.widget === "weather" ||
     panel.widget === "rotate";
 
   return (

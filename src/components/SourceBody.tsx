@@ -3,6 +3,7 @@ import { getAdapter } from "../adapters/catalog";
 import type { SourceConfig } from "../types";
 import { BroadcastifyPanel } from "./BroadcastifyPanel";
 import { IncidentPanel } from "./IncidentPanel";
+import { WeatherPanel } from "./WeatherPanel";
 
 type Props = {
   sourceId: string;
@@ -19,6 +20,10 @@ export function SourceBody({ sourceId, source }: Props) {
 
   if (source.type === "broadcastify.owner") {
     return <BroadcastifyPanel sourceId={sourceId} source={source} />;
+  }
+
+  if (source.type === "weather.openmeteo") {
+    return <WeatherPanel sourceId={sourceId} source={source} />;
   }
 
   return (

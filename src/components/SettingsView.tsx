@@ -98,6 +98,12 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
       // Global rule: audio sources support closed captions (default on; user may opt out).
       initial.enableCaptions = true;
     }
+    if (typeId === "weather.openmeteo") {
+      initial.scopes = "local";
+      initial.units = "imperial";
+      initial.showRadar = true;
+      initial.showSatellite = true;
+    }
     setParams(initial);
     setSecrets({});
     setMessage(
@@ -113,7 +119,12 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
                 kind: "warn",
                 text: "Feed Owner API for your own feed only. Password stays in the OS keyring. Archives are personal-use — no Catalog/Calls. Captions prefer on-device ASR (stub until Whisper lands).",
               }
-            : null,
+            : typeId === "weather.openmeteo"
+              ? {
+                  kind: "warn",
+                  text: "Open-Meteo conditions + RainViewer radar + NOAA GOES satellite. Optional Open-Meteo API key stays in the OS keyring.",
+                }
+              : null,
     );
   }
 
@@ -226,24 +237,13 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
           .find((b) => b.id === next.activeBoardId)
           ?.panels.reduce((max, p) => Math.max(max, p.layout.y + p.layout.h), 0) ?? 0;
 
-        const wide =
-          adapter.typeId === "incident.opendata" ||
-          adapter.typeId === "broadcastify.owner";
         const panel: Panel = {
           id: panelId,
           title: adapter.name,
           widget: adapter.defaultWidget,
           source: sourceId,
           options: { typeId: adapter.typeId },
-          layout: {
-            i: panelId,
-            x: 0,
-            y: yMax,
-            w: wide ? 24 : 16,
-            h: wide ? 22 : 14,
-            minW: wide ? 12 : 8,
-            minH: wide ? 12 : 8,
-          },
+          layout: panelLayoutFor(adapter.typeId, panelId, yMax),
         };
         next = await addPanelToBoard(next.activeBoardId, panel);
         setMessage({
@@ -373,23 +373,13 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
         state.boards
           .find((b) => b.id === state.activeBoardId)
           ?.panels.reduce((max, p) => Math.max(max, p.layout.y + p.layout.h), 0) ?? 0;
-      const wide =
-        source.type === "incident.opendata" || source.type === "broadcastify.owner";
       const panel: Panel = {
         id: panelId,
         title: def?.name ?? source.type,
         widget: def?.defaultWidget ?? "kpi",
         source: sourceId,
         options: { typeId: source.type },
-        layout: {
-          i: panelId,
-          x: 0,
-          y: yMax,
-          w: wide ? 24 : 16,
-          h: wide ? 22 : 14,
-          minW: wide ? 12 : 8,
-          minH: wide ? 12 : 8,
-        },
+        layout: panelLayoutFor(source.type, panelId, yMax),
       };
       const next = await addPanelToBoard(state.activeBoardId, panel);
       onState(next);
@@ -658,6 +648,44 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
       </div>
     </div>
   );
+}
+
+function panelLayoutFor(
+  typeId: string,
+  panelId: string,
+  yMax: number,
+): Panel["layout"] {
+  if (typeId === "weather.openmeteo") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 28,
+      h: 32,
+      minW: 16,
+      minH: 18,
+    };
+  }
+  if (typeId === "incident.opendata" || typeId === "broadcastify.owner") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 24,
+      h: 22,
+      minW: 12,
+      minH: 12,
+    };
+  }
+  return {
+    i: panelId,
+    x: 0,
+    y: yMax,
+    w: 16,
+    h: 14,
+    minW: 8,
+    minH: 8,
+  };
 }
 
 function SourceTypeRow({

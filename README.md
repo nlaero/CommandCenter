@@ -2,7 +2,7 @@
 
 **Standalone native desktop app** for Windows and Linux (Tauri 2 shell + React/TypeScript UI). Not a browser or hosted web app — the product runs as a local OS application with config on disk.
 
-Phase A: empty board on first launch, fine-grid layout with persistence, multi-board model, Settings catalog, and live product sources — crime / incident open data plus **Broadcastify Feed Owner** (personal feed status + archives).
+Phase A: empty board on first launch, fine-grid layout with persistence, multi-board model, Settings catalog, and live product sources — **weather** (conditions + radar/satellite), crime / incident open data, plus **Broadcastify Feed Owner** (personal feed status + archives).
 
 ## Global product rule: audio sources
 
@@ -76,6 +76,39 @@ Files written there:
 - `layouts/<board-id>.json` — fine-grid panel positions
 - `secrets.local.json` — fallback secret store if OS keyring is unavailable (do not commit)
 - `*.bak` — last-good backups before overwrite
+
+## Weather source (live)
+
+**Providers (free / personal use):**
+
+| Layer | Provider | Auth | Notes / ToS |
+|-------|----------|------|-------------|
+| Conditions + hourly | [Open-Meteo](https://open-meteo.com/) Forecast API | None for non-commercial | Attribution required. Commercial / high-volume needs an Open-Meteo plan + API key. |
+| Radar tiles | [RainViewer](https://www.rainviewer.com/api.html) Weather Maps API | None | Free personal/educational use; credit RainViewer. Max zoom 7 (2026 public API). |
+| Satellite | [NOAA NESDIS GOES](https://www.star.nesdis.noaa.gov/goes/) GeoColor stills | None | Public CONUS / full-disk imagery (RainViewer IR satellite ended 2026-01-01). |
+| Basemap tiles | CARTO Dark Matter | None | Attribution in panel footer. |
+
+Secrets stay local: optional `weather.optional_key` (Open-Meteo commercial) is stored in the OS keyring / `secrets.local.json` fallback — never in `config.yaml`.
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Latitude / Longitude | yes | Center point for all scopes |
+| Display scopes | yes | `local`, `regional`, `nationwide`, or combinations (multiple map windows in one panel) |
+| Units | yes | Imperial (°F, mph) or Metric (°C, km/h) |
+| Show weather radar | no | Default on |
+| Show satellite | no | Default on |
+| Open-Meteo API key | no | Secret `weather.optional_key` — only if your Open-Meteo plan requires it |
+
+### Configure in the app
+
+1. Open **Settings → Source catalog → Weather → Configure**
+2. Enter **latitude** and **longitude** (required). Pick scopes (single or combination) and units.
+3. Leave radar/satellite checked unless you only want conditions KPIs.
+4. Optionally paste an Open-Meteo API key (keyring / local secrets — never written to `config.yaml`).
+5. **Save source** or **Save & add to board** (required fields must validate first). Board stays empty until you add.
+6. The panel shows live conditions, a short hourly strip, and map windows for each selected scope with radar/satellite overlays. Use the Radar / Satellite chips to toggle layers.
+
+Add multiple Weather sources (or panels) if you want separate display windows per scope instead of a combination in one panel.
 
 ## Crime / incident source (live)
 
@@ -156,7 +189,7 @@ Rotation config is stored on the panel (`rotation.enabled`, `intervalSec`, `sour
 ## MVP shell behavior
 
 - First launch: **empty board** (no default widgets)
-- **Settings → Source catalog**: weather, ADS-B, cameras, ham, **crime/incident**, **Broadcastify Feed Owner**, plus foundation adapters (file, HTTP, SQLite, system metrics)
+- **Settings → Source catalog**: **weather (live)**, ADS-B, cameras, ham, **crime/incident (live open data)**, **Broadcastify Feed Owner**, plus foundation adapters (file, HTTP, SQLite, system metrics)
 - Configure required fields → **Save** or **Save & add to board**
 - **Settings → Panel rotation**: optional timed multi-source panel (opt-in)
 - **Edit layout** (toolbar or `Ctrl/Cmd+E`): drag/resize on a fine 48-column grid; layout persists on drag/resize stop
@@ -189,4 +222,4 @@ Fedora on a Raspberry Pi is a **test host only** — the service name is always 
 
 ## Contributor note: browser UI mock (not the product)
 
-`npm run dev` starts Vite in a normal browser with **localStorage mock persistence** and a CORS-dependent browser fetch for the incident source. It is a **demo / UI iteration aid only** — no Tauri window, no OS app-data config, no portable override. Do not treat it as a supported runtime or substitute for `npm run tauri:dev`.
+`npm run dev` starts Vite in a normal browser with **localStorage mock persistence** and CORS-dependent / proxied browser fetches for weather and incident sources (Broadcastify uses a fixture). It is a **demo / UI iteration aid only** — no Tauri window, no OS app-data config, no portable override. Do not treat it as a supported runtime or substitute for `npm run tauri:dev`.
