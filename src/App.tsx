@@ -3,7 +3,9 @@ import { AlertsPane } from "./components/AlertsPane";
 import { BoardSwitcher } from "./components/BoardSwitcher";
 import { BoardView } from "./components/BoardView";
 import { SettingsView } from "./components/SettingsView";
+import { AuthScreen } from "./components/AuthScreen";
 import { AlertsProvider } from "./lib/alerts";
+import { authLogout, loadAuthSession } from "./lib/auth";
 import {
   createBoard,
   loadAppState,
@@ -12,7 +14,7 @@ import {
   setEditMode,
 } from "./lib/api";
 import { SourceRefreshProvider } from "./lib/sourceRefresh";
-import type { AppState, ConfigPaths, GridItem } from "./types";
+import type { AppState, AuthSession, ConfigPaths, GridItem } from "./types";
 
 export default function App() {
   return (
@@ -24,6 +26,7 @@ export default function App() {
 
 function AppShell() {
   const [state, setState] = useState<AppState | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [paths, setPaths] = useState<ConfigPaths | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,9 +40,11 @@ function AppShell() {
     void (async () => {
       try {
         const result = await loadAppState();
+        const auth = await loadAuthSession();
         if (cancelled) return;
         setState(result.state);
         setPaths(result.paths);
+        setSession(auth);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
@@ -63,6 +68,7 @@ function AppShell() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (state?.auth.enabled && session && !session.signedIn) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "e") {
         e.preventDefault();
         void toggleEdit();
@@ -75,7 +81,7 @@ function AppShell() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  }, [state, session]);
 
   const activeBoard = useMemo(
     () => state?.boards.find((b) => b.id === state.activeBoardId) ?? state?.boards[0],
@@ -131,7 +137,7 @@ function AppShell() {
     );
   }
 
-  if (!state || !paths || !activeBoard) {
+  if (!state || !paths || !session || !activeBoard) {
     return (
       <div className="app-shell">
         <div className="empty-board">
@@ -141,6 +147,17 @@ function AppShell() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (state.auth.enabled && !session.signedIn) {
+    return (
+      <AuthScreen
+        settings={state.auth}
+        session={session}
+        onSession={setSession}
+        onState={setState}
+      />
     );
   }
 
@@ -164,6 +181,12 @@ function AppShell() {
             }}
           />
           <div className="chrome-spacer" />
+          {session.signedIn && session.user ? (
+            <div className="chrome-user" title={session.offline ? "Signed in offline" : "Signed in"}>
+              {session.user.username}
+              {session.offline ? <span className="badge">offline</span> : null}
+            </div>
+          ) : null}
           <div className="chrome-meta" title={paths.root}>
             {paths.overrideActive ? "portable · " : ""}
             {paths.root}
@@ -184,9 +207,27 @@ function AppShell() {
           >
             Settings
           </button>
+          {session.signedIn ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                void authLogout().then(setSession).catch((err) => {
+                  setError(err instanceof Error ? err.message : String(err));
+                });
+              }}
+            >
+              Sign out
+            </button>
+          ) : null}
         </header>
 
         <main className="main-stage" ref={stageRef}>
+          {error ? (
+            <div className="alert error" role="alert" style={{ margin: 12 }}>
+              {error}
+            </div>
+          ) : null}
           <div className="board-with-alerts">
             <div className="board-with-alerts-main" ref={boardMainRef}>
               <BoardView
@@ -203,8 +244,10 @@ function AppShell() {
             <SettingsView
               state={state}
               paths={paths}
+              session={session}
               onClose={() => setSettingsOpen(false)}
               onState={setState}
+              onSession={setSession}
             />
           ) : null}
         </main>

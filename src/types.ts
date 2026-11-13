@@ -49,6 +49,39 @@ export type LayoutSettings = {
   margin: [number, number];
 };
 
+/** Auth-server location and whether this computer requires a session. */
+export type AuthSettings = {
+  enabled: boolean;
+  /** Origin only, no path. Default is the tailnet auth-server. */
+  baseUrl: string;
+  /** Lab HTTP for localhost / private LAN. The tailnet address is allowed without this. */
+  allowInsecureHttp: boolean;
+  caFile?: string | null;
+  tlsPinSha256?: string | null;
+};
+
+export type AuthUser = {
+  id: string;
+  username: string;
+};
+
+export type AuthSession = {
+  enabled: boolean;
+  baseUrl: string;
+  allowInsecureHttp: boolean;
+  signedIn: boolean;
+  offline: boolean;
+  user?: AuthUser | null;
+  suggestedUsername?: string | null;
+  reachable?: boolean | null;
+  statusMessage?: string | null;
+};
+
+export type AuthProbe = {
+  reachable: boolean;
+  message: string;
+};
+
 export type AppState = {
   version: number;
   activeBoardId: string;
@@ -56,6 +89,7 @@ export type AppState = {
   boards: Board[];
   sources: Record<string, SourceConfig>;
   editMode: boolean;
+  auth: AuthSettings;
 };
 
 export type ConfigPaths = {

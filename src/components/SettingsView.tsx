@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ADAPTER_CATALOG, getAdapter } from "../adapters/catalog";
+import { AccountSettings } from "./AuthScreen";
 import { useAlerts } from "../lib/alerts";
 import {
   addPanelToBoard,
@@ -12,12 +13,13 @@ import type {
   AdapterDefinition,
   AdapterField,
   AppState,
+  AuthSession,
   ConfigPaths,
   Panel,
   SourceConfig,
 } from "../types";
 
-type Tab = "sources" | "configured" | "rotation" | "alerts" | "paths";
+type Tab = "sources" | "configured" | "rotation" | "alerts" | "account" | "paths";
 
 const ROTATION_PRESETS = [
   { label: "15s", value: 15 },
@@ -29,8 +31,10 @@ const ROTATION_PRESETS = [
 type Props = {
   state: AppState;
   paths: ConfigPaths;
+  session: AuthSession;
   onClose: () => void;
   onState: (state: AppState) => void;
+  onSession: (session: AuthSession) => void;
 };
 
 function requiredKeys(adapter: AdapterDefinition): string[] {
@@ -55,7 +59,7 @@ function fieldValue(
   return v === undefined || v === null ? "" : String(v);
 }
 
-export function SettingsView({ state, paths, onClose, onState }: Props) {
+export function SettingsView({ state, paths, session, onClose, onState, onSession }: Props) {
   const { notifySourceSaved } = useSourceRefresh();
   const [tab, setTab] = useState<Tab>("sources");
   const [selectedType, setSelectedType] = useState<string | null>(null);
@@ -513,6 +517,13 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
             </button>
             <button
               type="button"
+              className={tab === "account" ? "active" : ""}
+              onClick={() => setTab("account")}
+            >
+              Account
+            </button>
+            <button
+              type="button"
               className={tab === "paths" ? "active" : ""}
               onClick={() => setTab("paths")}
             >
@@ -773,6 +784,15 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
                   </button>
                 </div>
               </>
+            ) : null}
+
+            {tab === "account" ? (
+              <AccountSettings
+                state={state}
+                session={session}
+                onState={onState}
+                onSession={onSession}
+              />
             ) : null}
 
             {tab === "paths" ? (

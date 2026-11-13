@@ -11,6 +11,9 @@ pub const CONFIG_FILE: &str = "config.yaml";
 pub const LAYOUTS_DIR: &str = "layouts";
 pub const BACKUP_SUFFIX: &str = ".bak";
 
+/// Default auth-server for this install. Plain HTTP is allowed for this tailnet address.
+pub const DEFAULT_AUTH_BASE_URL: &str = "http://100.101.141.93:8080";
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("io error: {0}")]
@@ -121,6 +124,47 @@ fn default_true() -> bool {
     true
 }
 
+fn default_auth_base_url() -> String {
+    DEFAULT_AUTH_BASE_URL.to_string()
+}
+
+/// Username/password session against auth-server. Source API secrets are not part of this.
+///
+/// Missing `auth` on an existing config stays disabled (`Default`) so older boards still open.
+/// A brand-new `AppState::default()` turns sign-in on.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthSettings {
+    /// When false, the board opens with no session gate.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Auth-server origin. Change this if the server is not the default tailnet host.
+    #[serde(default = "default_auth_base_url")]
+    pub base_url: String,
+    /// Lab only: allow `http://` to localhost or a private LAN. Ignored for the tailnet
+    /// address, which is allowed over HTTP in debug and release builds.
+    #[serde(default)]
+    pub allow_insecure_http: bool,
+    /// Optional PEM bundle added to the trust store (mkcert / internal CA).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ca_file: Option<String>,
+    /// Optional hex SHA-256 of the server leaf certificate or its SPKI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tls_pin_sha256: Option<String>,
+}
+
+impl Default for AuthSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            base_url: default_auth_base_url(),
+            allow_insecure_http: false,
+            ca_file: None,
+            tls_pin_sha256: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppState {
@@ -133,6 +177,9 @@ pub struct AppState {
     pub sources: BTreeMap<String, SourceConfig>,
     #[serde(default)]
     pub edit_mode: bool,
+    /// Absent on older configs → sign-in off. New files from `Default` require an account.
+    #[serde(default)]
+    pub auth: AuthSettings,
 }
 
 impl Default for AppState {
@@ -148,6 +195,10 @@ impl Default for AppState {
             }],
             sources: BTreeMap::new(),
             edit_mode: false,
+            auth: AuthSettings {
+                enabled: true,
+                ..AuthSettings::default()
+            },
         }
     }
 }
@@ -287,6 +338,37 @@ mod tests {
         assert!(state.boards[0].panels.is_empty());
         assert!(state.sources.is_empty());
         assert_eq!(state.layout.cols, 48);
+        assert!(state.auth.enabled);
+        assert_eq!(state.auth.base_url, DEFAULT_AUTH_BASE_URL);
+        assert!(!state.auth.allow_insecure_http);
+    }
+
+    #[test]
+    fn missing_auth_keeps_existing_boards_open() {
+        let yaml = r#"
+version: 1
+activeBoardId: home
+boards:
+  - id: home
+    title: Home
+    panels: []
+"#;
+        let state: AppState = serde_yaml::from_str(yaml).unwrap();
+        assert!(!state.auth.enabled);
+        assert_eq!(state.auth.base_url, DEFAULT_AUTH_BASE_URL);
+    }
+
+    #[test]
+    fn auth_settings_round_trip_yaml() {
+        let mut state = AppState::default();
+        state.auth.allow_insecure_http = true;
+        state.auth.ca_file = Some("/tmp/ca.pem".into());
+        let yaml = serde_yaml::to_string(&state).unwrap();
+        let back: AppState = serde_yaml::from_str(&yaml).unwrap();
+        assert!(back.auth.enabled);
+        assert_eq!(back.auth.base_url, DEFAULT_AUTH_BASE_URL);
+        assert!(back.auth.allow_insecure_http);
+        assert_eq!(back.auth.ca_file.as_deref(), Some("/tmp/ca.pem"));
     }
 
     #[test]

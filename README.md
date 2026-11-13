@@ -181,6 +181,18 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 
 Other catalog entries stay stubs until their adapters land.
 
+## Sign in
+
+New installs ask for an account before the board opens. Configs saved before sign-in existed stay open until you turn on **Require sign-in** under Settings → Account.
+
+Create the account on that same screen (Sign in / Create account). There is no separate admin signup. After it succeeds you land on the board; restarting the app uses the refresh token until you sign out or it expires.
+
+The auth-server URL is a setting. It starts at `http://100.101.141.93:8080`. Change it if yours lives somewhere else. Plain HTTP is allowed for that tailnet address (Tailscale `100.64.0.0/10`). Use HTTPS for anything else. A lab checkbox can allow HTTP to localhost or a private LAN in debug builds; release builds still refuse that.
+
+Access and refresh tokens go in the OS keyring (`auth.access_token`, `auth.refresh_token`). The password is not stored. Broadcastify and other source secrets stay in the keyring too and are not sent to auth-server.
+
+Sign out from the toolbar. The username stays filled in on the sign-in screen.
+
 ## Build installers
 
 ```bash
@@ -198,10 +210,22 @@ npm run build
 
 ## auth-server
 
-Login is a separate process: [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth).
+The account API lives in [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth): register, login, refresh, logout, and `/auth/me`. The desktop app is only a client.
 
-Fedora on a Pi is just a test host. Source API secrets (Broadcastify, etc.) stay on the desktop keyring and are never sent to auth-server.
+`npm run test:rust` does not contact that server. It uses an in-process fake on `127.0.0.1`. To run the same client against a local auth-server you started yourself:
+
+```bash
+AUTH_TEST_URL=http://127.0.0.1:8080 cargo test --manifest-path src-tauri/Cargo.toml --lib manual_local_auth_server -- --ignored --nocapture
+```
+
+That test refuses anything that is not loopback, including the tailnet address.
 
 ## Browser mock (`npm run dev`)
 
 Vite in a normal browser with localStorage mocks. Useful for UI work only — no Tauri window, no OS app-data config, no portable override. Use `npm run tauri:dev` for the real app.
+
+To sign in from the browser mock, point it at a local auth-server (the page proxies `/proxy/auth` so the browser does not need CORS):
+
+```bash
+CC_AUTH_BASE=http://127.0.0.1:8080 npm run dev
+```

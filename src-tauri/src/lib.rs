@@ -1,3 +1,4 @@
+mod auth;
 mod commands;
 mod config;
 mod secrets;
@@ -21,6 +22,12 @@ pub fn run() {
             commands::set_edit_mode,
             commands::validate_source_fields,
             commands::transcribe_audio_local,
+            commands::auth_session,
+            commands::auth_probe,
+            commands::auth_save_settings,
+            commands::auth_register,
+            commands::auth_login,
+            commands::auth_logout,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Command Center");
