@@ -1,43 +1,44 @@
 import type { Panel, SourceConfig } from "../types";
-import { getAdapter } from "../adapters/catalog";
-import { BroadcastifyPanel } from "./BroadcastifyPanel";
-import { IncidentPanel } from "./IncidentPanel";
+import { RotatingPanel } from "./RotatingPanel";
+import { SourceBody } from "./SourceBody";
 
 type Props = {
   panel: Panel;
   source?: SourceConfig;
+  sources: Record<string, SourceConfig>;
   editMode?: boolean;
 };
 
-export function PanelCard({ panel, source, editMode }: Props) {
-  const adapter = source ? getAdapter(source.type) : undefined;
-  const isIncident = source?.type === "incident.opendata" || panel.widget === "incident";
-  const isBroadcastify =
-    source?.type === "broadcastify.owner" || panel.widget === "broadcastify";
-  const flush = isIncident || isBroadcastify;
+export function PanelCard({ panel, source, sources, editMode }: Props) {
+  const rotation =
+    panel.rotation?.enabled && panel.rotation.sourceIds.length >= 2
+      ? panel.rotation
+      : null;
+  const flush =
+    Boolean(rotation) ||
+    source?.type === "incident.opendata" ||
+    source?.type === "broadcastify.owner" ||
+    panel.widget === "incident" ||
+    panel.widget === "broadcastify" ||
+    panel.widget === "rotate";
 
   return (
     <article className={`panel${editMode ? " panel-editable" : ""}`}>
       <header className="panel-header">
         <div className="panel-title">{panel.title}</div>
-        <div className="panel-meta">{panel.widget}</div>
+        <div className="panel-meta">
+          {rotation ? `rotate · ${rotation.intervalSec}s` : panel.widget}
+        </div>
       </header>
       <div className={`panel-body${flush ? " panel-body-flush" : ""}`}>
-        {isBroadcastify && source ? (
-          <BroadcastifyPanel sourceId={panel.source} source={source} />
-        ) : isIncident && source ? (
-          <IncidentPanel sourceId={panel.source} source={source} />
+        {rotation ? (
+          <RotatingPanel panel={panel} rotation={rotation} sources={sources} />
+        ) : source ? (
+          <SourceBody sourceId={panel.source} source={source} />
         ) : (
-          <>
-            <div>
-              Bound to <strong>{panel.source}</strong>
-              {source ? ` · ${source.type}` : null}
-            </div>
-            <div style={{ marginTop: 8 }}>
-              {adapter?.stubNote ??
-                "Live data adapter is stubbed in Phase A. Layout and persistence are active."}
-            </div>
-          </>
+          <div style={{ padding: 10 }}>
+            Bound to <strong>{panel.source}</strong> — source missing from config.
+          </div>
         )}
       </div>
     </article>

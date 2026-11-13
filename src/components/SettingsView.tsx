@@ -15,7 +15,14 @@ import type {
   SourceConfig,
 } from "../types";
 
-type Tab = "sources" | "configured" | "paths";
+type Tab = "sources" | "configured" | "rotation" | "paths";
+
+const ROTATION_PRESETS = [
+  { label: "15s", value: 15 },
+  { label: "30s", value: 30 },
+  { label: "1m", value: 60 },
+  { label: "5m", value: 300 },
+] as const;
 
 type Props = {
   state: AppState;
@@ -55,8 +62,19 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
     null,
   );
   const [busy, setBusy] = useState(false);
+  const [rotateOptIn, setRotateOptIn] = useState(false);
+  const [rotateTitle, setRotateTitle] = useState("Rotating panel");
+  const [rotateIntervalSec, setRotateIntervalSec] = useState(30);
+  const [rotateSourceIds, setRotateSourceIds] = useState<string[]>([]);
 
   const adapter = selectedType ? getAdapter(selectedType) : undefined;
+  const readySources = useMemo(
+    () =>
+      Object.entries(state.sources).filter(
+        ([, source]) => source.enabled && !source.draft,
+      ),
+    [state.sources],
+  );
   const product = useMemo(
     () => ADAPTER_CATALOG.filter((a) => a.category === "product"),
     [],
@@ -253,6 +271,97 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
     }
   }
 
+  function toggleRotateSource(sourceId: string) {
+    setRotateSourceIds((prev) =>
+      prev.includes(sourceId)
+        ? prev.filter((id) => id !== sourceId)
+        : [...prev, sourceId],
+    );
+  }
+
+  async function addRotatingPanel() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      if (!rotateOptIn) {
+        setMessage({
+          kind: "error",
+          text: "Opt in to timed multi-source rotation to create this panel.",
+        });
+        return;
+      }
+      if (rotateSourceIds.length < 2) {
+        setMessage({
+          kind: "error",
+          text: "Pick at least two configured sources to rotate.",
+        });
+        return;
+      }
+      const interval = Math.min(3600, Math.max(5, Math.round(rotateIntervalSec) || 30));
+      for (const id of rotateSourceIds) {
+        const src = state.sources[id];
+        if (!src || src.draft || !src.enabled) {
+          setMessage({
+            kind: "error",
+            text: `Source ${id} is not ready for the board.`,
+          });
+          return;
+        }
+      }
+
+      const panelId = newId("panel");
+      const yMax =
+        state.boards
+          .find((b) => b.id === state.activeBoardId)
+          ?.panels.reduce((max, p) => Math.max(max, p.layout.y + p.layout.h), 0) ?? 0;
+      const primaryId = rotateSourceIds[0];
+      const hasRichPanel = rotateSourceIds.some((id) => {
+        const type = state.sources[id]?.type;
+        return type === "incident.opendata" || type === "broadcastify.owner";
+      });
+
+      const panel: Panel = {
+        id: panelId,
+        title: rotateTitle.trim() || "Rotating panel",
+        widget: "rotate",
+        source: primaryId,
+        options: {
+          typeId: "panel.rotate",
+          members: rotateSourceIds,
+        },
+        rotation: {
+          enabled: true,
+          intervalSec: interval,
+          sourceIds: [...rotateSourceIds],
+        },
+        layout: {
+          i: panelId,
+          x: 0,
+          y: yMax,
+          w: hasRichPanel ? 24 : 20,
+          h: hasRichPanel ? 24 : 16,
+          minW: hasRichPanel ? 12 : 10,
+          minH: hasRichPanel ? 12 : 10,
+        },
+      };
+
+      const next = await addPanelToBoard(state.activeBoardId, panel);
+      onState(next);
+      setMessage({
+        kind: "ok",
+        text: `Added rotating panel (${rotateSourceIds.length} sources · ${interval}s).`,
+      });
+      setRotateSourceIds([]);
+    } catch (err) {
+      setMessage({
+        kind: "error",
+        text: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addConfiguredToBoard(sourceId: string) {
     const source = state.sources[sourceId];
     if (!source || source.draft) return;
@@ -319,6 +428,13 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
               onClick={() => setTab("configured")}
             >
               Configured sources
+            </button>
+            <button
+              type="button"
+              className={tab === "rotation" ? "active" : ""}
+              onClick={() => setTab("rotation")}
+            >
+              Panel rotation
             </button>
             <button
               type="button"
@@ -395,6 +511,125 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
                     ))}
                   </div>
                 )}
+              </>
+            ) : null}
+
+            {tab === "rotation" ? (
+              <>
+                <p className="section-label">Timed multi-source rotation</p>
+                <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
+                  Opt in to cycle weather and other configured sources inside{" "}
+                  <strong style={{ color: "var(--cc-text)", fontWeight: 500 }}>one</strong> board
+                  panel on a timer. Configure sources first, then enable rotation here.
+                </p>
+
+                <label className="rotate-optin">
+                  <input
+                    type="checkbox"
+                    checked={rotateOptIn}
+                    onChange={(e) => setRotateOptIn(e.target.checked)}
+                  />
+                  <span>
+                    Enable timed rotation of multiple sources in one panel
+                  </span>
+                </label>
+
+                <div className={`rotate-setup${rotateOptIn ? "" : " is-disabled"}`}>
+                  <div className="form-grid">
+                    <div className="field">
+                      <label htmlFor="rotate-title">Panel title</label>
+                      <input
+                        id="rotate-title"
+                        type="text"
+                        value={rotateTitle}
+                        disabled={!rotateOptIn}
+                        onChange={(e) => setRotateTitle(e.target.value)}
+                        placeholder="Rotating panel"
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="rotate-interval">Interval (seconds)</label>
+                      <div className="rotate-interval-row">
+                        {ROTATION_PRESETS.map((preset) => (
+                          <button
+                            key={preset.value}
+                            type="button"
+                            className={`btn${rotateIntervalSec === preset.value ? " active" : ""}`}
+                            disabled={!rotateOptIn}
+                            onClick={() => setRotateIntervalSec(preset.value)}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                        <input
+                          id="rotate-interval"
+                          type="number"
+                          min={5}
+                          max={3600}
+                          value={rotateIntervalSec}
+                          disabled={!rotateOptIn}
+                          onChange={(e) =>
+                            setRotateIntervalSec(Number(e.target.value) || 30)
+                          }
+                        />
+                      </div>
+                      <div className="help">5–3600 seconds between source switches.</div>
+                    </div>
+                  </div>
+
+                  <p className="section-label" style={{ marginTop: 16 }}>
+                    Sources in this panel ({rotateSourceIds.length} selected)
+                  </p>
+                  {readySources.length < 2 ? (
+                    <p style={{ color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
+                      Need at least two saved sources. Configure them under Source catalog, then
+                      return here.
+                    </p>
+                  ) : (
+                    <div className="source-list">
+                      {readySources.map(([id, source]) => {
+                        const def = getAdapter(source.type);
+                        const checked = rotateSourceIds.includes(id);
+                        return (
+                          <label
+                            key={id}
+                            className={`source-row rotate-source-row${checked ? " is-checked" : ""}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!rotateOptIn}
+                              onChange={() => toggleRotateSource(id)}
+                            />
+                            <div>
+                              <h3>
+                                {def?.name ?? source.type}
+                                <span className="badge">{source.type}</span>
+                              </h3>
+                              <p>{id}</p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={
+                        busy ||
+                        !rotateOptIn ||
+                        rotateSourceIds.length < 2 ||
+                        readySources.length < 2
+                      }
+                      onClick={() => void addRotatingPanel()}
+                    >
+                      Add rotating panel to board
+                    </button>
+                  </div>
+                </div>
               </>
             ) : null}
 

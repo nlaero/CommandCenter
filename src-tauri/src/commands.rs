@@ -197,20 +197,53 @@ pub fn add_panel_to_board(args: AddPanelArgs) -> Result<AppState, CommandError> 
         });
     }
 
-    if !loaded.state.sources.contains_key(&args.panel.source) {
-        return Err(CommandError {
-            message: format!(
-                "source {} must exist and be valid before adding to board",
-                args.panel.source
-            ),
-        });
+    let rotation_ids = args
+        .panel
+        .rotation
+        .as_ref()
+        .filter(|r| r.enabled)
+        .map(|r| r.source_ids.clone())
+        .unwrap_or_default();
+
+    let mut required_ids: Vec<String> = vec![args.panel.source.clone()];
+    for id in &rotation_ids {
+        if !required_ids.iter().any(|x| x == id) {
+            required_ids.push(id.clone());
+        }
     }
 
-    let source = &loaded.state.sources[&args.panel.source];
-    if source.draft {
-        return Err(CommandError {
-            message: "source is still a draft; finish required fields first".into(),
-        });
+    if let Some(rot) = args.panel.rotation.as_ref().filter(|r| r.enabled) {
+        if rot.source_ids.len() < 2 {
+            return Err(CommandError {
+                message: "rotating panel needs at least two configured sources".into(),
+            });
+        }
+        if rot.interval_sec < 5 || rot.interval_sec > 3600 {
+            return Err(CommandError {
+                message: "rotation interval must be between 5 and 3600 seconds".into(),
+            });
+        }
+    }
+
+    for source_id in &required_ids {
+        if !loaded.state.sources.contains_key(source_id) {
+            return Err(CommandError {
+                message: format!(
+                    "source {source_id} must exist and be valid before adding to board"
+                ),
+            });
+        }
+        let source = &loaded.state.sources[source_id];
+        if source.draft {
+            return Err(CommandError {
+                message: format!("source {source_id} is still a draft; finish required fields first"),
+            });
+        }
+        if !source.enabled {
+            return Err(CommandError {
+                message: format!("source {source_id} is disabled"),
+            });
+        }
     }
 
     board.panels.push(args.panel);

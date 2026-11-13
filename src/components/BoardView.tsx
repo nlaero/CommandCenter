@@ -97,6 +97,7 @@ export function BoardView({
             <PanelCard
               panel={panel}
               source={state.sources[panel.source]}
+              sources={state.sources}
               editMode={state.editMode}
             />
           </div>

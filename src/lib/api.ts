@@ -390,6 +390,36 @@ function browserFetchBroadcastify(
   };
 }
 
+function assertPanelSourcesReady(
+  state: AppState,
+  panel: Panel,
+): void {
+  const rotationIds =
+    panel.rotation?.enabled ? panel.rotation.sourceIds : [];
+  const required = [panel.source, ...rotationIds.filter((id) => id !== panel.source)];
+
+  if (panel.rotation?.enabled) {
+    if (panel.rotation.sourceIds.length < 2) {
+      throw new Error("rotating panel needs at least two configured sources");
+    }
+    if (panel.rotation.intervalSec < 5 || panel.rotation.intervalSec > 3600) {
+      throw new Error("rotation interval must be between 5 and 3600 seconds");
+    }
+  }
+
+  for (const sourceId of required) {
+    const source = state.sources[sourceId];
+    if (!source || source.draft) {
+      throw new Error(
+        `source ${sourceId} must be saved and valid before adding to board`,
+      );
+    }
+    if (!source.enabled) {
+      throw new Error(`source ${sourceId} is disabled`);
+    }
+  }
+}
+
 export async function addPanelToBoard(
   boardId: string,
   panel: Panel,
@@ -398,9 +428,7 @@ export async function addPanelToBoard(
     const state = readBrowser();
     const board = state.boards.find((b) => b.id === boardId);
     if (!board) throw new Error(`board not found: ${boardId}`);
-    if (!state.sources[panel.source] || state.sources[panel.source].draft) {
-      throw new Error("source must be saved and valid before adding to board");
-    }
+    assertPanelSourcesReady(state, panel);
     board.panels.push(panel);
     writeBrowser(state);
     return state;
