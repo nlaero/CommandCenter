@@ -77,6 +77,8 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
     }
     if (typeId === "broadcastify.owner") {
       initial.includeArchives = true;
+      // Global rule: audio sources support closed captions (default on; user may opt out).
+      initial.enableCaptions = true;
     }
     setParams(initial);
     setSecrets({});
@@ -91,7 +93,7 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
           : typeId === "broadcastify.owner"
             ? {
                 kind: "warn",
-                text: "Feed Owner API for your own feed only. Password stays in the OS keyring. Archives are personal-use — no Catalog/Calls APIs.",
+                text: "Feed Owner API for your own feed only. Password stays in the OS keyring. Archives are personal-use — no Catalog/Calls. Captions prefer on-device ASR (stub until Whisper lands).",
               }
             : null,
     );

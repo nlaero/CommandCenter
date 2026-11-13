@@ -4,6 +4,16 @@
 
 Phase A: empty board on first launch, fine-grid layout with persistence, multi-board model, Settings catalog, and live product sources — crime / incident open data plus **Broadcastify Feed Owner** (personal feed status + archives).
 
+## Global product rule: audio sources
+
+Any source that plays audio must:
+
+1. **Start muted by default** when a clip/player opens (user unmutes explicitly).
+2. **Support closed captioning** (local/on-device transcription preferred for personal-use archives).
+
+**Applied now:** Broadcastify Feed Owner (muted players + Settings captions toggle / panel CC + local stub ASR).  
+**Other audio sources:** follow the same rule when wired (crime/incident optional `audioUrl` already starts muted; captions still TODO for that path). Future scanner / Calls / camera-with-audio panels must ship mute-default + CC — do not merge audio playback without both.
+
 ## Requirements
 
 ### Both platforms
@@ -108,15 +118,26 @@ Open-data portals often lag hours–days vs live CAD/scanner apps — the panel 
 | Feed ID | yes | From your feed management / listen URL |
 | Archive day | no | `YYYY-MM-DD`; blank lists available dates |
 | Include archives | no | Default on |
+| Captions / transcription | no | Default off. Panel CC UI for archive audio |
 | Username | yes | Secret `broadcastify.username` — OS keyring |
 | Password | yes | Secret `broadcastify.password` — OS keyring only (never `config.yaml`) |
+
+### Audio + captions (local / on-device preferred)
+
+Per the [global audio rule](#global-product-rule-audio-sources): archive players **start muted**; unmute via the Muted control or native player. Personal-use archive audio should stay on-device — **no cloud ASR upload**.
+
+When **Captions / transcription** is enabled (default on for new Broadcastify sources), the panel shows a **CC** toggle and captions pane.
+
+**Current path (stub first):** `transcribe_audio_local` (Tauri) / browser twin returns structured offline stub segments so the UI can ship before a model is bundled.
+
+**Next:** wire on-device Whisper (whisper.cpp) or similar behind `transcribeArchiveLocal` — same Settings toggle and panel UI; no Catalog/Calls scope change.
 
 ### Configure in the app
 
 1. **Settings → Source catalog → Broadcastify (Feed Owner) → Configure**
 2. Enter feed ID; paste username/password (keyring / `secrets.local.json` fallback).
-3. Optionally set an archive day, then **Save** or **Save & add to board**.
-4. Panel shows live online/offline + listeners; archive dates or clips (with audio when a day is selected). Day can also be changed in the panel toolbar.
+3. Optionally set an archive day and enable **Captions / transcription**, then **Save** or **Save & add to board**.
+4. Panel shows live online/offline + listeners; archive dates or clips (with audio when a day is selected). Day can also be changed in the panel toolbar. With captions on, use **CC** + **Transcribe local** on a clip.
 
 Live Owner API calls run in the **Tauri** app. The browser Vite mock only serves a fixture (CORS).
 

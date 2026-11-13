@@ -222,6 +222,13 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         help: "Archives are personal-use only — never redistribute or use commercially.",
       },
       {
+        key: "enableCaptions",
+        label: "Captions / transcription",
+        kind: "boolean",
+        required: false,
+        help: "Required capability for any audio source (global product rule). Prefers local/on-device ASR; Whisper sidecar not bundled yet — offline stub first. Audio always starts muted.",
+      },
+      {
         key: "secret:broadcastify.username",
         label: "Broadcastify username",
         kind: "secret",

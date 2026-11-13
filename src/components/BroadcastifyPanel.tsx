@@ -1,4 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  activeCaptionAt,
+  transcribeArchiveLocal,
+  type CaptionResult,
+  type CaptionSegment,
+} from "../lib/captions";
 import { fetchSourcePayload } from "../lib/api";
 import type { Incident, SourceConfig, SourcePayload } from "../types";
 
@@ -44,6 +50,10 @@ function todayIso(): string {
   return `${y}-${m}-${day}`;
 }
 
+function captionsEnabled(source: SourceConfig): boolean {
+  return source.params.enableCaptions === true;
+}
+
 export function BroadcastifyPanel({ sourceId, source }: Props) {
   const configuredDay =
     typeof source.params.archiveDay === "string" ? source.params.archiveDay.trim() : "";
@@ -53,12 +63,20 @@ export function BroadcastifyPanel({ sourceId, source }: Props) {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
+  const [showCaptions, setShowCaptions] = useState(() => captionsEnabled(source));
+  const [captionCache, setCaptionCache] = useState<Record<string, CaptionResult>>({});
   const knownIds = useRef<Set<string>>(new Set());
   const primed = useRef(false);
+
+  const captionsOn = captionsEnabled(source);
 
   useEffect(() => {
     setDay(configuredDay);
   }, [configuredDay]);
+
+  useEffect(() => {
+    setShowCaptions(captionsOn);
+  }, [captionsOn]);
 
   const selected = useMemo(
     () => payload?.incidents.find((i) => i.id === selectedId) ?? null,
@@ -128,6 +146,40 @@ export function BroadcastifyPanel({ sourceId, source }: Props) {
     setSelectedId(item.id);
   }
 
+  async function runCaptions(item: Incident) {
+    if (!item.audioUrl) return;
+    setCaptionCache((prev) => ({
+      ...prev,
+      [item.id]: {
+        engine: "local-stub",
+        status: "running",
+        sourceUrl: item.audioUrl!,
+        segments: prev[item.id]?.segments ?? [],
+        note: "Running local transcription…",
+        generatedAt: new Date().toISOString(),
+      },
+    }));
+    try {
+      const result = await transcribeArchiveLocal({
+        sourceUrl: item.audioUrl,
+        clipId: item.id,
+      });
+      setCaptionCache((prev) => ({ ...prev, [item.id]: result }));
+    } catch (err) {
+      setCaptionCache((prev) => ({
+        ...prev,
+        [item.id]: {
+          engine: "local-stub",
+          status: "error",
+          sourceUrl: item.audioUrl!,
+          segments: [],
+          note: err instanceof Error ? err.message : String(err),
+          generatedAt: new Date().toISOString(),
+        },
+      }));
+    }
+  }
+
   return (
     <div className="incident-panel bcfy-panel">
       <div className="incident-toolbar">
@@ -140,6 +192,16 @@ export function BroadcastifyPanel({ sourceId, source }: Props) {
           {feed?.listeners != null ? `${feed.listeners} listening` : null}
           {payload ? ` · ${formatWhen(payload.fetchedAt)}` : null}
         </span>
+        {captionsOn ? (
+          <label className="bcfy-cc-toggle" title="Closed captions (local / on-device preferred)">
+            <input
+              type="checkbox"
+              checked={showCaptions}
+              onChange={(e) => setShowCaptions(e.target.checked)}
+            />
+            <span className={`bcfy-cc-badge${showCaptions ? " on" : ""}`}>CC</span>
+          </label>
+        ) : null}
         <label className="bcfy-day">
           <span>Day</span>
           <input
@@ -174,6 +236,7 @@ export function BroadcastifyPanel({ sourceId, source }: Props) {
           {list.map((item) => {
             const isNew = flashIds.has(item.id);
             const active = selectedId === item.id;
+            const hasCc = Boolean(captionCache[item.id]?.segments.length);
             return (
               <button
                 key={item.id}
@@ -198,6 +261,7 @@ export function BroadcastifyPanel({ sourceId, source }: Props) {
                 <div className="incident-alert-sub">
                   {item.address ?? item.description ?? item.category ?? "—"}
                   {item.audioUrl ? <span className="audio-tag">audio</span> : null}
+                  {hasCc ? <span className="audio-tag cc-tag">cc</span> : null}
                 </div>
               </button>
             );
@@ -226,6 +290,7 @@ export function BroadcastifyPanel({ sourceId, source }: Props) {
                       {[feed.county, feed.state].filter(Boolean).join(", ")}
                     </span>
                   ) : null}
+                  {captionsOn ? <span>captions on</span> : null}
                 </div>
               </div>
             ) : (
@@ -235,7 +300,13 @@ export function BroadcastifyPanel({ sourceId, source }: Props) {
 
           <div className="incident-detail">
             {selected ? (
-              <ArchiveDetail item={selected} onPickDay={pickDayFromItem} />
+              <ArchiveDetail
+                item={selected}
+                onPickDay={pickDayFromItem}
+                captionsEnabled={captionsOn && showCaptions}
+                caption={captionCache[selected.id] ?? null}
+                onTranscribe={() => void runCaptions(selected)}
+              />
             ) : (
               <p className="incident-empty">
                 Select a status or archive row
@@ -259,10 +330,37 @@ export function BroadcastifyPanel({ sourceId, source }: Props) {
 function ArchiveDetail({
   item,
   onPickDay,
+  captionsEnabled,
+  caption,
+  onTranscribe,
 }: {
   item: Incident;
   onPickDay: (item: Incident) => void;
+  captionsEnabled: boolean;
+  caption: CaptionResult | null;
+  onTranscribe: () => void;
 }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [timeSec, setTimeSec] = useState(0);
+  const [muted, setMuted] = useState(true);
+  const active = caption ? activeCaptionAt(caption.segments, timeSec) : null;
+
+  // Global product rule: audio starts muted on open (each clip selection).
+  useEffect(() => {
+    setMuted(true);
+    setTimeSec(0);
+    const el = audioRef.current;
+    if (el) {
+      el.muted = true;
+      el.pause();
+      el.currentTime = 0;
+    }
+  }, [item.id, item.audioUrl]);
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.muted = muted;
+  }, [muted]);
+
   return (
     <div>
       <div className={`incident-sev ${severityClass(item.severity)}`}>
@@ -304,16 +402,56 @@ function ArchiveDetail({
       ) : null}
       {item.audioUrl ? (
         <div className="incident-audio">
-          <div className="section-label" style={{ marginBottom: 6 }}>
-            Archive audio (personal use only)
+          <div className="bcfy-audio-head">
+            <div className="section-label" style={{ margin: 0 }}>
+              Archive audio (personal use only)
+            </div>
+            <button
+              type="button"
+              className={`btn btn-ghost bcfy-mute${muted ? " is-muted" : ""}`}
+              onClick={() => setMuted((m) => !m)}
+              aria-pressed={muted}
+              title={muted ? "Unmute" : "Mute"}
+            >
+              {muted ? "Muted" : "Sound on"}
+            </button>
           </div>
-          <audio controls preload="none" src={item.audioUrl}>
+          <audio
+            ref={audioRef}
+            controls
+            preload="none"
+            muted={muted}
+            src={item.audioUrl}
+            onVolumeChange={(e) => {
+              // Keep React state in sync if the user toggles mute via native controls.
+              setMuted(e.currentTarget.muted || e.currentTarget.volume === 0);
+            }}
+            onTimeUpdate={(e) => setTimeSec(e.currentTarget.currentTime)}
+          >
             <a href={item.audioUrl} target="_blank" rel="noreferrer">
               Open audio
             </a>
           </audio>
+          <p className="bcfy-audio-hint">Starts muted on open — unmute explicitly to hear audio.</p>
         </div>
       ) : null}
+
+      {captionsEnabled && item.audioUrl ? (
+        <CaptionsPane
+          caption={caption}
+          active={active}
+          busy={caption?.status === "running"}
+          onTranscribe={onTranscribe}
+        />
+      ) : null}
+
+      {!captionsEnabled && item.audioUrl ? (
+        <p className="bcfy-captions-note" style={{ marginTop: 12 }}>
+          Closed captions are off for this source. Enable <strong>Captions / transcription</strong> in
+          Settings (required capability for audio sources).
+        </p>
+      ) : null}
+
       {item.detailUrl ? (
         <a className="incident-link" href={item.detailUrl} target="_blank" rel="noreferrer">
           Open link
@@ -321,4 +459,71 @@ function ArchiveDetail({
       ) : null}
     </div>
   );
+}
+
+function CaptionsPane({
+  caption,
+  active,
+  busy,
+  onTranscribe,
+}: {
+  caption: CaptionResult | null;
+  active: CaptionSegment | null;
+  busy: boolean;
+  onTranscribe: () => void;
+}) {
+  return (
+    <div className="bcfy-captions" aria-label="Captions">
+      <div className="bcfy-captions-head">
+        <div className="section-label" style={{ margin: 0 }}>
+          Captions
+        </div>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy}
+          onClick={onTranscribe}
+        >
+          {busy ? "Transcribing…" : caption?.segments.length ? "Re-run local" : "Transcribe local"}
+        </button>
+      </div>
+      <p className="bcfy-captions-note">
+        {caption?.note ??
+          "Local/on-device preferred for personal use. Whisper sidecar not bundled yet — offline stub first (no cloud upload)."}
+      </p>
+      {active ? (
+        <div className="bcfy-caption-live" aria-live="polite">
+          {active.text}
+        </div>
+      ) : (
+        <div className="bcfy-caption-live is-empty">
+          {caption?.segments.length
+            ? "Play audio to follow captions…"
+            : "Run local transcription to generate captions for this clip."}
+        </div>
+      )}
+      {caption?.segments.length ? (
+        <ol className="bcfy-caption-list">
+          {caption.segments.map((seg) => (
+            <li
+              key={seg.id}
+              className={active?.id === seg.id ? "is-active" : undefined}
+            >
+              <span className="mono">
+                {formatClock(seg.startSec)}–{formatClock(seg.endSec)}
+              </span>
+              <span>{seg.text}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
+function formatClock(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
 }
