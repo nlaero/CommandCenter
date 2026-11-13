@@ -2,7 +2,7 @@
 
 **Standalone native desktop app** for Windows and Linux (Tauri 2 shell + React/TypeScript UI). Not a browser or hosted web app — the product runs as a local OS application with config on disk.
 
-Phase A MVP shell: empty board on first launch, fine-grid layout with persistence, multi-board model, and a Settings catalog for product + foundation source types (integrations stubbed).
+Phase A: empty board on first launch, fine-grid layout with persistence, multi-board model, Settings catalog, and the first **live** product source — crime / incident open data.
 
 ## Requirements
 
@@ -14,7 +14,7 @@ Phase A MVP shell: empty board on first launch, fine-grid layout with persistenc
 ### Windows
 
 - [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-- [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (usually preinstalled on Windows 10/11)
+- [WebView2](https://microsoft.com/edge/webview2/) (usually preinstalled on Windows 10/11)
 
 ### Linux
 
@@ -62,19 +62,50 @@ npm run tauri:dev
 
 Files written there:
 
-- `config.yaml` — boards, sources, layout settings
+- `config.yaml` — boards, sources, layout settings (secret **refs** only)
 - `layouts/<board-id>.json` — fine-grid panel positions
+- `secrets.local.json` — fallback secret store if OS keyring is unavailable (do not commit)
 - `*.bak` — last-good backups before overwrite
+
+## Crime / incident source (live)
+
+**Provider:** municipal open data via documented Socrata SODA APIs or a custom GeoJSON/JSON endpoint.  
+**Not used:** CrimeRadar / Squawster scraping (ToS blocks automated access). Licensed CrimeRadar Business / Incident Source APIs can be added later behind feature flags.
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Provider | yes | `chicago`, `seattle`, or `custom` |
+| Custom endpoint URL | if custom | HTTPS GeoJSON FeatureCollection, JSON array, or `{ incidents: [] }` |
+| Max incidents | yes | Newest first (default 50) |
+| Attribution | yes | Shown in the panel footer |
+| Socrata App Token | no | Secret `socrata.app_token` — OS keyring preferred; improves rate limits |
+
+### Configure in the app
+
+1. Open **Settings → Source catalog → Crime / incident (open data) → Configure**
+2. Pick a provider (Chicago / Seattle presets fill attribution). For Custom, paste the open-data URL.
+3. Optionally paste a Socrata App Token (stored in keyring / local secrets fallback — never in `config.yaml`).
+4. **Save source** or **Save & add to board** (required fields must validate first).
+5. The panel shows a **live feed** (newest first). New IDs flash as in-panel alerts; click an item for detail. If a feed row includes `audioUrl` / `audio`, an audio player appears in the detail pane.
+
+### Example custom payload fields
+
+Normalized when present: `title`, `category`, `description`, `occurredAt`/`date`, `address`, `lat`/`lon`, `audioUrl`, `detailUrl`.
+
+Chicago preset: `https://data.cityofchicago.org/resource/ijzp-q8t2.json`  
+Seattle preset: `https://data.seattle.gov/resource/tazs-3rd5.json`
+
+Open-data portals often lag hours–days vs live CAD/scanner apps — the panel labels the feed accordingly.
 
 ## MVP shell behavior
 
 - First launch: **empty board** (no default widgets)
-- **Settings → Source catalog**: weather, ADS-B, cameras, ham, crime/incident (open data), plus foundation adapters (file, HTTP, SQLite, system metrics)
+- **Settings → Source catalog**: weather, ADS-B, cameras, ham, **crime/incident (live open data)**, plus foundation adapters (file, HTTP, SQLite, system metrics)
 - Configure required fields → **Save** or **Save & add to board**
 - **Edit layout** (toolbar or `Ctrl/Cmd+E`): drag/resize on a fine 48-column grid; layout persists on drag/resize stop
 - Board switcher in the chrome (+ to create another empty board)
 
-Live API/camera pipelines are stubs in Phase A; config, layout, and add-to-board flows are real.
+Other product sources remain stubs until their adapters are wired; crime/incident open data is the first live feed.
 
 ## Build desktop installers
 
@@ -93,4 +124,4 @@ npm run build
 
 ## Contributor note: browser UI mock (not the product)
 
-`npm run dev` starts Vite in a normal browser with **localStorage mock persistence**. It is a **demo / UI iteration aid only** — no Tauri window, no OS app-data config, no portable override. Do not treat it as a supported runtime or substitute for `npm run tauri:dev`.
+`npm run dev` starts Vite in a normal browser with **localStorage mock persistence** and a CORS-dependent browser fetch for the incident source. It is a **demo / UI iteration aid only** — no Tauri window, no OS app-data config, no portable override. Do not treat it as a supported runtime or substitute for `npm run tauri:dev`.

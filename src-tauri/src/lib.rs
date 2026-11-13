@@ -1,5 +1,7 @@
 mod commands;
 mod config;
+mod secrets;
+mod sources;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -11,6 +13,8 @@ pub fn run() {
             commands::save_app_state,
             commands::save_board_layout,
             commands::upsert_source,
+            commands::store_secrets,
+            commands::fetch_source_payload,
             commands::add_panel_to_board,
             commands::create_board,
             commands::set_active_board,
