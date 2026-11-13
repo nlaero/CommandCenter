@@ -141,11 +141,24 @@ When **Captions / transcription** is enabled (default on for new Broadcastify so
 
 Live Owner API calls run in the **Tauri** app. The browser Vite mock only serves a fixture (CORS).
 
+## Timed multi-source rotation (one panel)
+
+Optional Settings opt-in: cycle **two or more** configured sources (weather stubs, crime/incident, Broadcastify, etc.) inside a **single** board panel on a timer.
+
+1. Configure and save at least two sources under **Settings → Source catalog**.
+2. Open **Settings → Panel rotation**.
+3. Check **Enable timed rotation of multiple sources in one panel**.
+4. Set title + interval (15s / 30s / 1m / 5m or custom 5–3600s), select sources, then **Add rotating panel to board**.
+5. The panel toolbar shows slot index, active source, countdown, pause/prev/next — chrome matches the crime feed look.
+
+Rotation config is stored on the panel (`rotation.enabled`, `intervalSec`, `sourceIds`). Single-source panels are unchanged.
+
 ## MVP shell behavior
 
 - First launch: **empty board** (no default widgets)
 - **Settings → Source catalog**: weather, ADS-B, cameras, ham, **crime/incident**, **Broadcastify Feed Owner**, plus foundation adapters (file, HTTP, SQLite, system metrics)
 - Configure required fields → **Save** or **Save & add to board**
+- **Settings → Panel rotation**: optional timed multi-source panel (opt-in)
 - **Edit layout** (toolbar or `Ctrl/Cmd+E`): drag/resize on a fine 48-column grid; layout persists on drag/resize stop
 - Board switcher in the chrome (+ to create another empty board)
 

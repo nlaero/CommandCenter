@@ -8,13 +8,24 @@ export type GridItem = {
   minH?: number;
 };
 
+/** Optional timed multi-source rotation inside one board panel (Settings opt-in). */
+export type PanelRotation = {
+  enabled: boolean;
+  /** Seconds between source switches; clamped in UI (5–3600). */
+  intervalSec: number;
+  /** Ordered source ids to cycle; requires ≥2 when enabled. */
+  sourceIds: string[];
+};
+
 export type Panel = {
   id: string;
   title: string;
   widget: string;
+  /** Primary / fallback source binding (first rotation entry when rotating). */
   source: string;
   options: Record<string, unknown>;
   layout: GridItem;
+  rotation?: PanelRotation;
 };
 
 export type Board = {

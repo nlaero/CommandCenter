@@ -65,16 +65,30 @@ pub struct GridItem {
     pub min_h: Option<i32>,
 }
 
+/// Optional timed multi-source rotation inside one board panel (Settings opt-in).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PanelRotation {
+    #[serde(default)]
+    pub enabled: bool,
+    pub interval_sec: u32,
+    #[serde(default)]
+    pub source_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Panel {
     pub id: String,
     pub title: String,
     pub widget: String,
+    /// Primary / fallback source binding (first rotation entry when rotating).
     pub source: String,
     #[serde(default)]
     pub options: BTreeMap<String, serde_json::Value>,
     pub layout: GridItem,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rotation: Option<PanelRotation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -285,5 +299,36 @@ mod tests {
         assert_eq!(paths.root, dir.display().to_string());
         env::remove_var(ENV_HOME_OVERRIDE);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn panel_rotation_round_trips_yaml() {
+        let panel = Panel {
+            id: "panel.rot.1".into(),
+            title: "Rotate".into(),
+            widget: "rotate".into(),
+            source: "src.a".into(),
+            options: BTreeMap::new(),
+            layout: GridItem {
+                i: "panel.rot.1".into(),
+                x: 0,
+                y: 0,
+                w: 16,
+                h: 12,
+                min_w: Some(8),
+                min_h: Some(8),
+            },
+            rotation: Some(PanelRotation {
+                enabled: true,
+                interval_sec: 30,
+                source_ids: vec!["src.a".into(), "src.b".into()],
+            }),
+        };
+        let yaml = serde_yaml::to_string(&panel).unwrap();
+        let back: Panel = serde_yaml::from_str(&yaml).unwrap();
+        let rot = back.rotation.expect("rotation present");
+        assert!(rot.enabled);
+        assert_eq!(rot.interval_sec, 30);
+        assert_eq!(rot.source_ids, vec!["src.a", "src.b"]);
     }
 }
