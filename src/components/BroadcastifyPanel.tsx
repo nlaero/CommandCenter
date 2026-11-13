@@ -11,6 +11,8 @@ import type { Incident, SourceConfig, SourcePayload } from "../types";
 type Props = {
   sourceId: string;
   source: SourceConfig;
+  /** Bumped when Settings saves this source — forces an immediate refetch. */
+  configRevision?: number;
 };
 
 function parseRefreshMs(refresh?: string): number {
@@ -54,7 +56,7 @@ function captionsEnabled(source: SourceConfig): boolean {
   return source.params.enableCaptions === true;
 }
 
-export function BroadcastifyPanel({ sourceId, source }: Props) {
+export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Props) {
   const configuredDay =
     typeof source.params.archiveDay === "string" ? source.params.archiveDay.trim() : "";
   const [day, setDay] = useState(configuredDay);
@@ -129,7 +131,14 @@ export function BroadcastifyPanel({ sourceId, source }: Props) {
       if (flashTimer) window.clearTimeout(flashTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceId, source.refresh, source.type, JSON.stringify(source.params), day]);
+  }, [
+    sourceId,
+    source.refresh,
+    source.type,
+    JSON.stringify(source.params),
+    day,
+    configRevision,
+  ]);
 
   const feed = payload?.feed;
   const list = payload?.incidents ?? [];

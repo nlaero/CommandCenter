@@ -9,9 +9,18 @@ import {
   setActiveBoard,
   setEditMode,
 } from "./lib/api";
+import { SourceRefreshProvider } from "./lib/sourceRefresh";
 import type { AppState, ConfigPaths, GridItem } from "./types";
 
 export default function App() {
+  return (
+    <SourceRefreshProvider>
+      <AppShell />
+    </SourceRefreshProvider>
+  );
+}
+
+function AppShell() {
   const [state, setState] = useState<AppState | null>(null);
   const [paths, setPaths] = useState<ConfigPaths | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);

@@ -1,5 +1,6 @@
-import { Fragment } from "react";
+import { Fragment, useMemo } from "react";
 import { getAdapter } from "../adapters/catalog";
+import { useSourceRevision } from "../lib/sourceRefresh";
 import type { SourceConfig } from "../types";
 import { BroadcastifyPanel } from "./BroadcastifyPanel";
 import { IncidentPanel } from "./IncidentPanel";
@@ -12,13 +13,19 @@ type Props = {
 /** Renders the active source inside a panel (including rotating slots). */
 export function SourceBody({ sourceId, source }: Props) {
   const adapter = getAdapter(source.type);
+  const revision = useSourceRevision(sourceId);
+  const syncedAt = useMemo(() => new Date(), [revision]);
 
   if (source.type === "incident.opendata") {
-    return <IncidentPanel sourceId={sourceId} source={source} />;
+    return (
+      <IncidentPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
   }
 
   if (source.type === "broadcastify.owner") {
-    return <BroadcastifyPanel sourceId={sourceId} source={source} />;
+    return (
+      <BroadcastifyPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
   }
 
   return (
@@ -31,6 +38,13 @@ export function SourceBody({ sourceId, source }: Props) {
         <span className="incident-meta">
           {source.type}
           {source.refresh ? ` · ${source.refresh}` : null}
+          {revision > 0
+            ? ` · refreshed ${syncedAt.toLocaleTimeString(undefined, {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}`
+            : null}
         </span>
       </div>
       <div className="source-stub-body">
