@@ -69,13 +69,50 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
   function startAdd(typeId: string) {
     const def = getAdapter(typeId);
     setSelectedType(typeId);
-    setParams({});
+    const initial: Record<string, unknown> = {};
+    if (typeId === "incident.opendata") {
+      initial.provider = "chicago";
+      initial.limit = 50;
+      initial.attribution = "City of Chicago Open Data — Crimes 2001 to Present";
+    }
+    setParams(initial);
     setSecrets({});
     setMessage(
       def?.stubNote
         ? { kind: "warn", text: def.stubNote }
-        : null,
+        : typeId === "incident.opendata"
+          ? {
+              kind: "warn",
+              text: "Uses municipal open data (not CrimeRadar/Squawster). Optional Socrata token stays in the OS keyring.",
+            }
+          : null,
     );
+  }
+
+  function applyProviderDefaults(provider: string, prev: Record<string, unknown>) {
+    if (provider === "chicago") {
+      return {
+        ...prev,
+        provider,
+        attribution:
+          typeof prev.attribution === "string" && prev.attribution.trim()
+            ? prev.attribution
+            : "City of Chicago Open Data — Crimes 2001 to Present",
+        limit: prev.limit === undefined || prev.limit === "" ? 50 : prev.limit,
+      };
+    }
+    if (provider === "seattle") {
+      return {
+        ...prev,
+        provider,
+        attribution:
+          typeof prev.attribution === "string" && prev.attribution.trim()
+            ? prev.attribution
+            : "City of Seattle Open Data — SPD Crime Data",
+        limit: prev.limit === undefined || prev.limit === "" ? 50 : prev.limit,
+      };
+    }
+    return { ...prev, provider };
   }
 
   function updateField(field: AdapterField, raw: string | boolean) {
@@ -97,6 +134,10 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
       }));
       return;
     }
+    if (field.key === "provider") {
+      setParams((p) => applyProviderDefaults(String(raw), p));
+      return;
+    }
     setParams((p) => ({ ...p, [field.key]: raw }));
   }
 
@@ -105,7 +146,26 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
     setBusy(true);
     setMessage(null);
     try {
-      const required = requiredKeys(adapter);
+      const required = requiredKeys(adapter).filter((key) => {
+        if (adapter.typeId === "incident.opendata" && key === "endpoint") {
+          return String(params.provider ?? "") === "custom";
+        }
+        return true;
+      });
+      // Custom open-data endpoint is conditionally required.
+      if (
+        adapter.typeId === "incident.opendata" &&
+        String(params.provider ?? "") === "custom"
+      ) {
+        const endpoint = String(params.endpoint ?? "").trim();
+        if (!endpoint) {
+          setMessage({
+            kind: "error",
+            text: "missing required fields: endpoint",
+          });
+          return;
+        }
+      }
       const validation = await validateSourceFields(required, params, secrets);
       if (!validation.ok) {
         setMessage({ kind: "error", text: validation.message });
@@ -114,16 +174,23 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
 
       const sourceId = newId(`src.${adapter.typeId.split(".").pop()}`);
       const secretRefs = Object.keys(secrets).filter((k) => secrets[k]?.trim());
+      const cleanedParams = { ...params };
+      if (
+        adapter.typeId === "incident.opendata" &&
+        String(cleanedParams.provider) !== "custom"
+      ) {
+        delete cleanedParams.endpoint;
+      }
       const source: SourceConfig = {
         type: adapter.typeId,
-        params,
+        params: cleanedParams,
         refresh: adapter.defaultRefresh,
         secrets: secretRefs.map((k) => k),
         enabled: true,
         draft: false,
       };
 
-      let next = await upsertSource(sourceId, source);
+      let next = await upsertSource(sourceId, source, secrets);
 
       if (addToBoard) {
         const panelId = newId("panel");
@@ -141,10 +208,10 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
             i: panelId,
             x: 0,
             y: yMax,
-            w: 16,
-            h: 14,
-            minW: 8,
-            minH: 8,
+            w: adapter.typeId === "incident.opendata" ? 24 : 16,
+            h: adapter.typeId === "incident.opendata" ? 22 : 14,
+            minW: adapter.typeId === "incident.opendata" ? 12 : 8,
+            minH: adapter.typeId === "incident.opendata" ? 12 : 8,
           },
         };
         next = await addPanelToBoard(next.activeBoardId, panel);
@@ -184,6 +251,7 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
         state.boards
           .find((b) => b.id === state.activeBoardId)
           ?.panels.reduce((max, p) => Math.max(max, p.layout.y + p.layout.h), 0) ?? 0;
+      const incident = source.type === "incident.opendata";
       const panel: Panel = {
         id: panelId,
         title: def?.name ?? source.type,
@@ -194,10 +262,10 @@ export function SettingsView({ state, paths, onClose, onState }: Props) {
           i: panelId,
           x: 0,
           y: yMax,
-          w: 16,
-          h: 14,
-          minW: 8,
-          minH: 8,
+          w: incident ? 24 : 16,
+          h: incident ? 22 : 14,
+          minW: incident ? 12 : 8,
+          minH: incident ? 12 : 8,
         },
       };
       const next = await addPanelToBoard(state.activeBoardId, panel);

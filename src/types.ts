@@ -90,3 +90,28 @@ export type ValidationResult = {
   missing: string[];
   message: string;
 };
+
+export type IncidentSeverity = "info" | "warn" | "alert";
+
+export type Incident = {
+  id: string;
+  title: string;
+  category?: string;
+  description?: string;
+  occurredAt?: string;
+  address?: string;
+  lat?: number;
+  lon?: number;
+  audioUrl?: string;
+  detailUrl?: string;
+  severity?: IncidentSeverity;
+};
+
+export type SourcePayload = {
+  sourceId: string;
+  typeId: string;
+  fetchedAt: string;
+  attribution?: string;
+  note?: string;
+  incidents: Incident[];
+};

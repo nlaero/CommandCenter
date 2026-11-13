@@ -1,6 +1,8 @@
 use crate::config::{
     self, AppState, ConfigPaths, GridItem, LoadResult, SourceConfig,
 };
+use crate::secrets;
+use crate::sources::{self, SourcePayload};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -12,6 +14,14 @@ pub struct CommandError {
 
 impl From<config::ConfigError> for CommandError {
     fn from(value: config::ConfigError) -> Self {
+        Self {
+            message: value.to_string(),
+        }
+    }
+}
+
+impl From<sources::SourceError> for CommandError {
+    fn from(value: sources::SourceError) -> Self {
         Self {
             message: value.to_string(),
         }
@@ -30,6 +40,20 @@ pub struct SaveLayoutArgs {
 pub struct UpsertSourceArgs {
     pub id: String,
     pub source: SourceConfig,
+    #[serde(default)]
+    pub secrets: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreSecretsArgs {
+    pub secrets: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchSourceArgs {
+    pub source_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,11 +111,38 @@ pub fn save_board_layout(args: SaveLayoutArgs) -> Result<(), CommandError> {
 
 #[tauri::command]
 pub fn upsert_source(args: UpsertSourceArgs) -> Result<AppState, CommandError> {
+    if !args.secrets.is_empty() {
+        secrets::set_secrets(&args.secrets)?;
+    }
     let mut loaded = config::load_or_create()?;
     loaded.state.sources.insert(args.id, args.source);
     let paths = config::resolve_paths()?;
     config::save_state(&paths, &loaded.state)?;
     Ok(loaded.state)
+}
+
+#[tauri::command]
+pub fn store_secrets(args: StoreSecretsArgs) -> Result<(), CommandError> {
+    secrets::set_secrets(&args.secrets)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn fetch_source_payload(args: FetchSourceArgs) -> Result<SourcePayload, CommandError> {
+    let loaded = config::load_or_create()?;
+    let source = loaded
+        .state
+        .sources
+        .get(&args.source_id)
+        .ok_or_else(|| CommandError {
+            message: format!("source not found: {}", args.source_id),
+        })?;
+    if source.draft || !source.enabled {
+        return Err(CommandError {
+            message: "source is draft or disabled".into(),
+        });
+    }
+    Ok(sources::fetch_source(&args.source_id, source)?)
 }
 
 #[tauri::command]

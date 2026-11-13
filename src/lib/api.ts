@@ -2,9 +2,11 @@ import type {
   AppState,
   ConfigPaths,
   GridItem,
+  Incident,
   LoadResult,
   Panel,
   SourceConfig,
+  SourcePayload,
   ValidationResult,
 } from "../types";
 
@@ -96,17 +98,187 @@ export async function saveBoardLayout(
   await invoke("save_board_layout", { args: { boardId, items } });
 }
 
+const BROWSER_SECRETS_KEY = "command-center.secrets.v1";
+
+function readBrowserSecrets(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(BROWSER_SECRETS_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeBrowserSecrets(secrets: Record<string, string>): void {
+  localStorage.setItem(BROWSER_SECRETS_KEY, JSON.stringify(secrets));
+}
+
 export async function upsertSource(
   id: string,
   source: SourceConfig,
+  secrets: Record<string, string> = {},
 ): Promise<AppState> {
   if (!isTauri()) {
     const state = readBrowser();
     state.sources[id] = source;
     writeBrowser(state);
+    if (Object.keys(secrets).length) {
+      writeBrowserSecrets({ ...readBrowserSecrets(), ...secrets });
+    }
     return state;
   }
-  return invoke<AppState>("upsert_source", { args: { id, source } });
+  return invoke<AppState>("upsert_source", { args: { id, source, secrets } });
+}
+
+export async function storeSecrets(secrets: Record<string, string>): Promise<void> {
+  if (!isTauri()) {
+    writeBrowserSecrets({ ...readBrowserSecrets(), ...secrets });
+    return;
+  }
+  await invoke("store_secrets", { args: { secrets } });
+}
+
+const PRESET_ENDPOINTS: Record<string, { url: string; attribution: string }> = {
+  chicago: {
+    url: "https://data.cityofchicago.org/resource/ijzp-q8t2.json?$order=date DESC&$where=latitude IS NOT NULL",
+    attribution: "City of Chicago Open Data — Crimes 2001 to Present",
+  },
+  seattle: {
+    url: "https://data.seattle.gov/resource/tazs-3rd5.json?$order=offense_date DESC&$where=latitude IS NOT NULL",
+    attribution: "City of Seattle Open Data — SPD Crime Data",
+  },
+};
+
+function browserNormalizeIncidents(body: unknown): Incident[] {
+  const asObj = body as Record<string, unknown> | unknown[];
+  const rows: unknown[] = Array.isArray(asObj)
+    ? asObj
+    : Array.isArray((asObj as { features?: unknown }).features)
+      ? ((asObj as { features: unknown[] }).features)
+      : Array.isArray((asObj as { incidents?: unknown }).incidents)
+        ? ((asObj as { incidents: unknown[] }).incidents)
+        : [];
+
+  return rows
+    .map((row, index) => {
+      const r = row as Record<string, unknown>;
+      const props =
+        r.properties && typeof r.properties === "object"
+          ? (r.properties as Record<string, unknown>)
+          : r;
+      const str = (...keys: string[]) => {
+        for (const k of keys) {
+          const v = props[k];
+          if (typeof v === "string" && v.trim()) return v;
+          if (typeof v === "number") return String(v);
+        }
+        return undefined;
+      };
+      const num = (...keys: string[]) => {
+        for (const k of keys) {
+          const v = props[k];
+          if (typeof v === "number") return v;
+          if (typeof v === "string" && v.trim() && !Number.isNaN(Number(v))) return Number(v);
+        }
+        return undefined;
+      };
+      let lat = num("lat", "latitude", "y");
+      let lon = num("lon", "lng", "longitude", "x");
+      const coords = (r.geometry as { coordinates?: number[] } | undefined)?.coordinates;
+      if ((lat == null || lon == null) && Array.isArray(coords) && coords.length >= 2) {
+        lon = coords[0];
+        lat = coords[1];
+      }
+      const category =
+        str("primary_type", "offense_category", "category", "type") ?? undefined;
+      const description =
+        str("description", "nibrs_offense_code_description", "summary") ?? undefined;
+      const title =
+        str("title", "name") ??
+        (category && description ? `${category} — ${description}` : undefined) ??
+        description ??
+        category ??
+        str("offense_sub_category") ??
+        `Incident ${index + 1}`;
+      const severityText = (category ?? title).toUpperCase();
+      const severity: Incident["severity"] = /HOMICIDE|MURDER|SHOOTING|ROBBERY|ASSAULT|WEAPON|RAPE/.test(
+        severityText,
+      )
+        ? "alert"
+        : /BURGLARY|THEFT|MOTOR VEHICLE|ARSON|BATTERY|PROPERTY|CRIMINAL DAMAGE/.test(severityText)
+          ? "warn"
+          : "info";
+      return {
+        id: str("id", "case_number", "offense_id", "report_number") ?? `row-${index}`,
+        title,
+        category,
+        description,
+        occurredAt: str(
+          "occurred_at",
+          "occurredAt",
+          "date",
+          "offense_date",
+          "report_date_time",
+          "datetime",
+        ),
+        address: str("address", "block", "block_address", "location_description", "neighborhood"),
+        lat,
+        lon,
+        audioUrl: str("audio_url", "audioUrl", "audio"),
+        detailUrl: str("detail_url", "detailUrl", "url", "link"),
+        severity,
+      } satisfies Incident;
+    })
+    .sort((a, b) => String(b.occurredAt ?? "").localeCompare(String(a.occurredAt ?? "")));
+}
+
+async function browserFetchIncident(source: SourceConfig): Promise<SourcePayload> {
+  const provider = String(source.params.provider ?? "custom");
+  const preset = PRESET_ENDPOINTS[provider];
+  let endpoint =
+    preset?.url ??
+    (typeof source.params.endpoint === "string" ? source.params.endpoint : "");
+  if (!endpoint) throw new Error("endpoint required for custom provider");
+  const limit = Number(source.params.limit ?? 50) || 50;
+  if (!endpoint.includes("$limit=") && !endpoint.includes("limit=")) {
+    endpoint += `${endpoint.includes("?") ? "&" : "?"}$limit=${limit}`;
+  }
+  const secrets = readBrowserSecrets();
+  const headers: Record<string, string> = {};
+  const token = secrets["socrata.app_token"];
+  if (token?.trim()) headers["X-App-Token"] = token.trim();
+  const res = await fetch(endpoint, { headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching incidents`);
+  const body = await res.json();
+  const incidents = browserNormalizeIncidents(body).slice(0, limit);
+  return {
+    sourceId: "browser",
+    typeId: source.type,
+    fetchedAt: new Date().toISOString(),
+    attribution:
+      (typeof source.params.attribution === "string" && source.params.attribution) ||
+      preset?.attribution ||
+      "Open data",
+    note: "Browser mock fetch (CORS-dependent). Prefer npm run tauri:dev for production path.",
+    incidents,
+  };
+}
+
+export async function fetchSourcePayload(
+  sourceId: string,
+  source?: SourceConfig,
+): Promise<SourcePayload> {
+  if (!isTauri()) {
+    const state = readBrowser();
+    const src = source ?? state.sources[sourceId];
+    if (!src) throw new Error(`source not found: ${sourceId}`);
+    if (src.type !== "incident.opendata") {
+      throw new Error(`live fetch not implemented for source type: ${src.type}`);
+    }
+    const payload = await browserFetchIncident(src);
+    return { ...payload, sourceId };
+  }
+  return invoke<SourcePayload>("fetch_source_payload", { args: { sourceId } });
 }
 
 export async function addPanelToBoard(
