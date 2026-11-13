@@ -4,6 +4,7 @@ import { useSourceRevision } from "../lib/sourceRefresh";
 import type { SourceConfig } from "../types";
 import { BroadcastifyPanel } from "./BroadcastifyPanel";
 import { IncidentPanel } from "./IncidentPanel";
+import { QuakePanel } from "./QuakePanel";
 import { WeatherPanel } from "./WeatherPanel";
 
 type Props = {
@@ -32,6 +33,12 @@ export function SourceBody({ sourceId, source }: Props) {
   if (source.type === "weather.openmeteo") {
     return (
       <WeatherPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
+  }
+
+  if (source.type === "usgs.earthquake") {
+    return (
+      <QuakePanel sourceId={sourceId} source={source} configRevision={revision} />
     );
   }
 

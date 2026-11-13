@@ -1,3 +1,4 @@
+import { USGS_FEED_OPTIONS } from "../lib/usgs";
 import type { AdapterDefinition } from "../types";
 
 /** Built-in source types for Settings catalog. Integrations are stubs in Phase A. */
@@ -331,6 +332,48 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         secret: true,
         placeholder: "Improves rate limits on Socrata portals",
         help: "Stored in OS keyring (or local secrets fallback). Never written to config.yaml.",
+      },
+    ],
+  },
+  {
+    typeId: "usgs.earthquake",
+    category: "product",
+    name: "USGS earthquakes",
+    description:
+      "USGS summary GeoJSON — earthquakes plus tsunami flags, landslides, blasts, and other events in the same feed. No API key.",
+    defaultWidget: "quake",
+    defaultRefresh: "1m",
+    fields: [
+      {
+        key: "feed",
+        label: "Feed",
+        kind: "select",
+        required: true,
+        options: USGS_FEED_OPTIONS,
+        help: "Past day includes blasts, landslides, and other non-quake events. M4.5 week is where tsunami flags usually show up. USGS updates these about once a minute.",
+      },
+      {
+        key: "limit",
+        label: "Max events",
+        kind: "number",
+        required: true,
+        placeholder: "50",
+        help: "Newest first. The map pans to each new one.",
+      },
+      {
+        key: "notableMinMag",
+        label: "Alerts magnitude",
+        kind: "number",
+        required: true,
+        placeholder: "4.5",
+        help: "Magnitude that feeds the shared alerts list. Tsunami flags, orange/red PAGER, landslides, and volcanic eruptions are included even when smaller.",
+      },
+      {
+        key: "autoPan",
+        label: "Pan map to new events",
+        kind: "boolean",
+        required: false,
+        help: "On each poll, move the map to every new earthquake, tsunami flag, or other event. Clicking a row always pans.",
       },
     ],
   },
