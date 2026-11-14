@@ -13,6 +13,9 @@ dist
 # Staged by CI before the Windows build. Do not commit the binary.
 src-tauri/resources/auth-server.exe
 src-tauri/resources/auth-server
+
+# Staged by CI before the Windows installer is compiled. Do not commit the model.
+src-tauri/windows/tiny-en/
 dist-ssr
 *.local
 

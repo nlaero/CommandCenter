@@ -1,4 +1,5 @@
 # Windows NSIS installer for Command Center.
+# The build packs the pinned Tiny English model into the installer.
 # Pull requests upload the installer as a build artifact. A v* tag publishes a GitHub release.
 # Do not publish from a pull request. Installers stay unpublished until asked.
 
@@ -55,6 +56,12 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Check the Tiny English installer script
+        run: node scripts/fetch-tiny-en.test.mjs
+
+      - name: Stage Tiny English for the installer
+        run: node scripts/fetch-tiny-en.mjs
+
       - name: Build the NSIS installer
         run: npm run tauri:build -- --bundles nsis
 
@@ -72,10 +79,25 @@ jobs:
           }
           $installers | ForEach-Object {
             Write-Host ("INSTALLER " + $_.Name + " " + $_.Length + " bytes")
-            if ($_.Length -lt 1000000) {
-              throw "Setup is $($_.Length) bytes, smaller than 1000000."
+            if ($_.Length -lt 40000000) {
+              throw "Setup is $($_.Length) bytes. Tiny English was not packed (expected at least 40000000)."
             }
           }
+
+      - name: Confirm a silent install already has Tiny English
+        shell: pwsh
+        run: |
+          $setup = @(Get-ChildItem "src-tauri\target\release\bundle\nsis\*.exe") | Select-Object -First 1
+          if (-not $setup) { throw "No installer to test." }
+          $proc = Start-Process -FilePath $setup.FullName -ArgumentList "/S" -PassThru
+          if (-not $proc.WaitForExit(900000)) {
+            try { $proc.Kill() } catch {}
+            throw "The installer did not finish within 15 minutes."
+          }
+          if ($proc.ExitCode -ne 0) {
+            throw "The installer exited $($proc.ExitCode)."
+          }
+          node scripts/fetch-tiny-en.mjs --expect-installed
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -96,6 +118,8 @@ jobs:
           files: src-tauri/target/release/bundle/nsis/*.exe
           body: |
             Windows installer for Command Center. The app opens on the board. Settings and caption fixes stay on this computer.
+
+            Tiny English is already installed for local captions. Settings → Local AI shows that model.
 
             This GitHub Release is published only from a version tag. Pull requests upload the installer as a build artifact and do not publish a release.
         env:

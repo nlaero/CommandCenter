@@ -2,6 +2,8 @@
 //!
 //! Install downloads a pinned Whisper runtime and the Tiny English model,
 //! checks the checksum, and keeps both under the Command Center config directory.
+//! The Windows installer copies this same model and runtime into that directory
+//! (`scripts/fetch-tiny-en.mjs`) so a new install already has Tiny English.
 
 use crate::ai_sync::{self, AiMemory};
 use serde::{Deserialize, Serialize};
@@ -14,6 +16,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const MODEL_URL: &str =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin";
+/// Same bytes the Windows installer ships. `scripts/fetch-tiny-en.mjs` refuses a mismatch.
 const MODEL_SHA256: &str = "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f";
 const LINUX_RUNTIME_URL: &str =
     "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-ubuntu-x64.tar.gz";
@@ -21,6 +24,7 @@ const LINUX_RUNTIME_SHA256: &str =
     "a72becf15d7917f990f6313867a52638b82b7f9ef237fb0c980dac56a135781c";
 const WINDOWS_RUNTIME_URL: &str =
     "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip";
+/// Same archive the Windows installer ships. `scripts/fetch-tiny-en.mjs` refuses a mismatch.
 const WINDOWS_RUNTIME_SHA256: &str =
     "6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb";
 const MAX_AUDIO_BYTES: u64 = 20 * 1024 * 1024;
@@ -1825,5 +1829,44 @@ mod tests {
         let audio = prepare_caption_audio(&format!("{base}/penn_hills"), 0.0, 2.0, false).unwrap();
         let bytes = fs::read(&audio.path).unwrap();
         assert!(is_whisper_wav(&bytes));
+    }
+
+    #[test]
+    fn windows_installer_layout_counts_as_tiny_english() {
+        let root = std::env::temp_dir().join(format!("cc-ai-bundle-{}", unique_stamp()));
+        fs::create_dir_all(root.join("ai/models")).unwrap();
+        fs::create_dir_all(root.join("ai/runtime")).unwrap();
+        fs::write(root.join("ai/models/ggml-tiny.en.bin"), b"model").unwrap();
+        fs::write(root.join("ai/runtime/whisper-cli.exe"), b"MZ").unwrap();
+        fs::write(
+            root.join("ai/install.json"),
+            r#"{
+  "modelId": "tiny.en",
+  "modelLabel": "Tiny English",
+  "modelBytes": 5,
+  "modelPath": "ai/models/ggml-tiny.en.bin",
+  "runtimePath": "ai/runtime/whisper-cli.exe"
+}
+"#,
+        )
+        .unwrap();
+        let installed = status(&root);
+        assert!(installed.installed);
+        assert!(installed.runtime_ready);
+        assert_eq!(installed.model_id.as_deref(), Some("tiny.en"));
+        assert_eq!(installed.model_label.as_deref(), Some("Tiny English"));
+        assert_eq!(installed.bytes, Some(5));
+        assert!(installed.message.is_none());
+        assert!(installed
+            .path
+            .as_deref()
+            .unwrap()
+            .contains("ggml-tiny.en.bin"));
+
+        fs::remove_file(root.join("ai/runtime/whisper-cli.exe")).unwrap();
+        let missing_runtime = status(&root);
+        assert!(!missing_runtime.installed);
+        assert!(!missing_runtime.runtime_ready);
+        let _ = fs::remove_dir_all(&root);
     }
 }
