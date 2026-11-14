@@ -7,6 +7,7 @@
  */
 
 import { applyCorrections, readLocalMemory } from "./aiMemory";
+import { blocksCaptionDownload } from "./streamCaptions";
 
 export type CaptionSegment = {
   id: string;
@@ -15,7 +16,7 @@ export type CaptionSegment = {
   text: string;
 };
 
-export type CaptionJobStatus = "idle" | "running" | "ready" | "error" | "stub";
+export type CaptionJobStatus = "idle" | "running" | "ready" | "error" | "stub" | "needs-model";
 
 export type CaptionResult = {
   engine: "local-stub" | "local-whisper";
@@ -94,6 +95,56 @@ export async function transcribeArchiveLocal(args: {
   }
   await new Promise((r) => setTimeout(r, 350));
   return applyMemory(stubLocalCaptions(args.sourceUrl, args.clipId));
+}
+
+/**
+ * Transcribe one slice of a camera or file on this computer.
+ * Timestamps in the result already include `timelineStart`.
+ * YouTube URLs are refused — those panels use YouTube's captions.
+ */
+export async function transcribeMediaLocal(args: {
+  sourceUrl: string;
+  clipId: string;
+  timelineStart?: number;
+  seekSec?: number;
+  durationSec?: number;
+}): Promise<CaptionResult> {
+  const sourceUrl = args.sourceUrl.trim();
+  if (!sourceUrl) throw new Error("audio URL required for transcription");
+  if (blocksCaptionDownload(sourceUrl)) {
+    throw new Error("YouTube audio is not downloaded. This panel uses YouTube's captions.");
+  }
+  const payload = {
+    sourceUrl,
+    clipId: args.clipId,
+    timelineStart: args.timelineStart ?? 0,
+    seekSec: args.seekSec ?? 0,
+    durationSec: args.durationSec ?? 0,
+  };
+  if (isTauri()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<CaptionResult>("transcribe_media_local", { args: payload });
+  }
+  const response = await fetch("/proxy/transcribe", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  let body: CaptionResult | { message?: string } | null = null;
+  try {
+    body = (await response.json()) as CaptionResult | { message?: string };
+  } catch {
+    body = null;
+  }
+  if (!response.ok) {
+    const message =
+      body && typeof body === "object" && "message" in body && typeof body.message === "string"
+        ? body.message
+        : "Couldn't create captions on this device.";
+    throw new Error(message);
+  }
+  if (!body || !("segments" in body)) throw new Error("Couldn't create captions on this device.");
+  return applyMemory(body);
 }
 
 function applyMemory(result: CaptionResult): CaptionResult {

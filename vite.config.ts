@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import process from "node:process";
+import { transcribeClip } from "./scripts/local-captions.mjs";
 
 const host = process.env.TAURI_DEV_HOST;
 
@@ -181,6 +182,62 @@ async function proxyAuth(req: IncomingMessage, res: ServerResponse): Promise<voi
   res.end(buf);
 }
 
+/** Browser dev stand-in for the desktop transcribe_media_local command. */
+function captionProxy(): Plugin {
+  return {
+    name: "local-caption-proxy",
+    configureServer(server) {
+      server.middlewares.use("/proxy/transcribe", (req, res) => {
+        if (req.method !== "POST") {
+          res.statusCode = 405;
+          res.end();
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let tooBig = false;
+        req.on("data", (chunk: Buffer) => {
+          chunks.push(Buffer.from(chunk));
+          if (chunks.reduce((sum, part) => sum + part.length, 0) > 65_536) tooBig = true;
+        });
+        req.on("end", () => {
+          void (async () => {
+            if (tooBig) {
+              res.statusCode = 413;
+              res.setHeader("content-type", "application/json");
+              res.end(JSON.stringify({ message: "Couldn't create captions on this device." }));
+              return;
+            }
+            try {
+              const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+                sourceUrl?: string;
+                clipId?: string;
+                timelineStart?: number;
+                seekSec?: number;
+                durationSec?: number;
+              };
+              const result = await transcribeClip(body);
+              res.statusCode = 200;
+              res.setHeader("content-type", "application/json");
+              res.setHeader("cache-control", "no-store");
+              res.end(JSON.stringify(result));
+            } catch (err) {
+              if (res.writableEnded) return;
+              res.statusCode = 400;
+              res.setHeader("content-type", "application/json");
+              res.setHeader("cache-control", "no-store");
+              res.end(
+                JSON.stringify({
+                  message: err instanceof Error ? err.message : "Couldn't create captions on this device.",
+                }),
+              );
+            }
+          })();
+        });
+      });
+    },
+  };
+}
+
 const MEDIA_MAX_BYTES = 32 * 1024 * 1024;
 const MEDIA_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 CommandCenter/0.1";
@@ -273,7 +330,7 @@ async function proxyMedia(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react(), browserProxy(), authDevProxy(), mediaProxy()],
+  plugins: [react(), browserProxy(), authDevProxy(), mediaProxy(), captionProxy()],
   clearScreen: false,
   server: {
     port: 1420,

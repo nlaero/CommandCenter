@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import {
   absolutizePlaylist,
   classifyPlayback,
+  looksLikeImage,
+  playbackHasAudio,
   prefersChannelLive,
   youtubeChannelId,
   youtubeEmbedSrc,
@@ -38,7 +40,18 @@ assert.equal(
   "hls",
 );
 assert.equal(classifyPlayback("https://cam.example/snap.jpg"), "image");
+assert.equal(classifyPlayback("https://cam.example/snap.JPG?t=1"), "image");
 assert.equal(classifyPlayback("https://cam.example/clip.mp4"), "file");
+assert.equal(playbackHasAudio("image"), false);
+assert.equal(playbackHasAudio("mjpeg"), false);
+assert.equal(playbackHasAudio(null), false);
+assert.equal(playbackHasAudio("hls"), true);
+assert.equal(playbackHasAudio("file"), true);
+assert.equal(playbackHasAudio("youtube"), true);
+assert.equal(
+  looksLikeImage(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 0]).buffer, "application/octet-stream"),
+  true,
+);
 assert.equal(classifyPlayback("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "youtube");
 assert.equal(classifyPlayback("https://youtu.be/dQw4w9WgXcQ", "camera.http_image"), "youtube");
 assert.equal(classifyPlayback("not a url", "video.youtube"), "youtube");

@@ -162,6 +162,11 @@ export function youtubeEmbedSrc(input: string, origin?: string, captions = true)
   return null;
 }
 
+/** Still images and MJPEG have no audio track. Captions apply to HLS, a video file, and YouTube. */
+export function playbackHasAudio(kind: PlaybackKind | null): boolean {
+  return kind === "hls" || kind === "file" || kind === "youtube";
+}
+
 export function classifyPlayback(url: string, sourceType?: string): PlaybackKind {
   const trimmed = url.trim();
   if (sourceType === "video.youtube" || isYoutubeUrl(trimmed)) return "youtube";

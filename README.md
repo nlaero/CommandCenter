@@ -11,9 +11,9 @@ Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty boa
 Anything that plays audio:
 
 1. Starts **muted** (user unmutes).
-2. Supports closed captions (on-device transcription preferred for personal archives).
+2. Supports closed captions. They show on their own while the sound is muted. CC is a separate control that keeps them up after you turn the sound on.
 
-Broadcastify Feed Owner already follows this (muted players + Settings captions / panel CC). Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. Their captions are the ones in the stream (YouTube's CC, or HLS caption tracks). They are not uploaded. Do not ship new audio playback without both mute-default and CC.
+Broadcastify Feed Owner already follows this (muted players + Settings captions / panel CC). Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
 
 ## Requirements
 
@@ -176,11 +176,11 @@ Live Owner API calls need the Tauri app. The browser Vite mock previews this fee
 
 ## Cameras and YouTube
 
-Public / HTTP camera plays the link in the panel. A still image refreshes on the source interval. An MP4 or WebM file plays in the video element. An HLS playlist (`.m3u8`), including a master playlist, is decoded in the panel. The window shows the picture and the camera label. It does not print the saved fields.
+Public / HTTP camera plays the link in the panel. A still image refreshes on the source interval. It has no audio, so the panel does not generate captions and does not show a caption line. An MP4 or WebM file plays in the video element. An HLS playlist (`.m3u8`), including a master playlist, is decoded in the panel. The window shows the picture and the camera label. It does not print the saved fields.
 
 YouTube Live is its own source. Paste a watch link, a youtu.be link, a `/live/…` link, or a channel live URL (`/@name/live` or `/channel/UC…/live`). Same panel: picture, label, muted until you turn sound on.
 
-CC uses captions that are already in the stream. If an HLS link has none, the button says so. RTSP and USB cameras still need a native player.
+Captions are only for a source that has sound. HLS WebVTT or CEA-708 is used when the playlist already has it, and YouTube uses its own captions. An HLS stream or video file with no caption track is transcribed here with Tiny English from Settings → Local AI. Music and a repeated non-speech phrase are not shown; if the audio has no speech the caption line stays empty. The lines show while the panel is muted. Turn the sound on and they hide, unless CC is on. CC does not have to be pressed for the muted case. A still image never takes this path. YouTube audio is not downloaded for this. Preparing the audio for the local model uses ffmpeg when it is on the computer, and otherwise decodes AAC, MP3, and MP4 here. RTSP and USB cameras still need a native player.
 
 ## Timed panel rotation
 
