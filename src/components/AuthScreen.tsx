@@ -348,8 +348,9 @@ export function AccountSettings({ state, session, onState, onSession }: AccountP
         {session.signedIn && session.user
           ? `Signed in as ${session.user.username}${session.offline ? " (offline)" : ""}.`
           : "Not signed in."}{" "}
-        Username and password are checked by auth-server. Broadcastify and other source secrets
-        stay in the OS keyring and are not sent there.
+        Username and password are checked by auth-server. Boards and source setup for this
+        account are saved there, so signing in on another computer brings them back. Passwords
+        and API keys stay in the keyring on this computer and are not uploaded.
       </p>
       <label className="check-row">
         <input

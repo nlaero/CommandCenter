@@ -72,6 +72,17 @@ function writeBrowser(state: AppState): void {
   localStorage.setItem(BROWSER_KEY, JSON.stringify(state));
 }
 
+export function writeBrowserState(state: AppState): void {
+  writeBrowser(withAuth(state));
+}
+
+function queuePublish(state: AppState): void {
+  if (!state.auth?.enabled || isTauri()) return;
+  void import("./sync")
+    .then((mod) => mod.publishBoard(withAuth(state)))
+    .catch(() => undefined);
+}
+
 export async function loadAppState(): Promise<LoadResult> {
   if (!isTauri()) {
     const existing = localStorage.getItem(BROWSER_KEY);
@@ -109,6 +120,7 @@ export async function saveBoardLayout(
         if (panel) panel.layout = item;
       }
       writeBrowser(state);
+      queuePublish(state);
     }
     return;
   }
@@ -130,6 +142,10 @@ function writeBrowserSecrets(secrets: Record<string, string>): void {
   localStorage.setItem(BROWSER_SECRETS_KEY, JSON.stringify(secrets));
 }
 
+export function browserSecretValues(): Record<string, string> {
+  return readBrowserSecrets();
+}
+
 export async function upsertSource(
   id: string,
   source: SourceConfig,
@@ -142,6 +158,7 @@ export async function upsertSource(
     if (Object.keys(secrets).length) {
       writeBrowserSecrets({ ...readBrowserSecrets(), ...secrets });
     }
+    queuePublish(state);
     return state;
   }
   return withAuth(await invoke<AppState>("upsert_source", { args: { id, source, secrets } }));
@@ -739,6 +756,7 @@ export async function addPanelToBoard(
     assertPanelSourcesReady(state, panel);
     board.panels.push(panel);
     writeBrowser(state);
+    queuePublish(state);
     return state;
   }
   return withAuth(await invoke<AppState>("add_panel_to_board", { args: { boardId, panel } }));
@@ -757,6 +775,7 @@ export async function createBoard(title: string): Promise<AppState> {
     state.boards.push({ id, title, panels: [] });
     state.activeBoardId = id;
     writeBrowser(state);
+    queuePublish(state);
     return state;
   }
   return withAuth(await invoke<AppState>("create_board", { title }));
@@ -770,6 +789,7 @@ export async function setActiveBoard(boardId: string): Promise<AppState> {
     }
     state.activeBoardId = boardId;
     writeBrowser(state);
+    queuePublish(state);
     return state;
   }
   return withAuth(await invoke<AppState>("set_active_board", { boardId }));

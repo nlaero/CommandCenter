@@ -191,6 +191,8 @@ The auth-server URL is a setting. It starts at `http://100.101.141.93:8080`. Cha
 
 Access and refresh tokens go in the OS keyring (`auth.access_token`, `auth.refresh_token`). The password is not stored. Broadcastify and other source secrets stay in the keyring too and are not sent to auth-server.
 
+Boards, layout, and source setup (including the names of secrets, not their values) are stored on auth-server for the signed-in account. Signing in on another computer replaces the local board with that copy. The auth-server URL and **Require sign-in** stay on this computer. If auth-server is unreachable, the board you already have stays put. `GET /settings` and `PUT /settings` are the account document; a missing route leaves the local board alone.
+
 Sign out from the toolbar. The username stays filled in on the sign-in screen.
 
 ## Build installers
@@ -210,7 +212,7 @@ npm run build
 
 ## auth-server
 
-The account API lives in [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth): register, login, refresh, logout, and `/auth/me`. The desktop app is only a client.
+The account API lives in [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth): register, login, refresh, logout, `/auth/me`, and the board document at `/settings`. The desktop app is only a client. A server that does not have `/settings` yet still signs in; it just cannot restore a board until that route is deployed.
 
 `npm run test:rust` does not contact that server. It uses an in-process fake on `127.0.0.1`. To run the same client against a local auth-server you started yourself:
 

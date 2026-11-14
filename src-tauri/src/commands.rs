@@ -1,9 +1,10 @@
-use crate::auth::{self, AuthProbe, AuthService, AuthSession};
+use crate::auth::{self, AuthError, AuthProbe, AuthService, AuthSession};
 use crate::config::{
     self, AppState, AuthSettings, ConfigPaths, GridItem, LoadResult, SourceConfig,
 };
 use crate::secrets;
 use crate::sources::{self, SourcePayload};
+use crate::sync;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -124,6 +125,7 @@ pub fn load_app_state() -> Result<LoadResult, CommandError> {
 pub fn save_app_state(state: AppState) -> Result<ConfigPaths, CommandError> {
     let paths = config::resolve_paths()?;
     config::save_state(&paths, &state)?;
+    publish_settings(&state);
     Ok(paths)
 }
 
@@ -145,6 +147,7 @@ pub fn save_board_layout(args: SaveLayoutArgs) -> Result<(), CommandError> {
     }
     config::write_layout(&paths, &args.board_id, &args.items)?;
     config::save_state(&paths, &loaded.state)?;
+    publish_settings(&loaded.state);
     Ok(())
 }
 
@@ -157,6 +160,7 @@ pub fn upsert_source(args: UpsertSourceArgs) -> Result<AppState, CommandError> {
     loaded.state.sources.insert(args.id, args.source);
     let paths = config::resolve_paths()?;
     config::save_state(&paths, &loaded.state)?;
+    publish_settings(&loaded.state);
     Ok(loaded.state)
 }
 
@@ -258,6 +262,7 @@ pub fn add_panel_to_board(args: AddPanelArgs) -> Result<AppState, CommandError> 
     board.panels.push(args.panel);
     let paths = config::resolve_paths()?;
     config::save_state(&paths, &loaded.state)?;
+    publish_settings(&loaded.state);
     Ok(loaded.state)
 }
 
@@ -278,6 +283,7 @@ pub fn create_board(title: String) -> Result<AppState, CommandError> {
     loaded.state.active_board_id = id;
     let paths = config::resolve_paths()?;
     config::save_state(&paths, &loaded.state)?;
+    publish_settings(&loaded.state);
     Ok(loaded.state)
 }
 
@@ -292,6 +298,7 @@ pub fn set_active_board(board_id: String) -> Result<AppState, CommandError> {
     loaded.state.active_board_id = board_id;
     let paths = config::resolve_paths()?;
     config::save_state(&paths, &loaded.state)?;
+    publish_settings(&loaded.state);
     Ok(loaded.state)
 }
 
@@ -404,6 +411,89 @@ pub fn validate_source_fields(
 
 fn auth_service() -> AuthService<auth::KeyringStore> {
     AuthService::keyring()
+}
+
+/// Best-effort upload after a local board or source save. A down server leaves
+/// the saved file in place. Edit mode and auth settings are not published.
+fn publish_settings(state: &AppState) {
+    if !state.auth.enabled {
+        return;
+    }
+    let secrets = sync::secret_values(state);
+    let Ok(paths) = config::resolve_paths() else {
+        return;
+    };
+    let cursor = sync::read_cursor(&paths.root);
+    match sync::publish(&auth_service(), state, &secrets, cursor) {
+        Ok(work) => {
+            if let Some(cursor) = work.cursor {
+                if let Err(err) = sync::write_cursor(&paths.root, &cursor) {
+                    eprintln!("command-center settings sync: {err}");
+                }
+            }
+        }
+        Err(err) if quiet_sync(&err) => {}
+        Err(err) => eprintln!("command-center settings sync: {err}"),
+    }
+}
+
+fn quiet_sync(err: &AuthError) -> bool {
+    if err.is_unreachable() {
+        return true;
+    }
+    match err {
+        AuthError::Message(message) if message.contains("Sign in before") => true,
+        AuthError::Api { status: 401, .. } => true,
+        _ => false,
+    }
+}
+
+#[tauri::command]
+pub fn sync_board() -> Result<sync::SyncOutcome, CommandError> {
+    let loaded = config::load_or_create()?;
+    if !loaded.state.auth.enabled {
+        return Ok(sync::SyncOutcome {
+            state: loaded.state,
+            restored: false,
+            published: false,
+            message: None,
+        });
+    }
+    let secrets = sync::secret_values(&loaded.state);
+    let paths = config::resolve_paths()?;
+    let cursor = sync::read_cursor(&paths.root);
+    match sync::reconcile(&auth_service(), &loaded.state, &secrets, cursor) {
+        Ok(work) => {
+            if work.restored {
+                config::save_state(&paths, &work.state)?;
+            }
+            if let Some(cursor) = &work.cursor {
+                let _ = sync::write_cursor(&paths.root, cursor);
+            }
+            let message = work.restored.then(|| {
+                "Restored your boards and sources from this account. API keys stay on this computer."
+                    .to_string()
+            });
+            Ok(sync::SyncOutcome {
+                state: work.state,
+                restored: work.restored,
+                published: work.published,
+                message,
+            })
+        }
+        Err(err) if quiet_sync(&err) => Ok(sync::SyncOutcome {
+            state: loaded.state,
+            restored: false,
+            published: false,
+            message: None,
+        }),
+        Err(err) => Ok(sync::SyncOutcome {
+            state: loaded.state,
+            restored: false,
+            published: false,
+            message: Some(err.to_string()),
+        }),
+    }
 }
 
 #[tauri::command]

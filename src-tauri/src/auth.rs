@@ -54,7 +54,7 @@ impl AuthError {
         Self::Unreachable(message)
     }
 
-    fn is_unreachable(&self) -> bool {
+    pub fn is_unreachable(&self) -> bool {
         matches!(self, Self::Unreachable(_))
     }
 
@@ -195,6 +195,51 @@ impl<S: TokenStore> AuthService<S> {
     pub fn session(&self, settings: &AuthSettings) -> AuthSession {
         let _guard = token_lock();
         self.session_locked(settings)
+    }
+
+    /// Authenticated JSON call. Refreshes a stale access token first.
+    /// Must not be called while `session` already holds the token lock.
+    pub(crate) fn authorized(
+        &self,
+        settings: &AuthSettings,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<(u16, Option<Value>), AuthError> {
+        let _guard = token_lock();
+        let settings = normalize_settings(settings.clone())?;
+        let token = self.ensure_access_locked(&settings)?;
+        self.request(&settings, method, path, body, Some(&token))
+    }
+
+    pub(crate) fn stored_user_id(&self) -> Option<String> {
+        self.store_get(KEY_USER_ID)
+    }
+
+    #[cfg(test)]
+    pub fn seed_session(&self, user_id: &str, username: &str, access: &str) {
+        self.store.set(KEY_USER_ID, user_id).expect("user id");
+        self.store.set(KEY_USERNAME, username).expect("username");
+        self.store.set(KEY_ACCESS, access).expect("access");
+        self.store
+            .set(KEY_EXPIRES, &(now_unix() + 900).to_string())
+            .expect("expiry");
+    }
+
+    fn ensure_access_locked(&self, settings: &AuthSettings) -> Result<String, AuthError> {
+        if self.access_fresh() {
+            if let Some(token) = self.store_get(KEY_ACCESS) {
+                return Ok(token);
+            }
+        }
+        if let Some(refresh) = self.store_get(KEY_REFRESH) {
+            let tokens = self.refresh_tokens(settings, &refresh)?;
+            self.persist_tokens(&tokens)?;
+            return Ok(tokens.access_token);
+        }
+        Err(AuthError::Message(
+            "Sign in before syncing the board.".into(),
+        ))
     }
 
     pub fn probe(&self, settings: &AuthSettings) -> AuthProbe {
