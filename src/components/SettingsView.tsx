@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { ADAPTER_CATALOG, getAdapter } from "../adapters/catalog";
+import {
+  PENN_HILLS_FEED,
+  applyBroadcastifyPreset,
+  isPennHillsPreset,
+} from "../lib/broadcastifyPreset";
 import { AccountSettings } from "./AuthScreen";
 import { ServerSetup } from "./ServerSetup";
 import { UpdatesBody, useUpdates } from "./UpdatesPanel";
@@ -140,6 +145,8 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
       initial.attribution = "City of Chicago Open Data — Crimes 2001 to Present";
     }
     if (typeId === "broadcastify.owner") {
+      initial.preset = PENN_HILLS_FEED.preset;
+      initial.feedId = PENN_HILLS_FEED.feedId;
       initial.includeArchives = true;
       // Global rule: audio sources support closed captions (default on; user may opt out).
       initial.enableCaptions = true;
@@ -157,7 +164,11 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
       initial.autoPan = true;
     }
     setParams(initial);
-    setSecrets({});
+    setSecrets(
+      typeId === "broadcastify.owner"
+        ? { "broadcastify.username": PENN_HILLS_FEED.username }
+        : {},
+    );
     setMessage(
       def?.stubNote
         ? { kind: "warn", text: def.stubNote }
@@ -169,7 +180,7 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
           : typeId === "broadcastify.owner"
             ? {
                 kind: "warn",
-                text: "Feed Owner API for your own feed only. Password stays in the OS keyring. Archives are personal-use — no Catalog/Calls. Captions prefer on-device ASR (stub until Whisper lands).",
+                text: "Penn Hills / Plum Police Dispatch (47291) is filled in. The password stays in the OS keyring. The desktop app calls the Feed Owner API for status, the relay listen URL, and personal-use archives.",
               }
             : typeId === "weather.openmeteo"
               ? {
@@ -195,6 +206,18 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
     const nextParams = { ...source.params };
     if (source.type === "usgs.earthquake" && nextParams.autoPan === undefined) {
       nextParams.autoPan = true;
+    }
+    if (source.type === "broadcastify.owner") {
+      const feedId = String(nextParams.feedId ?? "").trim();
+      if (nextParams.preset !== "penn-hills" && nextParams.preset !== "custom") {
+        nextParams.preset =
+          feedId === PENN_HILLS_FEED.feedId || feedId === ""
+            ? PENN_HILLS_FEED.preset
+            : "custom";
+      }
+      if (nextParams.preset === PENN_HILLS_FEED.preset) {
+        nextParams.feedId = PENN_HILLS_FEED.feedId;
+      }
     }
     setParams(nextParams);
     setSecrets({});
@@ -247,6 +270,32 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
       setParams((p) => applyProviderDefaults(String(raw), p));
       return;
     }
+    if (field.key === "preset" && adapter?.typeId === "broadcastify.owner") {
+      const nextPreset = String(raw);
+      setParams((p) => applyBroadcastifyPreset(nextPreset, p));
+      if (nextPreset !== "custom") {
+        setSecrets((current) =>
+          current["broadcastify.username"]?.trim()
+            ? current
+            : { ...current, "broadcastify.username": PENN_HILLS_FEED.username },
+        );
+      }
+      return;
+    }
+    if (field.key === "feedId" && adapter?.typeId === "broadcastify.owner") {
+      const feedId = String(raw).trim();
+      setParams((p) => ({
+        ...p,
+        feedId: raw,
+        preset:
+          feedId === PENN_HILLS_FEED.feedId
+            ? PENN_HILLS_FEED.preset
+            : p.preset === PENN_HILLS_FEED.preset
+              ? "custom"
+              : p.preset,
+      }));
+      return;
+    }
     setParams((p) => ({ ...p, [field.key]: raw }));
   }
 
@@ -263,6 +312,9 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
       const required = requiredKeys(adapter).filter((key) => {
         if (adapter.typeId === "incident.opendata" && key === "endpoint") {
           return String(params.provider ?? "") === "custom";
+        }
+        if (adapter.typeId === "broadcastify.owner" && key === "feedId") {
+          return !isPennHillsPreset(params);
         }
         // When editing, blank secret fields keep the stored keyring value.
         if (existing && key.startsWith("secret:")) {
@@ -308,6 +360,10 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
       ) {
         delete cleanedParams.endpoint;
       }
+      if (adapter.typeId === "broadcastify.owner" && isPennHillsPreset(cleanedParams)) {
+        cleanedParams.preset = PENN_HILLS_FEED.preset;
+        cleanedParams.feedId = PENN_HILLS_FEED.feedId;
+      }
       const source: SourceConfig = {
         type: adapter.typeId,
         params: cleanedParams,
@@ -330,7 +386,10 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
 
         const panel: Panel = {
           id: panelId,
-          title: adapter.name,
+          title:
+            adapter.typeId === "broadcastify.owner" && isPennHillsPreset(cleanedParams)
+              ? PENN_HILLS_FEED.name
+              : adapter.name,
           widget: adapter.defaultWidget,
           source: sourceId,
           options: { typeId: adapter.typeId },
@@ -951,7 +1010,18 @@ function panelLayoutFor(
       minH: 18,
     };
   }
-  if (typeId === "incident.opendata" || typeId === "broadcastify.owner") {
+  if (typeId === "broadcastify.owner") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 28,
+      h: 28,
+      minW: 16,
+      minH: 16,
+    };
+  }
+  if (typeId === "incident.opendata") {
     return {
       i: panelId,
       x: 0,

@@ -1,4 +1,5 @@
 import { USGS_FEED_OPTIONS } from "../lib/usgs";
+import { PENN_HILLS_FEED } from "../lib/broadcastifyPreset";
 import type { AdapterDefinition } from "../types";
 
 /** Built-in source types for Settings catalog. Integrations are stubs in Phase A. */
@@ -226,17 +227,28 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     category: "product",
     name: "Broadcastify (Feed Owner)",
     description:
-      "Nathan’s own uploaded feed via Feed Owner API — live status/stats plus personal-use archives. Not Catalog or Calls.",
+      "Your uploaded feed via the Feed Owner API. Penn Hills / Plum Police Dispatch is filled in. Live status, relay audio, and personal-use archives.",
     defaultWidget: "broadcastify",
     defaultRefresh: "1m",
     fields: [
+      {
+        key: "preset",
+        label: "Feed",
+        kind: "select",
+        required: true,
+        options: [
+          { value: PENN_HILLS_FEED.preset, label: PENN_HILLS_FEED.name },
+          { value: "custom", label: "Another feed I own" },
+        ],
+        help: "Feed Owner API only (your uploads). Not the Calls API and not the paid catalog.",
+      },
       {
         key: "feedId",
         label: "Feed ID",
         kind: "string",
         required: true,
-        placeholder: "12345",
-        help: "Numeric ID from your Broadcastify feed management / listen URL.",
+        placeholder: PENN_HILLS_FEED.feedId,
+        help: "Numeric id from feed management or the listen URL. Penn Hills / Plum is 47291.",
       },
       {
         key: "archiveDay",
@@ -263,11 +275,11 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
       {
         key: "secret:broadcastify.username",
         label: "Broadcastify username",
-        kind: "secret",
+        kind: "string",
         required: true,
         secret: true,
-        placeholder: "Feed owner username",
-        help: "Stored in OS keyring (or local secrets fallback). Never written to config.yaml.",
+        placeholder: PENN_HILLS_FEED.username,
+        help: "Account that owns the feed. Stored in the OS keyring, not in the board file.",
       },
       {
         key: "secret:broadcastify.password",
