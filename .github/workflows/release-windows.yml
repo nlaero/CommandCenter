@@ -51,8 +51,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: nlaero/command-center-auth
-          # Move this ref to main after the auth-server pull request merges.
-          ref: cursor/local-server-install-8964
+          ref: main
           path: auth-server-src
 
       - name: Cache Rust build

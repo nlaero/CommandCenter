@@ -180,6 +180,7 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 - Settings → Display sets the window size (1280×720 through 4K, this screen, or a custom size). Saved on this computer.
 - Edit layout (toolbar or `Ctrl/Cmd+E`): 48-column fine grid; persists on drag/resize stop
 - Board switcher in the chrome (+ for another empty board)
+- Help → Check for updates… (also the toolbar button, and Settings → Updates) asks GitHub if this copy or auth-server is behind a published release. Nothing is downloaded until you choose it.
 
 Other catalog entries stay stubs until their adapters land.
 
@@ -207,7 +208,17 @@ npm run tauri:build
 
 Output under `src-tauri/target/release/bundle/`. Flatpak / `.deb` later — not in this shell.
 
-The Windows setup `.exe` is built in GitHub Actions (`.github/workflows/release-windows.yml`). A pull request runs the build and uploads the installer as a build artifact. It does not publish a release. Pushing a `v*` tag publishes that installer on the GitHub release for the tag. The setup can install Command Center, the auth-server, or both. The auth-server binary is built from `nlaero/command-center-auth` during that workflow. Until that server pull request is merged, the workflow checks out `cursor/local-server-install-8964`. Point it at `main` after the merge.
+The Windows setup `.exe` is built in GitHub Actions (`.github/workflows/release-windows.yml`). A pull request runs the build and uploads the installer as a build artifact. It does not publish a release. Pushing a `v*` tag publishes that installer on the GitHub release for the tag. The setup can install Command Center, the auth-server, or both. The auth-server binary is built from `nlaero/command-center-auth` `main` during that workflow.
+
+## Updates
+
+On launch, Command Center asks GitHub whether [nlaero/CommandCenter](https://github.com/nlaero/CommandCenter/releases) or [nlaero/command-center-auth](https://github.com/nlaero/command-center-auth/releases) has a release newer than what you are running. A release counts when its version is higher. `v0.1.0-test.1` is older than 0.1.0, so it does not nag. A prerelease that is actually newer still shows up, and the panel says so. If a stable release and a newer prerelease are both published, the install button follows the stable one.
+
+Help → Check for updates… runs that check again. The toolbar button and Settings → Updates open the same panel. If the Command Center release has a Windows setup exe, Download and install saves it and starts it. Finish that setup to replace the app. On other systems the panel links the release instead of starting a Windows installer.
+
+A local auth-server can be replaced from the same panel when the release includes `auth-server.exe` (Windows) or `auth-server` (Linux). The app stops the server, swaps the binary, and starts it again. A remote server is not changed from here. If `/health` does not include a `version`, the panel says so and does not call that an update.
+
+Checking does not publish a release. Installers stay unpublished until asked.
 
 ## Tests
 

@@ -5,11 +5,26 @@ mod local_server;
 mod secrets;
 mod sources;
 mod sync;
+mod updates;
+
+use tauri::menu::{Menu, MenuItem, Submenu, HELP_SUBMENU_ID};
+use tauri::Emitter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            if let Err(err) = install_update_menu(app) {
+                eprintln!("command-center: update menu was not installed: {err}");
+            }
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == "check-updates" {
+                let _ = app.emit("check-updates", ());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_config_paths,
             commands::load_app_state,
@@ -41,7 +56,31 @@ pub fn run() {
             commands::local_server_set_secrets,
             commands::local_server_export_backup,
             commands::local_server_import_backup,
+            commands::check_updates,
+            commands::apply_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Command Center");
+}
+
+fn install_update_menu(app: &tauri::App) -> tauri::Result<()> {
+    let check = MenuItem::with_id(
+        app,
+        "check-updates",
+        "Check for updates…",
+        true,
+        Some("CmdOrCtrl+U"),
+    )?;
+    let menu = Menu::default(app.handle())?;
+    let help = menu
+        .get(HELP_SUBMENU_ID)
+        .and_then(|item| item.as_submenu().cloned());
+    if let Some(help) = help {
+        help.append(&check)?;
+    } else {
+        let help = Submenu::with_items(app, "Help", true, &[&check])?;
+        menu.append(&help)?;
+    }
+    app.set_menu(menu)?;
+    Ok(())
 }

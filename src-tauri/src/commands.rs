@@ -6,6 +6,7 @@ use crate::config::{
 use crate::secrets;
 use crate::sources::{self, SourcePayload};
 use crate::sync;
+use crate::updates::{self, ApplyResult, UpdateReport};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{mpsc, OnceLock};
@@ -675,6 +676,24 @@ pub fn local_server_import_backup(document: String) -> Result<LocalServerStatus,
     let root = std::path::PathBuf::from(&paths.root);
     local_server::import_backup(&root, &document)?;
     Ok(local_server::status(&root))
+}
+
+#[tauri::command]
+pub fn check_updates(force: bool) -> Result<UpdateReport, CommandError> {
+    let loaded = config::load_or_create()?;
+    let root = std::path::PathBuf::from(&loaded.paths.root);
+    Ok(updates::check(&root, &loaded.state.auth.base_url, force)?)
+}
+
+#[tauri::command]
+pub fn apply_update(product: String) -> Result<ApplyResult, CommandError> {
+    let loaded = config::load_or_create()?;
+    let root = std::path::PathBuf::from(&loaded.paths.root);
+    Ok(updates::apply(
+        &root,
+        &loaded.state.auth.base_url,
+        &product,
+    )?)
 }
 
 #[tauri::command]
