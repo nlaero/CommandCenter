@@ -30,6 +30,7 @@ import {
   validateSourceFields,
 } from "../lib/api";
 import { ensureLocationParams, locationSaveError } from "../lib/location";
+import { normalizeWebScannerUrl, webScannerUrlError } from "../lib/webScanner";
 import { blankFeed, feedsSaveError, normalizeSafetyParams } from "../lib/safety";
 import { LocationField } from "./LocationField";
 import { SafetyFeedsField } from "./SafetyFeedsField";
@@ -210,6 +211,9 @@ export function SettingsView({
       initial.enableCaptions = true;
       initial.feeds = [blankFeed()];
     }
+    if (typeId === "scanner.web") {
+      initial.enableCaptions = true;
+    }
     setParams(initial);
     setSecrets(
       typeId === "broadcastify.owner"
@@ -249,7 +253,12 @@ export function SettingsView({
                       kind: "warn",
                       text: "Nearby alerts use sources already set up, including Broadcastify Feed Owner. Each one keeps the county and state it covers. Audio starts muted, and captions stay on while the sound is off.",
                     }
-                  : null,
+                  : typeId === "scanner.web"
+                    ? {
+                        kind: "warn",
+                        text: "Plays a direct audio stream you are allowed to use. It starts muted. Captions are written on this computer while the sound is off. This is not the Feed Owner panel, and nearby alerts do not read it. A Broadcastify listen page or relay stays in Feed Owner.",
+                      }
+                    : null,
     );
   }
 
@@ -419,6 +428,13 @@ export function SettingsView({
           return;
         }
       }
+      if (adapter.typeId === "scanner.web") {
+        const scannerError = webScannerUrlError(String(params.url ?? ""));
+        if (scannerError) {
+          setMessage({ kind: "error", text: scannerError });
+          return;
+        }
+      }
       const readyParams = ensureLocationParams(adapter.fields, params);
       const validation = await validateSourceFields(required, readyParams, secretsProvided);
       if (!validation.ok) {
@@ -447,6 +463,10 @@ export function SettingsView({
       }
       if (adapter.typeId === "safety.nearby") {
         Object.assign(cleanedParams, normalizeSafetyParams(cleanedParams));
+      }
+      if (adapter.typeId === "scanner.web") {
+        cleanedParams.url = normalizeWebScannerUrl(String(cleanedParams.url ?? ""));
+        if (cleanedParams.enableCaptions === undefined) cleanedParams.enableCaptions = true;
       }
       const source: SourceConfig = {
         type: adapter.typeId,
@@ -558,7 +578,8 @@ export function SettingsView({
           type === "broadcastify.calls" ||
           type === "camera.http_image" ||
           type === "video.youtube" ||
-          type === "safety.nearby",
+          type === "safety.nearby" ||
+          type === "scanner.web",
       );
       // Match the single-source panel size so a weather or quake slot is not crushed.
       const layoutSize = hasQuake
@@ -1114,7 +1135,11 @@ function panelTitleFor(
     const label = typeof params.label === "string" ? params.label.trim() : "";
     if (label) return label;
   }
-  if (adapter.typeId === "camera.http_image" || adapter.typeId === "video.youtube") {
+  if (
+    adapter.typeId === "camera.http_image" ||
+    adapter.typeId === "video.youtube" ||
+    adapter.typeId === "scanner.web"
+  ) {
     const label = typeof params.label === "string" ? params.label.trim() : "";
     if (label) return label;
   }
@@ -1179,6 +1204,17 @@ function panelLayoutFor(
       h: 22,
       minW: 12,
       minH: 12,
+    };
+  }
+  if (typeId === "scanner.web") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 28,
+      h: 28,
+      minW: 16,
+      minH: 16,
     };
   }
   if (typeId === "camera.http_image" || typeId === "video.youtube") {

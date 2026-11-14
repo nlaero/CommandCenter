@@ -5,6 +5,7 @@ import type { SourceConfig } from "../types";
 import { BroadcastifyPanel } from "./BroadcastifyPanel";
 import { CallsPanel } from "./CallsPanel";
 import { CameraPanel } from "./CameraPanel";
+import { WebScannerPanel } from "./WebScannerPanel";
 import { SafetyPanel } from "./SafetyPanel";
 import { IncidentPanel } from "./IncidentPanel";
 import { QuakePanel } from "./QuakePanel";
@@ -59,6 +60,10 @@ export function SourceBody({ sourceId, source }: Props) {
 
   if (source.type === "camera.http_image" || source.type === "video.youtube") {
     return <CameraPanel source={source} />;
+  }
+
+  if (source.type === "scanner.web") {
+    return <WebScannerPanel sourceId={sourceId} source={source} />;
   }
 
   return (

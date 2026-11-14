@@ -1177,6 +1177,18 @@ a {
   max-height: 220px;
 }
 
+.scanner-panel .incident-detail {
+  min-height: 0;
+  overflow: auto;
+}
+
+.scanner-panel .incident-toolbar .incident-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rotate-panel {
   display: flex;
   flex-direction: column;
