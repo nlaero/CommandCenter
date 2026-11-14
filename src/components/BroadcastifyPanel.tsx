@@ -5,11 +5,15 @@ import {
   type CaptionResult,
   type CaptionSegment,
 } from "../lib/captions";
+import type { FeedCaptionLine } from "../lib/feedCaptions";
+import { captionsVisible } from "../lib/streamCaptions";
+import { useLiveFeedCaptions } from "../lib/useLiveFeedCaptions";
 import { CaptionCorrection, withCorrections } from "./LocalAiPanel";
 import { useAlerts } from "../lib/alerts";
 import { incidentsToBoardAlerts } from "../lib/boardAlerts";
 import { isPennHillsPreset, PENN_HILLS_FEED } from "../lib/broadcastifyPreset";
 import { fetchSourcePayload } from "../lib/api";
+import type { AiMemory } from "../lib/aiMemory";
 import type { Incident, SourceConfig, SourcePayload } from "../types";
 
 type Props = {
@@ -69,7 +73,7 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
-  const [showCaptions, setShowCaptions] = useState(() => captionsEnabled(source));
+  const [ccOn, setCcOn] = useState(false);
   const [captionCache, setCaptionCache] = useState<Record<string, CaptionResult>>({});
   const knownIds = useRef<Set<string>>(new Set());
   const primed = useRef(false);
@@ -101,7 +105,7 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
   }, [configuredDay]);
 
   useEffect(() => {
-    setShowCaptions(captionsOn);
+    if (!captionsOn) setCcOn(false);
   }, [captionsOn]);
 
   const selected = useMemo(
@@ -232,13 +236,13 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
           {payload ? ` · ${formatWhen(payload.fetchedAt)}` : null}
         </span>
         {captionsOn ? (
-          <label className="bcfy-cc-toggle" title="Closed captions (local / on-device preferred)">
+          <label className="bcfy-cc-toggle" title="Keep captions up after the sound is turned on">
             <input
               type="checkbox"
-              checked={showCaptions}
-              onChange={(e) => setShowCaptions(e.target.checked)}
+              checked={ccOn}
+              onChange={(e) => setCcOn(e.target.checked)}
             />
-            <span className={`bcfy-cc-badge${showCaptions ? " on" : ""}`}>CC</span>
+            <span className={`bcfy-cc-badge${ccOn ? " on" : ""}`}>CC</span>
           </label>
         ) : null}
         <label className="bcfy-day">
@@ -350,10 +354,18 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
           <div className="incident-detail">
             {selected ? (
               <ArchiveDetail
+                sourceId={sourceId}
+                feedLabel={
+                  isPennHillsPreset(source.params)
+                    ? PENN_HILLS_FEED.name
+                    : (feed?.descr ?? "Broadcastify")
+                }
+                feedId={feed?.feedId ?? ""}
                 item={selected}
                 feedOnline={feed?.online === true}
                 onPickDay={pickDayFromItem}
-                captionsEnabled={captionsOn && showCaptions}
+                captionsEnabled={captionsOn}
+                ccOn={ccOn}
                 caption={captionCache[selected.id] ?? null}
                 onCaption={(next) =>
                   setCaptionCache((cache) => ({ ...cache, [selected.id]: next }))
@@ -381,38 +393,66 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
 }
 
 function ArchiveDetail({
+  sourceId,
+  feedLabel,
+  feedId,
   item,
   feedOnline,
   onPickDay,
   captionsEnabled,
+  ccOn,
   caption,
   onCaption,
   onTranscribe,
 }: {
+  sourceId: string;
+  feedLabel: string;
+  feedId: string;
   item: Incident;
   feedOnline: boolean;
   onPickDay: (item: Incident) => void;
   captionsEnabled: boolean;
+  ccOn: boolean;
   caption: CaptionResult | null;
   onCaption: (caption: CaptionResult) => void;
   onTranscribe: () => void;
 }) {
+  const live = item.category === "feed-status" && feedOnline && Boolean(item.audioUrl);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [timeSec, setTimeSec] = useState(0);
   const [muted, setMuted] = useState(true);
+  const [playing, setPlaying] = useState(false);
+  const showCaptionUi = captionsEnabled && captionsVisible(muted, ccOn);
   const active = caption ? activeCaptionAt(caption.segments, timeSec) : null;
+  const liveCaptions = useLiveFeedCaptions({
+    active: live && captionsEnabled,
+    playing,
+    sourceId,
+    label: feedLabel,
+    feedId,
+    streamUrl: live ? (item.audioUrl ?? "") : "",
+    durationSec: () => audioRef.current?.duration,
+  });
 
   // Global product rule: audio starts muted on open (each clip selection).
   useEffect(() => {
     setMuted(true);
     setTimeSec(0);
+    setPlaying(false);
     const el = audioRef.current;
-    if (el) {
-      el.muted = true;
-      el.pause();
-      el.currentTime = 0;
+    if (!el) return;
+    el.muted = true;
+    if (live) {
+      void el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      return;
     }
-  }, [item.id, item.audioUrl]);
+    el.pause();
+    try {
+      el.currentTime = 0;
+    } catch {
+      // The element may not have metadata yet.
+    }
+  }, [item.id, item.audioUrl, live]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.muted = muted;
@@ -494,9 +534,14 @@ function ArchiveDetail({
           <audio
             ref={audioRef}
             controls
+            autoPlay={live}
             preload="none"
             muted={muted}
             src={item.audioUrl}
+            onPlay={() => setPlaying(true)}
+            onPlaying={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onEnded={() => setPlaying(false)}
             onVolumeChange={(e) => {
               // Keep React state in sync if the user toggles mute via native controls.
               setMuted(e.currentTarget.muted || e.currentTarget.volume === 0);
@@ -509,13 +554,23 @@ function ArchiveDetail({
           </audio>
           <p className="bcfy-audio-hint">
             {item.category === "feed-status"
-              ? "Starts muted. This URL is the relay and mount from the Feed Owner API."
+              ? "Starts muted. Captions keep running while the sound is off. This URL is the relay and mount from the Feed Owner API."
               : "Starts muted on open — unmute explicitly to hear audio."}
           </p>
         </div>
       ) : null}
 
-      {captionsEnabled && item.audioUrl && (item.category !== "feed-status" || feedOnline) ? (
+      {showCaptionUi && live ? (
+        <LiveCaptions
+          lines={liveCaptions.lines}
+          status={liveCaptions.status}
+          running={liveCaptions.running}
+          playing={playing}
+          onCorrect={liveCaptions.applyCorrection}
+        />
+      ) : null}
+
+      {showCaptionUi && !live && item.audioUrl && (item.category !== "feed-status" || feedOnline) ? (
         <CaptionsPane
           caption={caption}
           active={active}
@@ -611,6 +666,96 @@ function CaptionsPane({
         />
       ) : null}
     </div>
+  );
+}
+
+function LiveCaptions({
+  lines,
+  status,
+  running,
+  playing,
+  onCorrect,
+}: {
+  lines: FeedCaptionLine[];
+  status: string | null;
+  running: boolean;
+  playing: boolean;
+  onCorrect: (memory: AiMemory) => void;
+}) {
+  const latest = lines[lines.length - 1] ?? null;
+  const empty =
+    status && status !== "Creating captions on this device…"
+      ? status
+      : running || playing
+        ? "Creating captions on this device…"
+        : "Starting the feed…";
+  return (
+    <div className="bcfy-captions" aria-label="Captions">
+      <div className="bcfy-captions-head">
+        <div className="section-label" style={{ margin: 0 }}>
+          Live captions
+        </div>
+      </div>
+      <p className="bcfy-captions-note">
+        Heard on this computer while the feed plays. Earlier lines stay in the list. A fix stays on
+        this computer.
+      </p>
+      {latest ? (
+        <div className="bcfy-caption-live" aria-live="polite">
+          {latest.text}
+        </div>
+      ) : (
+        <div className="bcfy-caption-live is-empty" aria-live="polite">
+          {empty}
+        </div>
+      )}
+      {latest && status && status !== "Creating captions on this device…" ? (
+        <p className="bcfy-captions-note">{status}</p>
+      ) : null}
+      <CaptionHistory lines={lines} activeId={latest?.id ?? null} />
+      {latest ? <CaptionCorrection suggestion={latest.text} onSaved={onCorrect} /> : null}
+    </div>
+  );
+}
+
+function CaptionHistory({ lines, activeId }: { lines: FeedCaptionLine[]; activeId: string | null }) {
+  const ref = useRef<HTMLOListElement | null>(null);
+  const [follow, setFollow] = useState(true);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !follow) return;
+    el.scrollTop = el.scrollHeight;
+  }, [lines, follow]);
+
+  if (!lines.length) return null;
+  return (
+    <>
+      <ol
+        ref={ref}
+        className="bcfy-caption-list bcfy-caption-history"
+        aria-label="Earlier captions"
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+          setFollow(distance < 24);
+        }}
+      >
+        {lines.map((line) => (
+          <li key={line.id} className={line.id === activeId ? "is-active" : undefined}>
+            <span className="mono">{formatClock(line.startSec)}</span>
+            <span>{line.text}</span>
+          </li>
+        ))}
+      </ol>
+      {follow ? null : (
+        <div className="form-actions">
+          <button type="button" className="btn btn-ghost" onClick={() => setFollow(true)}>
+            Latest
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 

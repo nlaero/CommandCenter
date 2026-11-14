@@ -1,15 +1,19 @@
 import { useEffect, useState } from "react";
+import { isPennHillsPreset, PENN_HILLS_FEED } from "../lib/broadcastifyPreset";
+import { broadcastifyAudioInputs, parseFeedOwnerInputId } from "../lib/feedCaptions";
 import { listAudioInputs } from "../lib/safetyListen";
-import { blankFeed, readFeeds, US_STATES, type SafetyFeed } from "../lib/safety";
+import { blankFeed, canonicalState, readFeeds, US_STATES, type SafetyFeed } from "../lib/safety";
 
 type Props = {
   params: Record<string, unknown>;
+  sources?: Record<string, { type: string; params?: Record<string, unknown> } | undefined>;
   disabled?: boolean;
   onChange: (params: Record<string, unknown>) => void;
 };
 
-export function SafetyFeedsField({ params, disabled, onChange }: Props) {
+export function SafetyFeedsField({ params, sources = {}, disabled, onChange }: Props) {
   const feeds = readFeeds(params.feeds);
+  const ownerInputs = broadcastifyAudioInputs(sources);
   const [devices, setDevices] = useState<{ id: string; label: string }[]>([
     { id: "default", label: "Default input" },
   ]);
@@ -110,23 +114,44 @@ export function SafetyFeedsField({ params, disabled, onChange }: Props) {
                   disabled={disabled}
                   onChange={(event) => {
                     const deviceId = event.target.value;
-                    const device = devices.find((item) => item.id === deviceId);
-                    update(feed.id, {
+                    const device =
+                      devices.find((item) => item.id === deviceId) ??
+                      ownerInputs.find((item) => item.id === deviceId);
+                    const patch: Partial<SafetyFeed> = {
                       deviceId,
                       deviceLabel: device?.label ?? feed.deviceLabel,
-                    });
+                    };
+                    const ownerId = parseFeedOwnerInputId(deviceId);
+                    const owner = ownerId ? sources[ownerId] : undefined;
+                    if (owner && isPennHillsPreset(owner.params ?? {})) {
+                      if (!feed.county.trim()) patch.county = PENN_HILLS_FEED.county;
+                      if (!canonicalState(feed.state)) patch.state = "PA";
+                    }
+                    update(feed.id, patch);
                   }}
                 >
-                  {devices.some((device) => device.id === feed.deviceId) ? null : (
+                  {devices.some((device) => device.id === feed.deviceId) ||
+                  ownerInputs.some((device) => device.id === feed.deviceId) ? null : (
                     <option value={feed.deviceId}>
                       {feed.deviceLabel || feed.deviceId || "Saved input"}
                     </option>
                   )}
-                  {devices.map((device) => (
-                    <option key={device.id} value={device.id}>
-                      {device.label}
-                    </option>
-                  ))}
+                  <optgroup label="This computer">
+                    {devices.map((device) => (
+                      <option key={device.id} value={device.id}>
+                        {device.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {ownerInputs.length ? (
+                    <optgroup label="Feed Owner captions">
+                      {ownerInputs.map((device) => (
+                        <option key={device.id} value={device.id}>
+                          {device.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
                 </select>
                 <button
                   type="button"
@@ -139,7 +164,11 @@ export function SafetyFeedsField({ params, disabled, onChange }: Props) {
                   Refresh
                 </button>
               </div>
-              <div className="help">Recorded on this computer. Playback starts muted.</div>
+              <div className="help">
+                A microphone on this computer, or a Broadcastify Feed Owner source already added.
+                That choice reads the panel's live captions. The relay address is kept with them
+                and has no password. Playback starts muted.
+              </div>
             </div>
           )}
           <div className="safety-feed-grid">

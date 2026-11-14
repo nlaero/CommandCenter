@@ -1,4 +1,5 @@
 import type { CaptionSegment } from "./captions";
+import { parseFeedOwnerInputId, takeFeedCaptionWindows } from "./feedCaptions";
 import { findLocations } from "./location";
 import {
   choosePlacement,
@@ -81,6 +82,8 @@ export function listensOnDevice(): boolean {
 }
 
 export async function listenSafetyFeed(feed: SafetyFeed): Promise<SafetyWindow[]> {
+  const ownerId = feed.kind === "audio-in" ? parseFeedOwnerInputId(feed.deviceId) : null;
+  if (ownerId) return feedOwnerWindows(feed.id, ownerId);
   if (!isTauri()) return browserPreview(feed);
   const { invoke } = await import("@tauri-apps/api/core");
   const raw = await invoke<RawWindow>("listen_safety_feed", {
@@ -120,6 +123,35 @@ export async function listenSafetyFeed(feed: SafetyFeed): Promise<SafetyWindow[]
       audioUrl,
     },
   ];
+}
+
+/** Empty when the panel is open and no new caption window has arrived. */
+function feedOwnerWindows(consumerId: string, sourceId: string): SafetyWindow[] {
+  const taken = takeFeedCaptionWindows(consumerId, sourceId);
+  if (taken.state === "idle") return [];
+  if (taken.state === "closed" || !taken.windows.length) {
+    return [
+      {
+        engine: "local-whisper",
+        status: "empty",
+        note: taken.note,
+        segments: [],
+        audioUrl: null,
+      },
+    ];
+  }
+  return taken.windows.map((window) => ({
+    engine: "local-whisper" as const,
+    status: "ready" as const,
+    note: taken.note,
+    segments: window.lines.map((line) => ({
+      id: line.id,
+      startSec: line.startSec,
+      endSec: line.endSec,
+      text: line.text,
+    })),
+    audioUrl: taken.streamUrl || null,
+  }));
 }
 
 function browserPreview(feed: SafetyFeed): SafetyWindow[] {

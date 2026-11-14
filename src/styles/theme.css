@@ -1150,6 +1150,10 @@ a {
   color: var(--cc-text);
 }
 
+.bcfy-caption-history {
+  max-height: 220px;
+}
+
 .rotate-panel {
   display: flex;
   flex-direction: column;

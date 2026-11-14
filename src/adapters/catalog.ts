@@ -240,7 +240,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     category: "product",
     name: "Broadcastify (Feed Owner)",
     description:
-      "Your uploaded feed via the Feed Owner API. Penn Hills / Plum Police Dispatch is filled in. Live status, relay audio, and personal-use archives.",
+      "Your uploaded feed via the Feed Owner API. Penn Hills / Plum Police Dispatch is filled in. Live status, relay audio, and personal-use archives. The live feed starts muted and shows captions while it plays, including while the sound is off. Earlier lines stay in a scrolling list.",
     defaultWidget: "broadcastify",
     defaultRefresh: "1m",
     fields: [
@@ -283,7 +283,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Captions / transcription",
         kind: "boolean",
         required: false,
-        help: "Required for any audio source. Starts muted. Uses the Tiny English model from Settings → Local AI when it is installed on this computer.",
+        help: "On by default. The live feed is captioned on this computer while it plays, including while the sound is muted. A wrong line can be corrected here, and that fix stays on this computer. Nearby public safety can select this feed as an audio input and read those captions.",
       },
       {
         key: "secret:broadcastify.username",
