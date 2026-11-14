@@ -128,7 +128,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     category: "product",
     name: "Public / HTTP camera",
     description:
-      "An image, MP4/WebM file, or HLS playlist (.m3u8) you are allowed to view. Plays in the panel, muted until you turn sound on.",
+      "An image, MP4/WebM file, or HLS playlist (.m3u8) you are allowed to view. Plays in the panel, muted until you turn sound on. If the stream has no captions, Command Center writes them on this computer and shows them while the sound is muted.",
     defaultWidget: "camera",
     defaultRefresh: "30s",
     fields: [
@@ -138,7 +138,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         kind: "url",
         required: true,
         placeholder: "https://…/playlist.m3u8",
-        help: "Still image, video file, or HLS playlist. A YouTube link plays here too, or use YouTube Live.",
+        help: "Still image, video file, or HLS playlist. Captions in the stream are used when they exist. Otherwise Tiny English transcribes the audio here. A YouTube link plays here too, or use YouTube Live.",
       },
       {
         key: "label",
@@ -161,7 +161,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     category: "product",
     name: "YouTube Live",
     description:
-      "A YouTube live stream or video. Paste a watch, live, share, or youtu.be link. It plays in the panel, muted, with the stream's captions when they exist.",
+      "A YouTube live stream or video. Paste a watch, live, share, or youtu.be link. It plays in the panel, muted, with YouTube's own captions while the sound is off. The audio is not downloaded.",
     defaultWidget: "video",
     fields: [
       {

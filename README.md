@@ -11,9 +11,9 @@ Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty boa
 Anything that plays audio:
 
 1. Starts **muted** (user unmutes).
-2. Supports closed captions (on-device transcription preferred for personal archives).
+2. Supports closed captions. They show on their own while the sound is muted. CC is a separate control that keeps them up after you turn the sound on.
 
-Broadcastify Feed Owner already follows this (muted players + Settings captions / panel CC). Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. Their captions are the ones in the stream (YouTube's CC, or HLS caption tracks). They are not uploaded. Do not ship new audio playback without both mute-default and CC.
+Broadcastify Feed Owner already follows this (muted players + Settings captions / panel CC). Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
 
 ## Requirements
 
@@ -180,7 +180,7 @@ Public / HTTP camera plays the link in the panel. A still image refreshes on the
 
 YouTube Live is its own source. Paste a watch link, a youtu.be link, a `/live/…` link, or a channel live URL (`/@name/live` or `/channel/UC…/live`). Same panel: picture, label, muted until you turn sound on.
 
-CC uses captions that are already in the stream. If an HLS link has none, the button says so. RTSP and USB cameras still need a native player.
+Captions already in the stream are used when they exist (HLS WebVTT or CEA-708, or YouTube's own captions). A camera or file with no caption track is transcribed here with Tiny English from Settings → Local AI. The lines show while the panel is muted. Turn the sound on and they hide, unless CC is on. CC does not have to be pressed for the muted case. YouTube audio is not downloaded for this. Preparing the audio for the local model uses ffmpeg when it is on the computer, and otherwise decodes AAC, MP3, and MP4 here. RTSP and USB cameras still need a native player.
 
 ## Timed panel rotation
 

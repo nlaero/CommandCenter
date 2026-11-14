@@ -346,6 +346,19 @@ pub fn set_edit_mode(enabled: bool) -> Result<AppState, CommandError> {
     Ok(loaded.state)
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscribeMediaArgs {
+    pub source_url: String,
+    pub clip_id: String,
+    #[serde(default)]
+    pub timeline_start: f64,
+    #[serde(default)]
+    pub seek_sec: f64,
+    #[serde(default)]
+    pub duration_sec: f64,
+}
+
 /// Transcribe on this computer. Uses the installed model when Settings has one.
 /// Otherwise returns a short placeholder so the caption UI still has something to show.
 #[tauri::command]
@@ -387,6 +400,89 @@ pub fn transcribe_audio_local(args: TranscribeAudioArgs) -> Result<CaptionResult
         }),
         Err(local_ai::TranscribeError::NotInstalled) => Ok(stub_captions(url, &clip)),
         Err(local_ai::TranscribeError::Message(message)) => Err(CommandError { message }),
+    }
+}
+
+/// Transcribe a short camera or file slice on this computer.
+/// YouTube URLs are rejected. A missing model does not invent caption text.
+#[tauri::command]
+pub fn transcribe_media_local(args: TranscribeMediaArgs) -> Result<CaptionResult, CommandError> {
+    let url = args.source_url.trim();
+    if url.is_empty() {
+        return Err(CommandError {
+            message: "sourceUrl required for local transcription".into(),
+        });
+    }
+    if local_ai::caption_download_blocked(url) {
+        return Err(CommandError {
+            message: "YouTube audio is not downloaded. This panel uses YouTube's captions.".into(),
+        });
+    }
+    let paths = config::resolve_paths()?;
+    let clip = if args.clip_id.trim().is_empty() {
+        "clip".to_string()
+    } else {
+        args.clip_id.trim().to_string()
+    };
+    match local_ai::transcribe_media(
+        std::path::Path::new(&paths.root),
+        local_ai::MediaTranscriptRequest {
+            source_url: url,
+            timeline_start: args.timeline_start,
+            seek_sec: args.seek_sec,
+            duration_sec: args.duration_sec,
+        },
+    ) {
+        Ok((segments, note)) => Ok(caption_result(
+            url,
+            &clip,
+            "ready",
+            &note,
+            segments_from(segments, &clip),
+        )),
+        Err(local_ai::TranscribeError::NotInstalled) => Ok(needs_model_captions(url, &clip)),
+        Err(local_ai::TranscribeError::Message(message)) => Err(CommandError { message }),
+    }
+}
+
+fn segments_from(segments: Vec<local_ai::TranscriptSegment>, clip: &str) -> Vec<CaptionSegment> {
+    segments
+        .into_iter()
+        .enumerate()
+        .map(|(index, segment)| CaptionSegment {
+            id: format!("{clip}-seg-{index}"),
+            start_sec: segment.start_sec,
+            end_sec: segment.end_sec,
+            text: segment.text,
+        })
+        .collect()
+}
+
+fn caption_result(
+    url: &str,
+    _clip: &str,
+    status: &str,
+    note: &str,
+    segments: Vec<CaptionSegment>,
+) -> CaptionResult {
+    CaptionResult {
+        engine: "local-whisper".into(),
+        status: status.into(),
+        source_url: url.to_string(),
+        segments,
+        note: note.to_string(),
+        generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    }
+}
+
+fn needs_model_captions(url: &str, _clip: &str) -> CaptionResult {
+    CaptionResult {
+        engine: "local-whisper".into(),
+        status: "needs-model".into(),
+        source_url: url.to_string(),
+        segments: Vec::new(),
+        note: "Local AI is not installed. Settings → Local AI downloads Tiny English onto this computer. Audio stays here.".into(),
+        generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     }
 }
 

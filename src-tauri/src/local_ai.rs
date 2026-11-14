@@ -12,7 +12,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const MODEL_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin";
+const MODEL_URL: &str =
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin";
 const MODEL_SHA256: &str = "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f";
 const LINUX_RUNTIME_URL: &str =
     "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-ubuntu-x64.tar.gz";
@@ -124,12 +125,21 @@ pub fn remove(root: &Path) -> Result<LocalAiStatus, String> {
     Ok(status(root))
 }
 
-pub fn transcribe(root: &Path, source_url: &str) -> Result<(Vec<TranscriptSegment>, String), TranscribeError> {
+pub fn transcribe(
+    root: &Path,
+    source_url: &str,
+) -> Result<(Vec<TranscriptSegment>, String), TranscribeError> {
+    if caption_download_blocked(source_url) {
+        return Err(TranscribeError::Message(
+            "YouTube audio is not downloaded. This panel uses YouTube's captions.".into(),
+        ));
+    }
     let current = status(root);
     if !current.installed {
         return Err(TranscribeError::NotInstalled);
     }
-    let marker = read_marker(root).ok_or_else(|| TranscribeError::Message("Local AI is not installed.".into()))?;
+    let marker = read_marker(root)
+        .ok_or_else(|| TranscribeError::Message("Local AI is not installed.".into()))?;
     let audio = materialize_audio(source_url).map_err(TranscribeError::Message)?;
     let memory = ai_sync::load(root);
     let result = run_whisper(root, &marker, &audio.path, &memory);
@@ -181,9 +191,11 @@ fn install_with(root: &Path, plan: &InstallPlan) -> Result<LocalAiStatus, String
     let ai = root.join("ai");
     let staging = ai.join(".staging");
     if staging.exists() {
-        fs::remove_dir_all(&staging).map_err(|err| format!("could not prepare the install: {err}"))?;
+        fs::remove_dir_all(&staging)
+            .map_err(|err| format!("could not prepare the install: {err}"))?;
     }
-    fs::create_dir_all(staging.join("models")).map_err(|err| format!("could not prepare the install: {err}"))?;
+    fs::create_dir_all(staging.join("models"))
+        .map_err(|err| format!("could not prepare the install: {err}"))?;
     let model_file = staging.join("models").join("ggml-tiny.en.bin");
     download(&plan.model, &model_file)?;
     let archive = staging.join(if plan.kind == ArchiveKind::TarGz {
@@ -205,11 +217,15 @@ fn install_with(root: &Path, plan: &InstallPlan) -> Result<LocalAiStatus, String
         fs::remove_dir_all(&final_runtime).map_err(|err| err.to_string())?;
     }
     fs::create_dir_all(&ai).map_err(|err| err.to_string())?;
-    fs::rename(staging.join("models"), &final_models).map_err(|err| format!("could not place the model: {err}"))?;
-    fs::rename(&runtime_dir, &final_runtime).map_err(|err| format!("could not place the runtime: {err}"))?;
+    fs::rename(staging.join("models"), &final_models)
+        .map_err(|err| format!("could not place the model: {err}"))?;
+    fs::rename(&runtime_dir, &final_runtime)
+        .map_err(|err| format!("could not place the runtime: {err}"))?;
     let _ = fs::remove_dir_all(&staging);
     let model_rel = path_rel(root, &final_models.join("ggml-tiny.en.bin"))?;
-    let model_bytes = fs::metadata(root.join(&model_rel)).map(|meta| meta.len()).unwrap_or(0);
+    let model_bytes = fs::metadata(root.join(&model_rel))
+        .map(|meta| meta.len())
+        .unwrap_or(0);
     let runtime_rel = runtime_suffix(&binary, &runtime_dir);
     let marker = Marker {
         model_id: plan.model_id.into(),
@@ -219,7 +235,8 @@ fn install_with(root: &Path, plan: &InstallPlan) -> Result<LocalAiStatus, String
         runtime_path: format!("ai/runtime/{runtime_rel}"),
     };
     let raw = serde_json::to_string_pretty(&marker).map_err(|err| err.to_string())?;
-    fs::write(ai.join("install.json"), raw).map_err(|err| format!("could not record the install: {err}"))?;
+    fs::write(ai.join("install.json"), raw)
+        .map_err(|err| format!("could not record the install: {err}"))?;
     let current = status(root);
     if !current.installed {
         return Err("The install finished but the model is not where it should be.".into());
@@ -238,7 +255,9 @@ fn runtime_suffix(binary: &Path, runtime_dir: &Path) -> String {
 }
 
 fn path_rel(root: &Path, path: &Path) -> Result<String, String> {
-    let rel = path.strip_prefix(root).map_err(|_| "install path escaped the config directory".to_string())?;
+    let rel = path
+        .strip_prefix(root)
+        .map_err(|_| "install path escaped the config directory".to_string())?;
     Ok(rel.to_string_lossy().replace('\\', "/"))
 }
 
@@ -248,7 +267,9 @@ fn download(fetch: &Fetch, dest: &Path) -> Result<(), String> {
     }
     let partial = dest.with_extension(format!(
         "{}.partial",
-        dest.extension().and_then(|ext| ext.to_str()).unwrap_or("bin")
+        dest.extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("bin")
     ));
     let client = http_client()?;
     let mut response = client
@@ -261,7 +282,8 @@ fn download(fetch: &Fetch, dest: &Path) -> Result<(), String> {
             response.status()
         ));
     }
-    let mut file = File::create(&partial).map_err(|err| format!("could not write the download: {err}"))?;
+    let mut file =
+        File::create(&partial).map_err(|err| format!("could not write the download: {err}"))?;
     let mut hasher = Sha256::new();
     let mut total = 0u64;
     let mut buf = [0u8; 64 * 1024];
@@ -342,7 +364,10 @@ fn extract(archive: &Path, dest: &Path, kind: ArchiveKind) -> Result<(), String>
 fn find_binary(dir: &Path) -> Result<PathBuf, String> {
     let mut found = None;
     visit(dir, &mut |path| {
-        let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
         if name == "whisper-cli" || name == "whisper-cli.exe" {
             found = Some(path.to_path_buf());
         }
@@ -368,7 +393,9 @@ fn make_executable(path: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(path).map_err(|err| err.to_string())?.permissions();
+        let mut perms = fs::metadata(path)
+            .map_err(|err| err.to_string())?
+            .permissions();
         perms.set_mode(perms.mode() | 0o755);
         fs::set_permissions(path, perms).map_err(|err| err.to_string())?;
     }
@@ -396,11 +423,13 @@ impl Drop for TempAudio {
 
 fn materialize_audio(source_url: &str) -> Result<TempAudio, String> {
     if source_url.starts_with("file:") {
-        let parsed = url::Url::parse(source_url).map_err(|_| "That audio file URL is not valid.".to_string())?;
+        let parsed = url::Url::parse(source_url)
+            .map_err(|_| "That audio file URL is not valid.".to_string())?;
         let path = parsed
             .to_file_path()
             .map_err(|_| "That audio file URL is not valid.".to_string())?;
-        let meta = fs::metadata(&path).map_err(|_| "Could not read that audio file.".to_string())?;
+        let meta =
+            fs::metadata(&path).map_err(|_| "Could not read that audio file.".to_string())?;
         if !meta.is_file() || meta.len() > MAX_AUDIO_BYTES {
             return Err("That audio file is missing or larger than 20 MB.".into());
         }
@@ -420,7 +449,9 @@ fn materialize_audio(source_url: &str) -> Result<TempAudio, String> {
     let mut bytes = Vec::new();
     let mut buf = [0u8; 64 * 1024];
     loop {
-        let read = response.read(&mut buf).map_err(|_| "The audio download stopped.".to_string())?;
+        let read = response
+            .read(&mut buf)
+            .map_err(|_| "The audio download stopped.".to_string())?;
         if read == 0 {
             break;
         }
@@ -452,10 +483,18 @@ fn looks_like_audio(bytes: &[u8]) -> bool {
         return true;
     }
     let head = String::from_utf8_lossy(&bytes[..bytes.len().min(12)]).to_ascii_lowercase();
-    !(head.starts_with("<!") || head.starts_with("<html") || head.starts_with("{") || head.starts_with("["))
+    !(head.starts_with("<!")
+        || head.starts_with("<html")
+        || head.starts_with("{")
+        || head.starts_with("["))
 }
 
-fn run_whisper(root: &Path, marker: &Marker, audio: &Path, memory: &AiMemory) -> Result<Vec<TranscriptSegment>, String> {
+fn run_whisper(
+    root: &Path,
+    marker: &Marker,
+    audio: &Path,
+    memory: &AiMemory,
+) -> Result<Vec<TranscriptSegment>, String> {
     let runtime = root.join(&marker.runtime_path);
     let model = root.join(&marker.model_path);
     let stamp = unique_stamp();
@@ -479,7 +518,9 @@ fn run_whisper(root: &Path, marker: &Marker, audio: &Path, memory: &AiMemory) ->
     if let Some(dir) = runtime.parent() {
         cmd.current_dir(dir);
     }
-    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
     let mut child = cmd
         .spawn()
         .map_err(|err| format!("could not start the local model: {err}"))?;
@@ -516,7 +557,8 @@ fn run_whisper(root: &Path, marker: &Marker, audio: &Path, memory: &AiMemory) ->
             format!("The local model could not transcribe that clip. {trimmed}")
         });
     }
-    let raw = fs::read_to_string(&json_path).map_err(|_| "The local model did not write a transcript.".to_string())?;
+    let raw = fs::read_to_string(&json_path)
+        .map_err(|_| "The local model did not write a transcript.".to_string())?;
     let _ = fs::remove_file(&json_path);
     let mut segments = parse_whisper_json(&raw)?;
     for segment in &mut segments {
@@ -569,6 +611,398 @@ fn parse_whisper_json(raw: &str) -> Result<Vec<TranscriptSegment>, String> {
     Ok(segments)
 }
 
+pub struct MediaTranscriptRequest<'a> {
+    pub source_url: &'a str,
+    pub timeline_start: f64,
+    pub seek_sec: f64,
+    pub duration_sec: f64,
+}
+
+/// True for YouTube and its media hosts. Captioning must not download that audio.
+pub fn caption_download_blocked(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    let host = parsed
+        .host_str()
+        .unwrap_or("")
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    host == "youtu.be"
+        || host.ends_with(".youtu.be")
+        || host == "youtube.com"
+        || host.ends_with(".youtube.com")
+        || host == "youtube-nocookie.com"
+        || host.ends_with(".youtube-nocookie.com")
+        || host == "googlevideo.com"
+        || host.ends_with(".googlevideo.com")
+        || host == "youtube.googleapis.com"
+        || host.ends_with(".youtube.googleapis.com")
+}
+
+/// Transcribe one short slice on this computer. `timeline_start` is added to
+/// every timestamp so the words line up with playback. Audio is not uploaded.
+pub fn transcribe_media(
+    root: &Path,
+    request: MediaTranscriptRequest<'_>,
+) -> Result<(Vec<TranscriptSegment>, String), TranscribeError> {
+    if caption_download_blocked(request.source_url) {
+        return Err(TranscribeError::Message(
+            "YouTube audio is not downloaded. This panel uses YouTube's captions.".into(),
+        ));
+    }
+    if !status(root).installed {
+        return Err(TranscribeError::NotInstalled);
+    }
+    let marker = read_marker(root)
+        .ok_or_else(|| TranscribeError::Message("Local AI is not installed.".into()))?;
+    let duration = if request.duration_sec <= 0.0 {
+        30.0
+    } else {
+        request.duration_sec.clamp(1.0, 30.0)
+    };
+    let seek = request.seek_sec.max(0.0);
+    let audio = prepare_whisper_audio(request.source_url, seek, duration)
+        .map_err(TranscribeError::Message)?;
+    let memory = ai_sync::load(root);
+    let mut segments = match run_whisper(root, &marker, &audio.path, &memory) {
+        Ok(segments) => segments,
+        Err(err) if err.contains("did not return any words") => Vec::new(),
+        Err(err) => return Err(TranscribeError::Message(err)),
+    };
+    drop(audio);
+    if request.timeline_start != 0.0 {
+        for segment in &mut segments {
+            segment.start_sec += request.timeline_start;
+            segment.end_sec += request.timeline_start;
+        }
+    }
+    let note = format!(
+        "Transcribed on this computer with {}. Audio was not uploaded.",
+        marker.model_label
+    );
+    Ok((segments, note))
+}
+
+fn prepare_whisper_audio(source_url: &str, seek: f64, duration: f64) -> Result<TempAudio, String> {
+    if seek <= 0.05 {
+        if let Some(audio) = existing_whisper_wav(source_url) {
+            return Ok(audio);
+        }
+    }
+    match ffmpeg_to_wav(source_url, seek, duration) {
+        Ok(audio) => Ok(audio),
+        Err(err) if err == "FFMPEG_MISSING" => decode_to_whisper_wav(source_url, seek, duration),
+        Err(err) => match decode_to_whisper_wav(source_url, seek, duration) {
+            Ok(audio) => Ok(audio),
+            Err(decode_err) => Err(format!("{err} {decode_err}")),
+        },
+    }
+}
+
+fn existing_whisper_wav(source_url: &str) -> Option<TempAudio> {
+    let path = file_path(source_url)?;
+    let bytes = fs::read(&path).ok()?;
+    if !is_whisper_wav(&bytes) {
+        return None;
+    }
+    Some(TempAudio { path, owned: false })
+}
+
+fn is_whisper_wav(bytes: &[u8]) -> bool {
+    if bytes.len() < 44 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return false;
+    }
+    let mut index = 12usize;
+    while index + 8 <= bytes.len() {
+        let id = &bytes[index..index + 4];
+        let size =
+            u32::from_le_bytes(bytes[index + 4..index + 8].try_into().unwrap_or([0; 4])) as usize;
+        let data_at = index + 8;
+        if id == b"fmt " && size >= 16 && data_at + 16 <= bytes.len() {
+            let format =
+                u16::from_le_bytes(bytes[data_at..data_at + 2].try_into().unwrap_or([0; 2]));
+            let channels =
+                u16::from_le_bytes(bytes[data_at + 2..data_at + 4].try_into().unwrap_or([0; 2]));
+            let rate =
+                u32::from_le_bytes(bytes[data_at + 4..data_at + 8].try_into().unwrap_or([0; 4]));
+            let bits = u16::from_le_bytes(
+                bytes[data_at + 14..data_at + 16]
+                    .try_into()
+                    .unwrap_or([0; 2]),
+            );
+            return format == 1 && channels == 1 && rate == 16_000 && bits == 16;
+        }
+        let step = 8 + size + (size % 2);
+        if step == 0 {
+            return false;
+        }
+        index = index.saturating_add(step);
+    }
+    false
+}
+
+fn file_path(source_url: &str) -> Option<PathBuf> {
+    let parsed = url::Url::parse(source_url).ok()?;
+    if parsed.scheme() != "file" {
+        return None;
+    }
+    parsed.to_file_path().ok()
+}
+
+fn ffmpeg_input(source_url: &str) -> Result<String, String> {
+    if source_url.starts_with("file:") {
+        let path =
+            file_path(source_url).ok_or_else(|| "That audio file URL is not valid.".to_string())?;
+        return Ok(path.display().to_string());
+    }
+    if !(source_url.starts_with("https://") || source_url.starts_with("http://")) {
+        return Err("Audio must be a local file or an http(s) URL.".into());
+    }
+    Ok(source_url.to_string())
+}
+
+fn ffmpeg_to_wav(source_url: &str, seek: f64, duration: f64) -> Result<TempAudio, String> {
+    let dir = std::env::temp_dir().join(format!("command-center-ai-{}", unique_stamp()));
+    fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    let wav = dir.join("clip.wav");
+    let input = ffmpeg_input(source_url)?;
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-nostdin")
+        .arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-user_agent")
+        .arg("CommandCenter/0.1");
+    if seek > 0.05 {
+        cmd.arg("-ss").arg(format!("{seek:.3}"));
+    }
+    cmd.arg("-t")
+        .arg(format!("{:.3}", duration.clamp(1.0, 30.0)))
+        .arg("-i")
+        .arg(input)
+        .args(["-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-y"])
+        .arg(&wav)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    let output = match cmd.output() {
+        Ok(output) => output,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Err("FFMPEG_MISSING".into()),
+        Err(err) => return Err(format!("couldn't prepare audio for captions: {err}")),
+    };
+    if !output.status.success() || !wav.is_file() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        let _ = fs::remove_dir_all(&dir);
+        let trimmed = detail.chars().take(240).collect::<String>();
+        return Err(format!(
+            "couldn't prepare audio for captions. Audio was not uploaded. {trimmed}"
+        ));
+    }
+    Ok(TempAudio {
+        path: wav,
+        owned: true,
+    })
+}
+
+fn decode_to_whisper_wav(source_url: &str, seek: f64, duration: f64) -> Result<TempAudio, String> {
+    let bytes = load_audio_bytes(source_url)?;
+    let (rate, samples) = match decode_pcm(&bytes, &extension_of(source_url)) {
+        Ok(decoded) => decoded,
+        Err(err) => {
+            let stripped = strip_id3(&bytes);
+            if stripped.len() == bytes.len() {
+                return Err(err);
+            }
+            decode_pcm(stripped, &extension_of(source_url))?
+        }
+    };
+    let sliced = slice_pcm(&samples, rate, seek, duration);
+    if sliced.is_empty() {
+        return Err("That clip had no audio to caption.".into());
+    }
+    let pcm = resample_linear(&sliced, rate, 16_000);
+    let dir = std::env::temp_dir().join(format!("command-center-ai-{}", unique_stamp()));
+    fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    let wav = dir.join("clip.wav");
+    fs::write(&wav, write_pcm_wav(&pcm, 16_000)).map_err(|err| err.to_string())?;
+    Ok(TempAudio {
+        path: wav,
+        owned: true,
+    })
+}
+
+fn load_audio_bytes(source_url: &str) -> Result<Vec<u8>, String> {
+    if caption_download_blocked(source_url) {
+        return Err("YouTube audio is not downloaded. This panel uses YouTube's captions.".into());
+    }
+    if let Some(path) = file_path(source_url) {
+        let meta =
+            fs::metadata(&path).map_err(|_| "Could not read that audio file.".to_string())?;
+        if !meta.is_file() || meta.len() > MAX_AUDIO_BYTES {
+            return Err("That audio file is missing or larger than 20 MB.".into());
+        }
+        return fs::read(&path).map_err(|err| err.to_string());
+    }
+    if !(source_url.starts_with("https://") || source_url.starts_with("http://")) {
+        return Err("Audio must be a local file or an http(s) URL.".into());
+    }
+    crate::media::fetch_media(source_url, None)
+}
+
+fn extension_of(source_url: &str) -> String {
+    let path = url::Url::parse(source_url)
+        .map(|parsed| parsed.path().to_string())
+        .unwrap_or_default();
+    Path::new(&path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+}
+
+fn strip_id3(bytes: &[u8]) -> &[u8] {
+    if bytes.len() < 10 || &bytes[0..3] != b"ID3" {
+        return bytes;
+    }
+    let size = ((bytes[6] as usize & 0x7f) << 21)
+        | ((bytes[7] as usize & 0x7f) << 14)
+        | ((bytes[8] as usize & 0x7f) << 7)
+        | (bytes[9] as usize & 0x7f);
+    let start = 10 + size;
+    if start < bytes.len() {
+        &bytes[start..]
+    } else {
+        bytes
+    }
+}
+
+fn decode_pcm(bytes: &[u8], extension: &str) -> Result<(u32, Vec<f32>), String> {
+    use symphonia::core::audio::SampleBuffer;
+    use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+    use symphonia::core::errors::Error as AudioError;
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    use symphonia::core::probe::Hint;
+
+    let stream = MediaSourceStream::new(
+        Box::new(std::io::Cursor::new(bytes.to_vec())),
+        Default::default(),
+    );
+    let mut hint = Hint::new();
+    if !extension.is_empty() {
+        hint.with_extension(extension);
+    }
+    let probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            stream,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .map_err(|_| "couldn't read that audio on this computer.".to_string())?;
+    let mut format = probed.format;
+    let track = format
+        .tracks()
+        .iter()
+        .find(|track| track.codec_params.codec != CODEC_TYPE_NULL)
+        .cloned()
+        .ok_or_else(|| "That clip had no audio to caption.".to_string())?;
+    let track_id = track.id;
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &DecoderOptions::default())
+        .map_err(|_| "couldn't read that audio on this computer.".to_string())?;
+    let mut rate = track.codec_params.sample_rate.unwrap_or(16_000);
+    let mut mono = Vec::new();
+    loop {
+        let packet = match format.next_packet() {
+            Ok(packet) => packet,
+            Err(AudioError::ResetRequired) => {
+                decoder.reset();
+                continue;
+            }
+            Err(AudioError::IoError(_)) => break,
+            Err(_) => break,
+        };
+        if packet.track_id() != track_id {
+            continue;
+        }
+        let decoded = match decoder.decode(&packet) {
+            Ok(decoded) => decoded,
+            Err(AudioError::DecodeError(_)) => continue,
+            Err(_) => break,
+        };
+        rate = decoded.spec().rate;
+        let channels = decoded.spec().channels.count().max(1);
+        let mut buffer = SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+        buffer.copy_interleaved_ref(decoded);
+        if channels == 1 {
+            mono.extend_from_slice(buffer.samples());
+        } else {
+            for frame in buffer.samples().chunks(channels) {
+                let sum: f32 = frame.iter().copied().sum();
+                mono.push(sum / channels as f32);
+            }
+        }
+    }
+    if mono.is_empty() {
+        return Err("That clip had no audio to caption.".into());
+    }
+    Ok((rate, mono))
+}
+
+fn slice_pcm(samples: &[f32], rate: u32, seek: f64, duration: f64) -> Vec<f32> {
+    if samples.is_empty() || rate == 0 {
+        return Vec::new();
+    }
+    let start = ((seek.max(0.0) * f64::from(rate)) as usize).min(samples.len());
+    let end = (((seek.max(0.0) + duration.max(0.0)) * f64::from(rate)) as usize).min(samples.len());
+    samples[start..end].to_vec()
+}
+
+fn resample_linear(samples: &[f32], from: u32, to: u32) -> Vec<f32> {
+    if samples.is_empty() || from == 0 || to == 0 || from == to {
+        return samples.to_vec();
+    }
+    let ratio = f64::from(from) / f64::from(to);
+    let out_len = ((samples.len() as f64) / ratio).floor() as usize;
+    let mut out = Vec::with_capacity(out_len);
+    for index in 0..out_len {
+        let position = index as f64 * ratio;
+        let left = position.floor() as usize;
+        let frac = (position - left as f64) as f32;
+        let a = samples[left.min(samples.len() - 1)];
+        let b = samples[(left + 1).min(samples.len() - 1)];
+        out.push(a + (b - a) * frac);
+    }
+    out
+}
+
+fn write_pcm_wav(samples: &[f32], rate: u32) -> Vec<u8> {
+    let mut data = Vec::with_capacity(samples.len() * 2);
+    for sample in samples {
+        let value = (sample.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+        data.extend_from_slice(&value.to_le_bytes());
+    }
+    let data_len = data.len() as u32;
+    let mut out = Vec::with_capacity(44 + data.len());
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data_len).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&rate.to_le_bytes());
+    out.extend_from_slice(&(rate * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data_len.to_le_bytes());
+    out.extend_from_slice(&data);
+    out
+}
+
 fn unique_stamp() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -606,7 +1040,9 @@ mod tests {
             for conn in listener.incoming() {
                 let Ok(mut stream) = conn else { continue };
                 let mut buf = [0u8; 2048];
-                let Ok(n) = stream.read(&mut buf) else { continue };
+                let Ok(n) = stream.read(&mut buf) else {
+                    continue;
+                };
                 let req = String::from_utf8_lossy(&buf[..n]);
                 let path = req.split_whitespace().nth(1).unwrap_or("/");
                 let body = files.lock().unwrap().get(path).cloned().unwrap_or_default();
@@ -713,6 +1149,83 @@ mod tests {
         assert_eq!(segments[0].text, "Engine 12 responding");
         assert!(note.contains("not uploaded"));
         assert!((segments[0].end_sec - 1.8).abs() < 0.01);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn media_transcript_does_not_fetch_youtube() {
+        let root = std::env::temp_dir();
+        let err = transcribe_media(
+            &root,
+            MediaTranscriptRequest {
+                source_url: "https://www.youtube.com/watch?v=abcdefghijk",
+                timeline_start: 0.0,
+                seek_sec: 0.0,
+                duration_sec: 12.0,
+            },
+        )
+        .unwrap_err();
+        match err {
+            TranscribeError::Message(message) => {
+                assert!(message.contains("not downloaded"), "{message}")
+            }
+            TranscribeError::NotInstalled => {
+                panic!("youtube should be rejected before the model check")
+            }
+        }
+        assert!(caption_download_blocked("https://youtu.be/abcdefghijk"));
+        assert!(caption_download_blocked(
+            "https://rr3.googlevideo.com/videoplayback"
+        ));
+        assert!(!caption_download_blocked(
+            "https://cdn.example/hls/playlist_audio_en_1_00001.aac"
+        ));
+    }
+
+    #[test]
+    fn media_transcript_shifts_a_local_wav() {
+        let root = std::env::temp_dir().join(format!("cc-ai-media-{}", unique_stamp()));
+        fs::create_dir_all(root.join("ai/runtime")).unwrap();
+        fs::create_dir_all(root.join("ai/models")).unwrap();
+        let script = root.join("ai/runtime/whisper-cli");
+        fs::write(
+            &script,
+            "#!/bin/sh\nout=\nprev=\nfor arg in \"$@\"; do\n  if [ \"$prev\" = \"-of\" ]; then\n    out=$arg\n  fi\n  prev=$arg\ndone\nprintf '%s\\n' '{\"transcription\":[{\"offsets\":{\"from\":0,\"to\":1800},\"text\":\" engine twelve responding\"}]}' > \"$out.json\"\n",
+        )
+        .unwrap();
+        make_executable(&script).unwrap();
+        fs::write(root.join("ai/models/ggml-tiny.en.bin"), b"model").unwrap();
+        let marker = Marker {
+            model_id: "tiny.en".into(),
+            model_label: "Tiny English".into(),
+            model_bytes: 5,
+            model_path: "ai/models/ggml-tiny.en.bin".into(),
+            runtime_path: "ai/runtime/whisper-cli".into(),
+        };
+        fs::write(
+            root.join("ai/install.json"),
+            serde_json::to_string(&marker).unwrap(),
+        )
+        .unwrap();
+        let wav_path = root.join("tone.wav");
+        fs::write(&wav_path, write_pcm_wav(&[0.0; 1600], 16_000)).unwrap();
+        assert!(is_whisper_wav(&fs::read(&wav_path).unwrap()));
+        let url = url::Url::from_file_path(&wav_path).unwrap().to_string();
+        let (segments, note) = transcribe_media(
+            &root,
+            MediaTranscriptRequest {
+                source_url: &url,
+                timeline_start: 12.0,
+                seek_sec: 0.0,
+                duration_sec: 6.0,
+            },
+        )
+        .unwrap();
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].text, "engine twelve responding");
+        assert!((segments[0].start_sec - 12.0).abs() < 0.01);
+        assert!((segments[0].end_sec - 13.8).abs() < 0.01);
+        assert!(note.contains("not uploaded"));
         let _ = fs::remove_dir_all(&root);
     }
 }

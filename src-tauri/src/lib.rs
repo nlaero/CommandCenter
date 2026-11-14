@@ -45,6 +45,7 @@ pub fn run() {
             commands::validate_source_fields,
             commands::resolve_location,
             commands::transcribe_audio_local,
+            commands::transcribe_media_local,
             commands::auth_session,
             commands::auth_probe,
             commands::auth_save_settings,

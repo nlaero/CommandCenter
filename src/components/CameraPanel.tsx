@@ -7,6 +7,8 @@ import Hls, {
   type LoaderContext,
   type LoaderStats,
 } from "hls.js";
+import { captionsVisible } from "../lib/streamCaptions";
+import { useStreamCaptions } from "../lib/useStreamCaptions";
 import {
   classifyPlayback,
   fetchMedia,
@@ -205,8 +207,17 @@ async function probeKind(url: string, signal: AbortSignal): Promise<PlaybackKind
   }
 }
 
-function postYouTube(frame: HTMLIFrameElement, func: "mute" | "unMute" | "playVideo") {
-  frame.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args: [] }), "*");
+function postYouTube(frame: HTMLIFrameElement, func: string, args: unknown[] = []) {
+  frame.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "*");
+}
+
+function setYouTubeCaptions(frame: HTMLIFrameElement, on: boolean) {
+  if (on) {
+    postYouTube(frame, "loadModule", ["captions"]);
+    postYouTube(frame, "setOption", ["captions", "track", { languageCode: "en" }]);
+    return;
+  }
+  postYouTube(frame, "unloadModule", ["captions"]);
 }
 
 export function CameraPanel({ source }: Props) {
@@ -218,17 +229,17 @@ export function CameraPanel({ source }: Props) {
   const [kind, setKind] = useState<PlaybackKind | null>(null);
   const [embed, setEmbed] = useState<string | null>(null);
   const [muted, setMuted] = useState(true);
-  const [captionsOn, setCaptionsOn] = useState(source.type === "video.youtube");
-  const [captionNote, setCaptionNote] = useState<string | null>(null);
+  const [captionsOn, setCaptionsOn] = useState(false);
   const [imageToken, setImageToken] = useState(() => Date.now());
   const videoRef = useRef<HTMLVideoElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const showCaptions = captionsVisible(muted, captionsOn);
+  const generated = useStreamCaptions({ show: showCaptions, kind, url: rawUrl, videoRef });
 
   useEffect(() => {
     const controller = new AbortController();
     setPhase("loading");
     setStatus("Opening stream…");
-    setCaptionNote(null);
     setEmbed(null);
     setKind(null);
 
@@ -343,60 +354,24 @@ export function CameraPanel({ source }: Props) {
   useEffect(() => {
     if (videoRef.current) videoRef.current.muted = muted;
     const frame = frameRef.current;
-    if (!frame) return;
+    if (!frame || kind !== "youtube") return;
     postYouTube(frame, muted ? "mute" : "unMute");
     if (!muted) postYouTube(frame, "playVideo");
-  }, [muted, kind, embed]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || kind === "youtube") return;
-    const tracks = () =>
-      Array.from(video.textTracks).filter((track) => track.kind === "subtitles" || track.kind === "captions");
-    const apply = () => {
-      const usable = tracks();
-      if (!usable.length) return;
-      for (const track of usable) track.mode = captionsOn ? "showing" : "disabled";
-      setCaptionNote(null);
-    };
-    apply();
-    video.textTracks.addEventListener("addtrack", apply);
-    return () => video.textTracks.removeEventListener("addtrack", apply);
-  }, [captionsOn, kind, rawUrl]);
+    setYouTubeCaptions(frame, showCaptions);
+  }, [muted, showCaptions, kind, embed]);
 
   function toggleMute() {
     setMuted((current) => !current);
   }
 
   function toggleCaptions() {
-    if (kind === "youtube") {
-      setCaptionsOn((current) => !current);
-      setCaptionNote(null);
-      return;
-    }
-    const video = videoRef.current;
-    const usable = video
-      ? Array.from(video.textTracks).filter((track) => track.kind === "subtitles" || track.kind === "captions")
-      : [];
-    if (!usable.length) {
-      setCaptionsOn(false);
-      setCaptionNote("No captions in this stream.");
-      return;
-    }
-    setCaptionNote(null);
     setCaptionsOn((current) => !current);
   }
 
   const showMediaControls = kind === "hls" || kind === "file" || kind === "youtube";
   const badge =
     phase === "error" ? "Offline" : kind === "image" ? "Still" : kind === "file" ? "Video" : "Live";
-  const iframeSrc = embed
-    ? (() => {
-        const url = new URL(embed);
-        url.searchParams.set("cc_load_policy", captionsOn ? "1" : "0");
-        return url.toString();
-      })()
-    : null;
+  const iframeSrc = embed;
 
   return (
     <div className="camera-panel">
@@ -412,7 +387,10 @@ export function CameraPanel({ source }: Props) {
             referrerPolicy="origin"
             onLoad={() => {
               setPhase("playing");
-              if (frameRef.current) postYouTube(frameRef.current, muted ? "mute" : "unMute");
+              const frame = frameRef.current;
+              if (!frame) return;
+              postYouTube(frame, muted ? "mute" : "unMute");
+              setYouTubeCaptions(frame, captionsVisible(muted, captionsOn));
             }}
           />
         ) : null}
@@ -463,6 +441,7 @@ export function CameraPanel({ source }: Props) {
                 type="button"
                 className={`btn camera-btn${captionsOn ? " active" : ""}`}
                 aria-pressed={captionsOn}
+                title="Closed captions"
                 onClick={toggleCaptions}
               >
                 CC
@@ -475,7 +454,16 @@ export function CameraPanel({ source }: Props) {
             {status}
           </div>
         ) : null}
-        {phase === "playing" && captionNote ? <div className="camera-caption-note">{captionNote}</div> : null}
+        {showCaptions && generated.text ? (
+          <div className="camera-captions" aria-live="polite">
+            <span>{generated.text}</span>
+          </div>
+        ) : null}
+        {showCaptions && !generated.text && generated.status ? (
+          <div className="camera-caption-note" role="status">
+            {generated.status}
+          </div>
+        ) : null}
       </div>
     </div>
   );

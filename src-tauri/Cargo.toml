@@ -32,6 +32,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 rustls-native-certs = "0.8"
 rustls-pemfile = "2"
 webpki-roots = "1"
+symphonia = { version = "0.5", features = ["aac", "isomp4", "mp3", "wav"] }
 
 [profile.release]
 codegen-units = 1
