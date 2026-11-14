@@ -26,6 +26,12 @@ pub struct FeedStatus {
     pub bitrate: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mount: Option<String>,
+    /// Relay hostname from the owner payload (`Relays[0].host`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relay: Option<String>,
+    /// `http(s)://{relay}{mount}` for the owner's own player. No credentials in the URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lat: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -52,8 +58,10 @@ pub fn fetch(
 ) -> Result<FetchResult, super::SourceError> {
     let feed_id = param_str(source, "feedId")
         .or_else(|| override_str(overrides, "feedId"))
-        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
         .ok_or_else(|| super::SourceError::Message("feedId is required".into()))?;
+    validate_feed_id(&feed_id)?;
 
     let username = secrets
         .get("broadcastify.username")
@@ -240,6 +248,10 @@ pub fn parse_feed(body: &Value, fallback_id: &str) -> Result<FeedStatus, super::
     };
 
     let (lat, lon, county, state) = county_geo(row);
+    let mount = str_field(row, &["mount", "mountPoint"]);
+    let relays = relays_of(row);
+    let relay = relays.first().map(|r| r.host.clone());
+    let stream_url = listen_url(mount.as_deref(), &relays);
 
     Ok(FeedStatus {
         feed_id: id,
@@ -248,12 +260,66 @@ pub fn parse_feed(body: &Value, fallback_id: &str) -> Result<FeedStatus, super::
         descr: str_field(row, &["descr", "description", "name", "title"]),
         genre: str_field(row, &["genre", "category"]),
         bitrate: num_field(row, &["bitrate"]).map(|n| n as u32),
-        mount: str_field(row, &["mount"]),
+        mount,
+        relay,
+        stream_url,
         lat,
         lon,
         county,
         state,
     })
+}
+
+struct RelayHost {
+    host: String,
+    port: String,
+}
+
+fn relays_of(row: &Value) -> Vec<RelayHost> {
+    let Some(arr) = row
+        .get("Relays")
+        .or_else(|| row.get("relays"))
+        .and_then(|v| v.as_array())
+    else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|item| {
+            let host = str_field(item, &["host", "hostname", "server"])?;
+            let host = host.trim().to_string();
+            if host.is_empty() || host.contains('@') || host.contains('/') {
+                return None;
+            }
+            let port = str_field(item, &["port"]).unwrap_or_else(|| "80".into());
+            Some(RelayHost { host, port })
+        })
+        .collect()
+}
+
+/// Owner API listen URL: relay host + mount path. Credentials stay out of this string.
+fn listen_url(mount: Option<&str>, relays: &[RelayHost]) -> Option<String> {
+    let mount = mount?.trim();
+    if mount.is_empty() {
+        return None;
+    }
+    if mount.starts_with("https://") || mount.starts_with("http://") {
+        return Some(mount.to_string());
+    }
+    let path = if mount.starts_with('/') {
+        mount.to_string()
+    } else {
+        format!("/{mount}")
+    };
+    let relay = relays.first()?;
+    let port = relay.port.trim();
+    match port {
+        "" | "80" => Some(format!("http://{}{path}", relay.host)),
+        "443" => Some(format!("https://{}{path}", relay.host)),
+        digits if digits.chars().all(|c| c.is_ascii_digit()) => {
+            Some(format!("http://{}:{digits}{path}", relay.host))
+        }
+        _ => None,
+    }
 }
 
 fn county_geo(row: &Value) -> (Option<f64>, Option<f64>, Option<String>, Option<String>) {
@@ -499,7 +565,7 @@ fn status_incident(feed: &FeedStatus) -> Incident {
         } else {
             format!("Offline · {title}")
         },
-        category: feed.genre.clone().or_else(|| Some("feed-status".into())),
+        category: Some("feed-status".into()),
         description: Some(format!(
             "{listeners}{}",
             feed.bitrate
@@ -510,12 +576,22 @@ fn status_incident(feed: &FeedStatus) -> Incident {
         address: location,
         lat: feed.lat,
         lon: feed.lon,
-        audio_url: None,
+        audio_url: feed.stream_url.clone(),
         detail_url: Some(format!(
             "https://www.broadcastify.com/listen/feed/{}",
             feed.feed_id
         )),
         severity,
+    }
+}
+
+fn validate_feed_id(id: &str) -> Result<(), super::SourceError> {
+    if !id.is_empty() && id.len() <= 12 && id.chars().all(|c| c.is_ascii_digit()) {
+        Ok(())
+    } else {
+        Err(super::SourceError::Message(
+            "feedId must be a numeric Broadcastify feed id".into(),
+        ))
     }
 }
 
@@ -637,6 +713,60 @@ mod tests {
         assert_eq!(feed.listeners, Some(12));
         assert_eq!(feed.county.as_deref(), Some("Franklin"));
         assert_eq!(feed.lat, Some(42.582748));
+        assert!(feed.stream_url.is_none());
+    }
+
+    #[test]
+    fn builds_listen_url_from_mount_and_relay() {
+        let body = json!({
+            "Feed": [{
+                "id": 47291,
+                "status": 1,
+                "listeners": 1,
+                "descr": "Penn Hills / Plum Police Dispatch",
+                "genre": "Public Safety",
+                "mount": "/136068518",
+                "bitrate": 16,
+                "Relays": [{ "host": "relay.broadcastify.com", "port": "80" }]
+            }]
+        });
+        let feed = parse_feed(&body, "47291").unwrap();
+        assert_eq!(
+            feed.stream_url.as_deref(),
+            Some("http://relay.broadcastify.com/136068518")
+        );
+        assert_eq!(feed.relay.as_deref(), Some("relay.broadcastify.com"));
+        let row = status_incident(&feed);
+        assert_eq!(row.category.as_deref(), Some("feed-status"));
+        assert_eq!(
+            row.audio_url.as_deref(),
+            Some("http://relay.broadcastify.com/136068518")
+        );
+        assert!(!row.audio_url.unwrap().contains("password"));
+    }
+
+    #[test]
+    fn listen_url_uses_https_on_443_and_keeps_absolute_mounts() {
+        let relays = vec![RelayHost {
+            host: "p5.broadcastify.com".into(),
+            port: "443".into(),
+        }];
+        assert_eq!(
+            listen_url(Some("/abc"), &relays).as_deref(),
+            Some("https://p5.broadcastify.com/abc")
+        );
+        assert_eq!(
+            listen_url(Some("https://audio.example/47291"), &relays).as_deref(),
+            Some("https://audio.example/47291")
+        );
+        let odd = vec![RelayHost {
+            host: "relay.broadcastify.com".into(),
+            port: "8000".into(),
+        }];
+        assert_eq!(
+            listen_url(Some("mount123"), &odd).as_deref(),
+            Some("http://relay.broadcastify.com:8000/mount123")
+        );
     }
 
     #[test]

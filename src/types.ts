@@ -167,6 +167,10 @@ export type FeedStatus = {
   genre?: string;
   bitrate?: number;
   mount?: string;
+  /** Relay hostname from the Feed Owner `Relays` array. */
+  relay?: string;
+  /** Listen URL built from relay host/port + mount. Personal feed only. */
+  streamUrl?: string;
   lat?: number;
   lon?: number;
   county?: string;

@@ -1,4 +1,5 @@
 import { withAuth } from "./auth";
+import { PENN_HILLS_FEED, isPennHillsPreset } from "./broadcastifyPreset";
 import { fetchUsgsInBrowser } from "./usgs";
 import type {
   AppState,
@@ -630,35 +631,57 @@ function browserFetchBroadcastify(
       "Broadcastify username/password required (stored as secrets; never in config). Browser mock cannot call the Owner API — use npm run tauri:dev for live fetch.",
     );
   }
-  const feedId = String(source.params.feedId ?? "0");
+  const personal = isPennHillsPreset(source.params);
+  const feedId = personal
+    ? PENN_HILLS_FEED.feedId
+    : String(source.params.feedId ?? "0");
   const dayRaw = overrides.archiveDay ?? source.params.archiveDay;
   const day =
     typeof dayRaw === "string" && dayRaw.trim() ? dayRaw.trim() : undefined;
 
-  const feed: FeedStatus = {
-    feedId,
-    online: true,
-    listeners: 3,
-    descr: `Demo feed ${feedId}`,
-    genre: "Public Safety",
-    bitrate: 16,
-    county: "Demo",
-    state: "XX",
-    lat: 30.27,
-    lon: -97.74,
-  };
+  const feed: FeedStatus = personal
+    ? {
+        feedId,
+        online: false,
+        descr: PENN_HILLS_FEED.name,
+        genre: PENN_HILLS_FEED.genre,
+        county: PENN_HILLS_FEED.county,
+        state: PENN_HILLS_FEED.state,
+        lat: PENN_HILLS_FEED.lat,
+        lon: PENN_HILLS_FEED.lon,
+      }
+    : {
+        feedId,
+        online: true,
+        listeners: 3,
+        descr: `Demo feed ${feedId}`,
+        genre: "Public Safety",
+        bitrate: 16,
+        county: "Demo",
+        state: "XX",
+        lat: 30.27,
+        lon: -97.74,
+        relay: "relay.broadcastify.com",
+        mount: "/demo",
+        streamUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      };
 
   const status: Incident = {
     id: `feed-status-${feedId}`,
-    title: `Online · ${feed.descr}`,
-    category: feed.genre,
-    description: "3 listeners · 16 kbps",
+    title: `${feed.online ? "Online" : "Offline"} · ${feed.descr}`,
+    category: "feed-status",
+    description: personal
+      ? `${PENN_HILLS_FEED.detail}. Browser preview — the desktop app polls the Feed Owner API.`
+      : "3 listeners · 16 kbps",
     occurredAt: new Date().toISOString(),
-    address: "Demo, XX",
+    address: personal
+      ? `${PENN_HILLS_FEED.county}, ${PENN_HILLS_FEED.state}`
+      : "Demo, XX",
     lat: feed.lat,
     lon: feed.lon,
+    audioUrl: feed.streamUrl,
     detailUrl: `https://www.broadcastify.com/listen/feed/${feedId}`,
-    severity: "info",
+    severity: feed.online ? "info" : "alert",
   };
 
   let incidents: Incident[] = [status];
@@ -673,12 +696,14 @@ function browserFetchBroadcastify(
           id: `archive-day-${iso}`,
           title: `Archives · ${iso}`,
           category: "archive-day",
-          description: "Browser fixture date — pick day to load demo clips.",
+          description: personal
+            ? "Browser preview date. Clip URLs load from the Feed Owner API in the desktop app."
+            : "Browser fixture date — pick day to load demo clips.",
           occurredAt: `${iso}T00:00:00Z`,
           severity: i === 0 ? "warn" : "info",
         });
       }
-    } else {
+    } else if (!personal) {
       incidents = [
         status,
         {
@@ -711,8 +736,12 @@ function browserFetchBroadcastify(
     sourceId: "browser",
     typeId: source.type,
     fetchedAt: new Date().toISOString(),
-    attribution: `Broadcastify Feed Owner · feed ${feedId}`,
-    note: "Browser fixture (CORS). Prefer npm run tauri:dev for live Owner API. Archives personal-use only.",
+    attribution: personal
+      ? `Broadcastify Feed Owner · ${PENN_HILLS_FEED.name} · feed ${feedId}`
+      : `Broadcastify Feed Owner · feed ${feedId}`,
+    note: personal
+      ? "Browser preview. Live status, relay audio, and archive files come from the Feed Owner API in the desktop app. Archives are personal-use only."
+      : "Browser fixture (CORS). Prefer npm run tauri:dev for live Owner API. Archives personal-use only.",
     incidents,
     feed,
   };

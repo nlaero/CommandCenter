@@ -7,6 +7,7 @@ import {
 } from "../lib/captions";
 import { useAlerts } from "../lib/alerts";
 import { incidentsToBoardAlerts } from "../lib/boardAlerts";
+import { isPennHillsPreset, PENN_HILLS_FEED } from "../lib/broadcastifyPreset";
 import { fetchSourcePayload } from "../lib/api";
 import type { Incident, SourceConfig, SourcePayload } from "../types";
 
@@ -76,14 +77,20 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
   const { publishSourceAlerts, clearSourceAlerts } = useAlerts();
 
   function publishIncidents(next: SourcePayload) {
-    // Warn/alert rows, plus any clip that has audio so the detail popup can play it.
+    // Archive clips can surface in the alerts pane. Feed status stays on this panel
+    // (a live relay URL would otherwise sit in the pane for the whole session).
     publishSourceAlerts(
       sourceId,
       incidentsToBoardAlerts({
         sourceId,
         sourceType: source.type,
-        sourceLabel: "Broadcastify",
-        incidents: next.incidents.filter((item) => item.category !== "archive-day"),
+        sourceLabel: isPennHillsPreset(source.params) ? PENN_HILLS_FEED.name : "Broadcastify",
+        incidents: next.incidents.filter(
+          (item) =>
+            item.category !== "archive-day" &&
+            item.category !== "feed-status" &&
+            !item.id.startsWith("feed-status-"),
+        ),
       }),
     );
   }
@@ -124,11 +131,15 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
         setPayload(next);
         setError(null);
         publishIncidents(next);
+        setSelectedId((cur) => {
+          if (cur && next.incidents.some((item) => item.id === cur)) return cur;
+          const status = next.incidents.find((item) => item.id.startsWith("feed-status-"));
+          return status?.id ?? incoming[0] ?? cur;
+        });
         if (incoming.length) {
           setFlashIds(new Set(incoming));
           if (flashTimer) window.clearTimeout(flashTimer);
           flashTimer = window.setTimeout(() => setFlashIds(new Set()), 8_000);
-          setSelectedId((cur) => cur ?? incoming[0]);
         }
       } catch (err) {
         if (!cancelled) {
@@ -280,7 +291,11 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
                       ? "day"
                       : item.category === "archive"
                         ? "archive"
-                        : (item.severity ?? "status")}
+                        : item.category === "feed-status"
+                          ? item.severity === "alert"
+                            ? "offline"
+                            : "live"
+                          : (item.severity ?? "status")}
                   </span>
                   <span className="incident-when">{formatWhen(item.occurredAt)}</span>
                 </div>
@@ -317,8 +332,14 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
                       {[feed.county, feed.state].filter(Boolean).join(", ")}
                     </span>
                   ) : null}
+                  {feed.relay ? <span>{feed.relay}</span> : null}
                   {captionsOn ? <span>captions on</span> : null}
                 </div>
+                {!feed.streamUrl ? (
+                  <p className="bcfy-audio-hint">
+                    Live audio uses the relay and mount from the Feed Owner API.
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div className="incident-map-empty">Awaiting feed status…</div>
@@ -329,6 +350,7 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
             {selected ? (
               <ArchiveDetail
                 item={selected}
+                feedOnline={feed?.online === true}
                 onPickDay={pickDayFromItem}
                 captionsEnabled={captionsOn && showCaptions}
                 caption={captionCache[selected.id] ?? null}
@@ -356,12 +378,14 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
 
 function ArchiveDetail({
   item,
+  feedOnline,
   onPickDay,
   captionsEnabled,
   caption,
   onTranscribe,
 }: {
   item: Incident;
+  feedOnline: boolean;
   onPickDay: (item: Incident) => void;
   captionsEnabled: boolean;
   caption: CaptionResult | null;
@@ -404,12 +428,22 @@ function ArchiveDetail({
         {item.category ? (
           <>
             <dt>Kind</dt>
-            <dd>{item.category}</dd>
+            <dd>
+              {item.category === "feed-status"
+                ? feedOnline
+                  ? "Live"
+                  : "Offline"
+                : item.category === "archive-day"
+                  ? "Archive day"
+                  : item.category === "archive"
+                    ? "Archive"
+                    : item.category}
+            </dd>
           </>
         ) : null}
         {item.address ? (
           <>
-            <dt>Day</dt>
+            <dt>{item.category === "feed-status" ? "Place" : "Day"}</dt>
             <dd className="mono">{item.address}</dd>
           </>
         ) : null}
@@ -427,11 +461,19 @@ function ArchiveDetail({
           Load clips for this day
         </button>
       ) : null}
-      {item.audioUrl ? (
+      {item.category === "feed-status" && item.audioUrl && !feedOnline ? (
+        <p className="bcfy-audio-hint">
+          Feed is offline, so live audio stays stopped. The relay URL is kept for the next time
+          the feed is up. Playback starts muted.
+        </p>
+      ) : null}
+      {item.audioUrl && (item.category !== "feed-status" || feedOnline) ? (
         <div className="incident-audio">
           <div className="bcfy-audio-head">
             <div className="section-label" style={{ margin: 0 }}>
-              Archive audio (personal use only)
+              {item.category === "feed-status"
+                ? "Live audio"
+                : "Archive audio (personal use only)"}
             </div>
             <button
               type="button"
@@ -459,11 +501,15 @@ function ArchiveDetail({
               Open audio
             </a>
           </audio>
-          <p className="bcfy-audio-hint">Starts muted on open — unmute explicitly to hear audio.</p>
+          <p className="bcfy-audio-hint">
+            {item.category === "feed-status"
+              ? "Starts muted. This URL is the relay and mount from the Feed Owner API."
+              : "Starts muted on open — unmute explicitly to hear audio."}
+          </p>
         </div>
       ) : null}
 
-      {captionsEnabled && item.audioUrl ? (
+      {captionsEnabled && item.audioUrl && (item.category !== "feed-status" || feedOnline) ? (
         <CaptionsPane
           caption={caption}
           active={active}

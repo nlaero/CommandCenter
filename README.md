@@ -142,22 +142,27 @@ Open-data portals often lag hours–days vs live CAD; the panel labels the feed 
 
 Your own uploaded feed only. Not the Catalog API ($2500) and not Calls. Archives are personal use only.
 
+The form opens on **Penn Hills / Plum Police Dispatch** (feed `47291`, account `nlaero`). Pick "Another feed I own" to type a different feed id. The password is the Broadcastify account password and stays in the OS keyring.
+
+`a=feed` returns the mount and relay. The panel builds a listen URL from those (`http://{relay}{mount}`, or https when the relay port is 443) and plays it muted. Feed status stays on the panel; archive clips can still show in the alerts pane.
+
 | Setting | Required | Notes |
 |---------|----------|--------|
-| Feed ID | yes | From feed management / listen URL |
+| Feed | yes | Penn Hills / Plum, or another feed you own |
+| Feed ID | if other | Numeric id from feed management / listen URL. Penn Hills is 47291 |
 | Archive day | no | `YYYY-MM-DD`; blank lists available dates |
 | Include archives | no | Default on |
-| Captions / transcription | no | Default off; panel CC for archive audio |
-| Username | yes | Secret `broadcastify.username` |
+| Captions / transcription | no | Default on; panel CC for archive and live audio |
+| Username | yes | Secret `broadcastify.username` (filled in for this account) |
 | Password | yes | Secret `broadcastify.password` (keyring only) |
 
-Archive players start muted. Keep personal archive audio on-device — no cloud ASR upload.
+Players start muted. Keep personal archive audio on-device — no cloud ASR upload.
 
 With captions enabled, the panel shows CC and a captions pane. Today `transcribe_audio_local` returns stub segments so the UI can ship; next step is whisper.cpp (or similar) behind the same toggle.
 
-**In the app:** Settings → Source catalog → Broadcastify (Feed Owner) → Configure. Feed ID + credentials, optional archive day and captions. Panel shows online/offline + listeners and archives. Change day in the toolbar; use CC + Transcribe local on a clip when captions are on.
+**In the app:** Settings → Source catalog → Broadcastify (Feed Owner) → Configure. Confirm the feed, enter the password, optional archive day. Save & add to board. The window is titled Penn Hills / Plum Police Dispatch. It shows online/offline, listeners, and archives. Change day in the toolbar; use CC + Transcribe local on a clip when captions are on.
 
-Live Owner API calls need the Tauri app. The browser Vite mock serves a fixture (CORS).
+Live Owner API calls need the Tauri app. The browser Vite mock previews this feed without calling the API (CORS, and the password never leaves the desktop keyring).
 
 ## Timed panel rotation
 
