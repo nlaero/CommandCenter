@@ -245,13 +245,21 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 - Configure → Save or Save & add to board
 - Settings → Panel rotation for any mix of configured sources in one panel
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
-- Settings → Display sets the window size (1280×720 through 4K, this screen, or a custom size). Saved on this computer.
-- Settings → Television sends the board to a TV with AirPlay or screen mirroring. The TV is display-only. The picture has to be 3840×2160 or higher so a 58-inch or larger set stays sharp.
+- Settings → Display sets the window size (1280×720 through 4K, this screen, or a custom size) and which screens the board uses. More than one screen splits the board. Saved on this computer.
+- Settings → Television sends the board to one TV, or splits it across more than one. The TV is display-only. Each picture has to be 3840×2160 or higher so a 58-inch or larger set stays sharp. Setup stays on the computer.
 - Edit layout (toolbar or `Ctrl/Cmd+E`): 48-column fine grid; persists on drag/resize stop
 - Board switcher in the chrome (+ for another empty board)
 - Help → Check for updates… (also the toolbar button, and Settings → Updates) asks GitHub if this copy is behind a published release. Nothing is downloaded until you choose it.
 
 Other catalog entries stay stubs until their adapters land.
+
+## Screens
+
+Settings → Display lists the screens on this computer. Check more than one and the board is divided across them, using where those screens sit. Two side by side split it left and right. Screens stacked on top of each other split it top and bottom.
+
+This computer keeps the toolbar and settings. Check this screen when it should show its own part of the board. Leave it unchecked and the whole board stays here while the other screens show their parts. Those other screens have no settings and no layout editing.
+
+Each screen is drawn at its own size. A 3840×2160 screen stays sharp on a 58-inch or larger television. A smaller screen is not stretched, and it will look soft on a 58-inch set until that display is set to 4K. Edit layout on the computer shows the whole board, so a source can be moved onto another screen.
 
 ## Television
 
@@ -264,6 +272,8 @@ Settings → Television.
 **AirPlay.** Command Center looks for AirPlay receivers on the local network. Pick one and show the board. When that receiver is already connected as a display — its name shows up as a screen — the board opens there. If it is not a display yet, connect it from this computer (HDMI, or the system's own AirPlay display) and try again. Nothing is configured on the television.
 
 A 58-inch or larger television stays sharp at 3840×2160 or higher. A 1080p output is refused until that display is set to 4K. Apple TV HD and earlier top out at 1080p, so they are listed and refused. Apple TV 4K (1st, 2nd, and 3rd generation) is 3840×2160. The board fills that screen. Text stays vector-sharp. It is not a scaled-up screenshot.
+
+Pick one television and it shows the whole board. Pick more than one and the board splits across them, at each screen's own 3840×2160 or higher. The computer is not one of those screens. Setup stays here.
 
 Check the picture opens a preview on this computer. That preview is not the television.
 

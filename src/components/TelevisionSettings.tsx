@@ -9,12 +9,14 @@ import {
   readCastSession,
   scanAirPlay,
   startCast,
+  startTelevisionWall,
   stopCast,
   type AirPlayReceiver,
   type CastMethod,
   type CastScreen,
   type CastSession,
 } from "../lib/cast";
+import { televisionWallDecision } from "../lib/span";
 
 type Props = {
   onMessage: (text: string, kind: "ok" | "error") => void;
@@ -25,7 +27,7 @@ export function TelevisionSettings({ onMessage }: Props) {
   const [screens, setScreens] = useState<CastScreen[]>([]);
   const [receivers, setReceivers] = useState<AirPlayReceiver[]>([]);
   const [scanNote, setScanNote] = useState("");
-  const [screenId, setScreenId] = useState<string | null>(null);
+  const [screenIds, setScreenIds] = useState<string[] | null>(null);
   const [receiverId, setReceiverId] = useState<string | null>(null);
   const [session, setSession] = useState<CastSession | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,8 +36,8 @@ export function TelevisionSettings({ onMessage }: Props) {
   async function refreshScreens() {
     const next = await listCastScreens();
     setScreens(next);
-    setScreenId((current) =>
-      current && next.some((screen) => screen.id === current) ? current : null,
+    setScreenIds((current) =>
+      current === null ? null : current.filter((id) => next.some((screen) => screen.id === id)),
     );
   }
 
@@ -86,16 +88,26 @@ export function TelevisionSettings({ onMessage }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [method, scanned]);
 
-  const selectedScreen =
-    screens.find((screen) => screen.id === screenId) ??
-    (screens.length === 1 ? screens[0] : null);
+  const selectedScreens =
+    screenIds === null
+      ? screens.length === 1
+        ? [screens[0]]
+        : []
+      : screens.filter((screen) => screenIds.includes(screen.id));
+  const selectedScreen = selectedScreens.length === 1 ? selectedScreens[0] : null;
   const selectedReceiver =
     receivers.find((item) => item.id === receiverId) ??
     (receivers.length === 1 ? receivers[0] : null);
   const decision =
-    method === "mirror" ? mirrorDecision(selectedScreen) : airplayDecision(selectedReceiver);
+    method === "mirror"
+      ? selectedScreens.length > 1
+        ? televisionWallDecision(selectedScreens)
+        : mirrorDecision(selectedScreen)
+      : airplayDecision(selectedReceiver);
   const summary = session
-    ? `On the TV · ${session.targetName} · ${session.width} × ${session.height} · ${castMethodLabel(session.method)}`
+    ? session.split && session.split.length > 1
+      ? `On ${session.split.length} TVs · ${session.split.map((screen) => screen.name).join(" · ")}`
+      : `On the TV · ${session.targetName} · ${session.width} × ${session.height} · ${castMethodLabel(session.method)}`
     : decision.reason;
 
   async function refresh() {
@@ -111,7 +123,35 @@ export function TelevisionSettings({ onMessage }: Props) {
     }
   }
 
+  function toggleScreen(id: string) {
+    setScreenIds((current) => {
+      const base = current ?? (screens.length === 1 ? screens.map((screen) => screen.id) : []);
+      if (base.includes(id)) return base.filter((item) => item !== id);
+      return [...base, id].slice(0, 8);
+    });
+  }
+
   async function show() {
+    if (method === "mirror" && selectedScreens.length > 1) {
+      if (!decision.ok) {
+        onMessage(decision.reason, "error");
+        return;
+      }
+      setBusy(true);
+      try {
+        const next = await startTelevisionWall(selectedScreens);
+        setSession(next);
+        onMessage(
+          `The board splits across ${selectedScreens.length} televisions. Setup stays on this computer.`,
+          "ok",
+        );
+      } catch (err) {
+        onMessage(errorText(err), "error");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     const targetId = method === "mirror" ? selectedScreen?.id : selectedReceiver?.id;
     if (!targetId || !decision.ok) {
       onMessage(decision.reason, "error");
@@ -164,9 +204,9 @@ export function TelevisionSettings({ onMessage }: Props) {
     <>
       <p className="section-label">Television</p>
       <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
-        The television shows the board and nothing else. You set it up on this computer. A
-        58-inch or larger set stays sharp at 3840 × 2160 or higher, so a smaller picture is
-        refused.
+        The television shows the board and nothing else. You set it up on this computer. One
+        television shows the whole board. More than one splits it across them. A 58-inch or
+        larger set stays sharp at 3840 × 2160 or higher, so a smaller picture is refused.
       </p>
       <p className="display-current">{summary}</p>
 
@@ -194,7 +234,10 @@ export function TelevisionSettings({ onMessage }: Props) {
               Screen mirroring
               <span className="badge">displays</span>
             </h3>
-            <p>A television this computer is already using as a display, such as HDMI.</p>
+            <p>
+              A television this computer is already using as a display, such as HDMI. Pick more
+              than one to split the board.
+            </p>
           </div>
         </button>
       </div>
@@ -209,14 +252,15 @@ export function TelevisionSettings({ onMessage }: Props) {
           ) : (
             <div className="source-list">
               {screens.map((screen) => {
-                const active = screen.id === selectedScreen?.id;
+                const active = selectedScreens.some((item) => item.id === screen.id);
                 const badge = screen.current ? "this computer" : screen.sharp ? "4K" : "below 4K";
                 return (
                   <button
                     key={screen.id}
                     type="button"
+                    aria-pressed={active}
                     className={`source-row display-preset${active ? " is-checked" : ""}`}
-                    onClick={() => setScreenId(screen.id)}
+                    onClick={() => toggleScreen(screen.id)}
                   >
                     <div>
                       <h3>

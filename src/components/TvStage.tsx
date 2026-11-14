@@ -5,22 +5,47 @@ import { AlertsProvider } from "../lib/alerts";
 import { loadAuthSession } from "../lib/auth";
 import { AUTH_IN_APP } from "../lib/authFeature";
 import { loadAppState } from "../lib/api";
-import { boardSpanRows, closePictureCheck, tvRowHeight } from "../lib/cast";
+import {
+  boardSpanRows,
+  closePictureCheck,
+  readWallCache,
+  subscribeWall,
+  tvRowHeight,
+  type CastScreen,
+  type WallKind,
+} from "../lib/cast";
 import { useBoardDensity } from "../lib/display";
-import type { AppState, AuthSession, Board } from "../types";
+import { spanRows, splitPanels } from "../lib/span";
+import type { AppState, AuthSession, Board, GridItem } from "../types";
 
 type Props = {
   preview: boolean;
+  /** Set when this window shows one part of a split board. */
+  screenId?: string | null;
+  wall?: WallKind | null;
 };
 
-export function TvStage({ preview }: Props) {
+export function TvStage({ preview, screenId = null, wall = null }: Props) {
   const [state, setState] = useState<AppState | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [box, setBox] = useState({ width: 1280, height: 720 });
+  const [wallScreens, setWallScreens] = useState<CastScreen[]>(() =>
+    wall ? readWallCache(wall) : [],
+  );
   const stageRef = useRef<HTMLElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const density = useBoardDensity();
+
+  useEffect(() => {
+    if (!wall) {
+      setWallScreens([]);
+      return;
+    }
+    const pull = () => setWallScreens(readWallCache(wall));
+    pull();
+    return subscribeWall(wall, pull);
+  }, [wall]);
 
   useEffect(() => {
     document.documentElement.classList.add("cc-tv");
@@ -70,10 +95,30 @@ export function TvStage({ preview }: Props) {
   const board: Board | undefined =
     state?.boards.find((item) => item.id === state.activeBoardId) ?? state?.boards[0];
   const signedOut = Boolean(state?.auth.enabled && session && !session.signedIn);
+  const split =
+    screenId && state && board && wallScreens.length >= 2
+      ? splitPanels(
+          board.panels.map((panel) => panel.layout),
+          wallScreens,
+          state.layout.cols,
+          spanRows(board.panels.map((panel) => panel.layout)),
+        )
+      : null;
+  const slice = split?.slices.find((item) => item.id === screenId) ?? null;
+  const placed: GridItem[] | null = split
+    ? (split.panels.find((item) => item.id === screenId)?.items ?? [])
+    : null;
+  const rowSpan = slice
+    ? slice.rowCount
+    : board
+      ? Math.max(1, boardSpanRows(board.panels))
+      : 1;
   const rowHeight =
     state && board
-      ? tvRowHeight(state.layout.rowHeight, boardSpanRows(board.panels), box.height, density)
+      ? tvRowHeight(state.layout.rowHeight, rowSpan, box.height, density)
       : undefined;
+  const waitingForWall = Boolean(screenId && wallScreens.length === 0);
+  const missingSlice = Boolean(screenId && wallScreens.length > 0 && !slice);
 
   let body: ReactNode;
   if (error && !state) {
@@ -103,6 +148,24 @@ export function TvStage({ preview }: Props) {
         </div>
       </div>
     );
+  } else if (waitingForWall) {
+    body = (
+      <div className="empty-board">
+        <div>
+          <h1>Command Center</h1>
+          <p>Loading this screen's part of the board…</p>
+        </div>
+      </div>
+    );
+  } else if (missingSlice) {
+    body = (
+      <div className="empty-board">
+        <div>
+          <h1>Command Center</h1>
+          <p>This screen is not part of the board. Choose it again on the computer.</p>
+        </div>
+      </div>
+    );
   } else {
     body = (
       <div className="board-with-alerts">
@@ -113,6 +176,8 @@ export function TvStage({ preview }: Props) {
             width={box.width}
             rowHeight={rowHeight}
             displayOnly
+            placed={placed}
+            gridCols={slice?.colCount}
             onOpenSettings={() => undefined}
             onLayoutChange={() => undefined}
           />
