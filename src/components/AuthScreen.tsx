@@ -100,22 +100,6 @@ export function AuthScreen({ settings, session, onSession, onState }: Props) {
     }
   }
 
-  async function turnOff() {
-    setBusy(true);
-    setError(null);
-    try {
-      const next = await persistDraft(false);
-      if (next) {
-        const sessionNext = await loadAuthSession();
-        onSession(sessionNext);
-      }
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const reachClass =
     reachable == null ? "pending" : reachable ? "ok" : "bad";
   const reachText =
@@ -132,10 +116,10 @@ export function AuthScreen({ settings, session, onSession, onState }: Props) {
         <div className="brand auth-brand">
           Command <span>Center</span>
         </div>
-        <h1 id="auth-title">Sign in</h1>
+        <h1 id="auth-title">{mode === "register" ? "Create account" : "Sign in"}</h1>
         <p className="auth-lead">
-          Create an account or sign in. The board stays on this computer. Source API keys stay in
-          the OS keyring and are not sent to auth-server.
+          Create an account or sign in. Boards and source setup for this account are saved on
+          auth-server. Passwords and API keys stay in the OS keyring and are not sent there.
         </p>
 
         <div className={`auth-reach ${reachClass}`} role="status">
@@ -270,9 +254,6 @@ export function AuthScreen({ settings, session, onSession, onState }: Props) {
             >
               Check server
             </button>
-            <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void turnOff()}>
-              Use this computer without an account
-            </button>
           </div>
         </div>
       </form>
@@ -302,12 +283,12 @@ export function AccountSettings({ state, session, onState, onSession }: AccountP
     setPin(state.auth.tlsPinSha256 ?? "");
   }, [state.auth]);
 
-  async function save(enabled: boolean) {
+  async function save() {
     setBusy(true);
     setMessage(null);
     try {
       const next = await saveAuthSettings({
-        enabled,
+        enabled: true,
         baseUrl,
         allowInsecureHttp,
         caFile: caFile.trim() || null,
@@ -350,17 +331,9 @@ export function AccountSettings({ state, session, onState, onSession }: AccountP
           : "Not signed in."}{" "}
         Username and password are checked by auth-server. Boards and source setup for this
         account are saved there, so signing in on another computer brings them back. Passwords
-        and API keys stay in the keyring on this computer and are not uploaded.
+        and API keys stay in the keyring on this computer and are not uploaded. Sign-in is
+        required on this computer.
       </p>
-      <label className="check-row">
-        <input
-          type="checkbox"
-          checked={state.auth.enabled}
-          disabled={busy}
-          onChange={(event) => void save(event.target.checked)}
-        />
-        <span>Require sign-in on this computer</span>
-      </label>
       <div className="form-grid">
         <div className="field">
           <label htmlFor="account-base-url">Auth-server URL</label>
@@ -406,7 +379,7 @@ export function AccountSettings({ state, session, onState, onSession }: AccountP
       </div>
       {message ? <div className={`alert ${message.kind}`}>{message.text}</div> : null}
       <div className="form-actions">
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void save(state.auth.enabled)}>
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void save()}>
           Save
         </button>
         {session.signedIn ? (

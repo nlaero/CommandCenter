@@ -231,19 +231,28 @@ fn row_incident(row: &Value, index: usize) -> Option<Incident> {
         });
     }
 
-    // Seattle SPD crime
+    // Seattle SPD crime. `offense_category` is often a coarse bucket ("ALL OTHER")
+    // even when the NIBRS text is an assault, so severity uses the specific fields.
     if row.get("offense_category").is_some() || row.get("report_number").is_some() {
-        let category =
-            str_field(row, &["offense_category", "offense_sub_category"]).unwrap_or_else(|| {
-                "Incident".into()
-            });
-        let desc = str_field(row, &["nibrs_offense_code_description", "offense_sub_category"]);
+        let specific = str_field(
+            row,
+            &["offense_sub_category", "nibrs_offense_code_description"],
+        );
+        let category = specific
+            .clone()
+            .or_else(|| str_field(row, &["offense_category"]))
+            .unwrap_or_else(|| "Incident".into());
+        let desc = str_field(
+            row,
+            &["nibrs_offense_code_description", "offense_sub_category"],
+        );
         let title = desc.clone().unwrap_or_else(|| category.clone());
+        let severity_text = format!("{category} {}", desc.clone().unwrap_or_default());
         return Some(Incident {
             id: str_field(row, &["offense_id", "report_number"])
                 .unwrap_or_else(|| format!("row-{index}")),
             title,
-            category: Some(category.clone()),
+            category: Some(category),
             description: desc,
             occurred_at: str_field(row, &["offense_date", "report_date_time"]),
             address: str_field(row, &["block_address", "neighborhood"]),
@@ -251,7 +260,7 @@ fn row_incident(row: &Value, index: usize) -> Option<Incident> {
             lon: num_field(row, &["longitude"]),
             audio_url: str_field(row, &["audio_url", "audioUrl", "audio"]),
             detail_url: str_field(row, &["detail_url", "detailUrl", "url"]),
-            severity: severity_for(&category),
+            severity: severity_for(&severity_text),
         });
     }
 
@@ -401,6 +410,25 @@ mod tests {
         assert_eq!(rows[0].category.as_deref(), Some("THEFT"));
         assert_eq!(rows[0].severity, IncidentSeverity::Warn);
         assert!(rows[0].lat.is_some());
+    }
+
+    #[test]
+    fn seattle_assault_is_not_buried_in_all_other() {
+        let body = json!([{
+            "report_number": "2026-338014",
+            "offense_id": "74814795469",
+            "offense_date": "2026-11-12T22:16:00.000",
+            "offense_category": "ALL OTHER",
+            "offense_sub_category": "ASSAULT OFFENSES",
+            "nibrs_offense_code_description": "Simple Assault",
+            "block_address": "64XX BLOCK OF CALIFORNIA AVE SW",
+            "latitude": "47.54",
+            "longitude": "-122.38"
+        }]);
+        let rows = normalize_payload(&body).unwrap();
+        assert_eq!(rows[0].title, "Simple Assault");
+        assert_eq!(rows[0].category.as_deref(), Some("ASSAULT OFFENSES"));
+        assert_eq!(rows[0].severity, IncidentSeverity::Alert);
     }
 
     #[test]

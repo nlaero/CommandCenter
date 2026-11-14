@@ -315,10 +315,33 @@ async function reconcileBrowser(state: AppState): Promise<SyncResult> {
   }
   const stored = asStored(response.body);
   if (!stored) throw new Error("auth-server returned a board this app could not read.");
-  writeCursor({ userId: response.userId, revision: stored.revision });
+  const cursor = readCursor();
+  const sameRevision =
+    cursor !== null && cursor.userId === response.userId && cursor.revision === stored.revision;
   if (canonical(local) === canonical(stored.document)) {
+    writeCursor({ userId: response.userId, revision: stored.revision });
     return { state: current, restored: false, published: false, message: null };
   }
+  // This browser already had this revision and then edited. Upload that edit
+  // instead of replacing it with the copy that failed to leave the machine.
+  if (sameRevision) {
+    const put = await putDocument(local, stored.revision);
+    if (put.kind === "saved") {
+      writeCursor({ userId: response.userId, revision: put.stored.revision });
+      return { state: current, restored: false, published: true, message: null };
+    }
+    if (put.kind === "conflict") {
+      writeCursor({ userId: response.userId, revision: put.stored.revision });
+      return {
+        state: applyDocument(current, put.stored.document),
+        restored: true,
+        published: false,
+        message: RESTORED_MESSAGE,
+      };
+    }
+    return { state: current, restored: false, published: false, message: null };
+  }
+  writeCursor({ userId: response.userId, revision: stored.revision });
   return {
     state: applyDocument(current, stored.document),
     restored: true,

@@ -184,25 +184,17 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
   }
 
   function applyProviderDefaults(provider: string, prev: Record<string, unknown>) {
-    if (provider === "chicago") {
+    const chicago = "City of Chicago Open Data — Crimes 2001 to Present";
+    const seattle = "City of Seattle Open Data — SPD Crime Data";
+    const current = typeof prev.attribution === "string" ? prev.attribution.trim() : "";
+    // Switching Chicago ↔ Seattle should replace the other city's preset text.
+    // A line the user actually typed stays put.
+    const stillPreset = current === "" || current === chicago || current === seattle;
+    if (provider === "chicago" || provider === "seattle") {
       return {
         ...prev,
         provider,
-        attribution:
-          typeof prev.attribution === "string" && prev.attribution.trim()
-            ? prev.attribution
-            : "City of Chicago Open Data — Crimes 2001 to Present",
-        limit: prev.limit === undefined || prev.limit === "" ? 50 : prev.limit,
-      };
-    }
-    if (provider === "seattle") {
-      return {
-        ...prev,
-        provider,
-        attribution:
-          typeof prev.attribution === "string" && prev.attribution.trim()
-            ? prev.attribution
-            : "City of Seattle Open Data — SPD Crime Data",
+        attribution: stillPreset ? (provider === "seattle" ? seattle : chicago) : current,
         limit: prev.limit === undefined || prev.limit === "" ? 50 : prev.limit,
       };
     }
@@ -393,14 +385,20 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
           .find((b) => b.id === state.activeBoardId)
           ?.panels.reduce((max, p) => Math.max(max, p.layout.y + p.layout.h), 0) ?? 0;
       const primaryId = rotateSourceIds[0];
-      const hasRichPanel = rotateSourceIds.some((id) => {
-        const type = state.sources[id]?.type;
-        return (
-          type === "incident.opendata" ||
-          type === "broadcastify.owner" ||
-          type === "usgs.earthquake"
-        );
-      });
+      const memberTypes = rotateSourceIds.map((id) => state.sources[id]?.type);
+      const hasQuake = memberTypes.includes("usgs.earthquake");
+      const hasWeather = memberTypes.includes("weather.openmeteo");
+      const hasRichPanel = memberTypes.some(
+        (type) => type === "incident.opendata" || type === "broadcastify.owner",
+      );
+      // Match the single-source panel size so a weather or quake slot is not crushed.
+      const layoutSize = hasQuake
+        ? { w: 32, h: 34, minW: 18, minH: 18 }
+        : hasWeather
+          ? { w: 28, h: 32, minW: 16, minH: 18 }
+          : hasRichPanel
+            ? { w: 24, h: 24, minW: 12, minH: 12 }
+            : { w: 20, h: 16, minW: 10, minH: 10 };
 
       const panel: Panel = {
         id: panelId,
@@ -420,10 +418,7 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
           i: panelId,
           x: 0,
           y: yMax,
-          w: hasRichPanel ? 24 : 20,
-          h: hasRichPanel ? 24 : 16,
-          minW: hasRichPanel ? 12 : 10,
-          minH: hasRichPanel ? 12 : 10,
+          ...layoutSize,
         },
       };
 

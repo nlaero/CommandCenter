@@ -39,12 +39,12 @@ export function defaultAuthSettings(enabled: boolean): AuthSettings {
 export function withAuth(state: AppState): AppState {
   const auth = state.auth;
   if (!auth) {
-    return { ...state, auth: defaultAuthSettings(false) };
+    return { ...state, auth: defaultAuthSettings(true) };
   }
   return {
     ...state,
     auth: {
-      enabled: Boolean(auth.enabled),
+      enabled: true,
       baseUrl: auth.baseUrl?.trim() || DEFAULT_AUTH_BASE_URL,
       allowInsecureHttp: Boolean(auth.allowInsecureHttp),
       caFile: auth.caFile?.trim() || null,
@@ -421,7 +421,7 @@ export function probeAuth(): Promise<AuthProbe> {
 }
 
 export async function saveAuthSettings(settings: AuthSettings): Promise<AppState> {
-  const normalized = normalizeAuthSettings(settings);
+  const normalized = normalizeAuthSettings({ ...settings, enabled: true });
   if (isTauri()) {
     try {
       return withAuth(await invoke<AppState>("auth_save_settings", { settings: normalized }));

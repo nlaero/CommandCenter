@@ -32,10 +32,16 @@ pub struct SourcePayload {
 pub enum SourceError {
     #[error("{0}")]
     Message(String),
-    #[error("http error: {0}")]
-    Http(#[from] reqwest::Error),
     #[error("config error: {0}")]
     Config(#[from] crate::config::ConfigError),
+}
+
+impl From<reqwest::Error> for SourceError {
+    fn from(err: reqwest::Error) -> Self {
+        // Display includes the request URL. Broadcastify puts the password in
+        // the query string, and an Open-Meteo key is a query parameter.
+        SourceError::Message(format!("http error: {}", err.without_url()))
+    }
 }
 
 pub fn fetch_source(
@@ -117,4 +123,26 @@ fn resolve_secrets(names: &[String]) -> Result<BTreeMap<String, String>, SourceE
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SourceError;
+
+    #[test]
+    fn http_errors_omit_urls_that_carry_secrets() {
+        let err = reqwest::blocking::Client::builder()
+            .connect_timeout(std::time::Duration::from_millis(400))
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap()
+            .get("http://127.0.0.1:1/?p=super-secret-value&apikey=abcd1234efgh")
+            .send()
+            .unwrap_err();
+        let shown = SourceError::from(err).to_string();
+        assert!(shown.starts_with("http error:"));
+        assert!(!shown.contains("super-secret-value"), "{shown}");
+        assert!(!shown.contains("abcd1234efgh"), "{shown}");
+        assert!(!shown.contains("127.0.0.1"), "{shown}");
+    }
 }

@@ -6,7 +6,8 @@ use std::f64::consts::PI;
 const OPEN_METEO: &str = "https://api.open-meteo.com/v1/forecast";
 const RAINVIEWER_MAPS: &str = "https://api.rainviewer.com/public/weather-maps.json";
 const RAINVIEWER_HOST_DEFAULT: &str = "https://tilecache.rainviewer.com";
-const BASE_TILE: &str = "https://basemaps.cartocdn.com/dark_all";
+/// Esri Dark Gray. Path is `{z}/{y}/{x}`. CARTO's keyless tiles now ask for an API key.
+const BASE_TILE: &str = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile";
 /// NOAA GOES-East CONUS GeoColor — public NESDIS imagery (RainViewer IR satellite ended 2026-01-01).
 const GOES_CONUS: &str =
     "https://cdn.star.nesdis.noaa.gov/GOES16/ABI/CONUS/GEOCOLOR/latest.jpg";
@@ -161,22 +162,22 @@ pub fn fetch(
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
 
-    let mut conditions_url = format!(
+    let mut conditions_url = url::Url::parse(&format!(
         "{OPEN_METEO}?latitude={lat}&longitude={lon}\
          &current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,\
          wind_speed_10m,wind_direction_10m,surface_pressure\
          &hourly=temperature_2m,weather_code&forecast_hours=12\
          &timezone=auto&wind_speed_unit=kmh"
-    );
+    ))
+    .map_err(|err| super::SourceError::Message(format!("Open-Meteo URL: {err}")))?;
     if let Some(key) = secrets
         .get("weather.optional_key")
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
     {
-        conditions_url.push_str("&apikey=");
-        conditions_url.push_str(key);
+        conditions_url.query_pairs_mut().append_pair("apikey", key);
     }
-    let om_body: Value = client.get(&conditions_url).send()?.error_for_status()?.json()?;
+    let om_body: Value = client.get(conditions_url).send()?.error_for_status()?.json()?;
     let conditions = parse_conditions(&om_body, lat, lon)?;
     let hourly = parse_hourly(&om_body)?;
 
@@ -240,7 +241,7 @@ pub fn fetch(
             alerts,
         },
         attribution:
-            "Open-Meteo · RainViewer radar · NOAA GOES / NESDIS satellite · NWS alerts · CARTO basemap"
+            "Open-Meteo · RainViewer radar · NOAA GOES / NESDIS satellite · NWS alerts · Esri basemap"
                 .into(),
         fetched_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         note: Some(
@@ -361,7 +362,7 @@ fn build_scope(
                 x: wrapped_x,
                 y,
                 z: zoom,
-                base_url: format!("{BASE_TILE}/{zoom}/{wrapped_x}/{y}.png"),
+                base_url: format!("{BASE_TILE}/{zoom}/{y}/{wrapped_x}"),
                 radar_url: radar_path.map(|path| {
                     format!("{radar_host}{path}/256/{zoom}/{wrapped_x}/{y}/2/1_1.png")
                 }),
@@ -613,7 +614,12 @@ mod tests {
         assert_eq!(scope.tiles.len(), 9);
         assert!(scope.tiles[0].radar_url.is_some());
         assert!(scope.satellite_image_url.is_some());
-        assert!(scope.tiles[0].base_url.contains("basemaps.cartocdn.com"));
+        let center = &scope.tiles[4];
+        assert!(center.base_url.contains("World_Dark_Gray_Base"));
+        assert!(center
+            .base_url
+            .ends_with(&format!("/{}/{}/{}", center.z, center.y, center.x)));
+        assert!(!center.base_url.contains("cartocdn"));
     }
 
     #[test]

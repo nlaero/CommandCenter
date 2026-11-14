@@ -130,13 +130,13 @@ fn default_auth_base_url() -> String {
 
 /// Username/password session against auth-server. Source API secrets are not part of this.
 ///
-/// Missing `auth` on an existing config stays disabled (`Default`) so older boards still open.
-/// A brand-new `AppState::default()` turns sign-in on.
+/// Sign-in is required. A missing `auth` block and an older `enabled: false` are both
+/// turned on when the config is loaded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthSettings {
-    /// When false, the board opens with no session gate.
-    #[serde(default)]
+    /// Always true after load. Kept so older files that stored `enabled: false` still parse.
+    #[serde(default = "default_auth_enabled")]
     pub enabled: bool,
     /// Auth-server origin. Change this if the server is not the default tailnet host.
     #[serde(default = "default_auth_base_url")]
@@ -153,10 +153,14 @@ pub struct AuthSettings {
     pub tls_pin_sha256: Option<String>,
 }
 
+fn default_auth_enabled() -> bool {
+    true
+}
+
 impl Default for AuthSettings {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             base_url: default_auth_base_url(),
             allow_insecure_http: false,
             ca_file: None,
@@ -177,7 +181,7 @@ pub struct AppState {
     pub sources: BTreeMap<String, SourceConfig>,
     #[serde(default)]
     pub edit_mode: bool,
-    /// Absent on older configs → sign-in off. New files from `Default` require an account.
+    /// Account gate. Missing on older files; load turns sign-in on.
     #[serde(default)]
     pub auth: AuthSettings,
 }
@@ -254,7 +258,12 @@ pub fn load_or_create() -> Result<LoadResult, ConfigError> {
     if config_path.exists() {
         let raw = fs::read_to_string(&config_path)?;
         let mut state: AppState = serde_yaml::from_str(&raw)?;
+        let require_account = !state.auth.enabled;
+        state.auth.enabled = true;
         hydrate_layouts(&paths, &mut state)?;
+        if require_account {
+            save_state(&paths, &state)?;
+        }
         Ok(LoadResult {
             state,
             paths,
@@ -344,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_auth_keeps_existing_boards_open() {
+    fn missing_auth_requires_sign_in() {
         let yaml = r#"
 version: 1
 activeBoardId: home
@@ -354,8 +363,39 @@ boards:
     panels: []
 "#;
         let state: AppState = serde_yaml::from_str(yaml).unwrap();
-        assert!(!state.auth.enabled);
+        assert!(state.auth.enabled);
         assert_eq!(state.auth.base_url, DEFAULT_AUTH_BASE_URL);
+    }
+
+    #[test]
+    fn load_turns_off_local_only_mode() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!("cc-auth-required-{}", uuid::Uuid::new_v4()));
+        env::set_var(ENV_HOME_OVERRIDE, &dir);
+        let paths = resolve_paths().unwrap();
+        ensure_dirs(&paths).unwrap();
+        fs::write(
+            &paths.config_file,
+            r#"
+version: 1
+activeBoardId: home
+boards:
+  - id: home
+    title: Home
+    panels: []
+auth:
+  enabled: false
+  baseUrl: http://100.101.141.93:8080
+"#,
+        )
+        .unwrap();
+        let loaded = load_or_create().unwrap();
+        assert!(loaded.state.auth.enabled);
+        let raw = fs::read_to_string(&loaded.paths.config_file).unwrap();
+        assert!(raw.contains("enabled: true"));
+        assert!(!raw.contains("enabled: false"));
+        env::remove_var(ENV_HOME_OVERRIDE);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

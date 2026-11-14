@@ -202,6 +202,8 @@ pub fn fetch(source: &SourceConfig) -> Result<FetchResult, super::SourceError> {
     let response = match req.send() {
         Ok(response) => response,
         Err(err) => {
+            let err = err.without_url();
+            let reason = err.to_string();
             if let Some(hit) = any_hit(&url) {
                 let mut result = assemble(
                     &feed_id,
@@ -214,11 +216,11 @@ pub fn fetch(source: &SourceConfig) -> Result<FetchResult, super::SourceError> {
                     true,
                     false,
                     Some(format!(
-                        "USGS request failed ({err}). Showing the last feed; next try in {MIN_POLL_SECS}s."
+                        "USGS request failed ({reason}). Showing the last feed; next try in {MIN_POLL_SECS}s."
                     )),
                 )?;
                 result.note = Some(format!(
-                    "USGS request failed ({err}). Showing the last feed."
+                    "USGS request failed ({reason}). Showing the last feed."
                 ));
                 return Ok(result);
             }
