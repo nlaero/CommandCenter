@@ -96,6 +96,8 @@ test("runtime copy keeps whisper-cli.exe and the libraries beside it", () => {
 test("the Windows installer refuses to build without the staged model", () => {
   const hooks = fs.readFileSync(path.join(repoRoot, "src-tauri", "windows", "hooks.nsh"), "utf8");
   assert.match(hooks, /tiny-en\/bundle\.nsh/);
+  assert.match(hooks, /tiny-en\\bundle\.nsh/);
+  assert.match(hooks, /NSIS_WIN32_MAKENSIS/);
   assert.match(hooks, /fetch-tiny-en\.mjs/);
   assert.match(hooks, /!error/);
 });
