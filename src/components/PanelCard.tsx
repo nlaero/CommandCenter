@@ -16,8 +16,10 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     panel.rotation?.enabled && panel.rotation.sourceIds.length >= 2
       ? panel.rotation
       : null;
-  const cameraTitle =
-    (source?.type === "camera.http_image" || source?.type === "video.youtube") &&
+  const namedTitle =
+    (source?.type === "camera.http_image" ||
+      source?.type === "video.youtube" ||
+      source?.type === "scanner.web") &&
     typeof source.params.label === "string"
       ? source.params.label.trim()
       : "";
@@ -32,6 +34,7 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     source?.type === "safety.nearby" ||
     source?.type === "camera.http_image" ||
     source?.type === "video.youtube" ||
+    source?.type === "scanner.web" ||
     panel.widget === "incident" ||
     panel.widget === "broadcastify" ||
     panel.widget === "calls" ||
@@ -40,12 +43,13 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     panel.widget === "space" ||
     panel.widget === "safety" ||
     panel.widget === "video" ||
+    panel.widget === "scanner" ||
     panel.widget === "rotate";
 
   return (
     <article className={`panel${editMode ? " panel-editable" : ""}`}>
       <header className="panel-header">
-        <div className="panel-title">{cameraTitle || panel.title}</div>
+        <div className="panel-title">{namedTitle || panel.title}</div>
         <div className="panel-meta">
           {rotation ? `rotate · ${rotation.intervalSec}s` : panel.widget}
         </div>
