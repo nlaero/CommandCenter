@@ -9,6 +9,7 @@ import { CameraPanel } from "./CameraPanel";
 import { WebScannerPanel } from "./WebScannerPanel";
 import { SafetyPanel } from "./SafetyPanel";
 import { IncidentPanel } from "./IncidentPanel";
+import { NewsPanel } from "./NewsPanel";
 import { QuakePanel } from "./QuakePanel";
 import { SpacePanel } from "./SpacePanel";
 import { TrafficPanel } from "./TrafficPanel";
@@ -85,6 +86,12 @@ export function SourceBody({ sourceId, source, sources = {} }: Props) {
   if (source.type === "traffic.roads") {
     return (
       <TrafficPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
+  }
+
+  if (source.type === "news.rss") {
+    return (
+      <NewsPanel sourceId={sourceId} source={source} configRevision={revision} />
     );
   }
 
