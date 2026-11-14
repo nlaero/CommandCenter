@@ -277,7 +277,7 @@ The client for the future server version is still in this tree (`src/lib/auth.ts
 
 ## Local AI
 
-Settings → Local AI downloads Tiny English onto this computer (about 75 MB, plus the speech runtime). Audio is transcribed here. On `main`, caption fixes — what was heard, and what it should say — stay in `ai-memory.json` next to the config. Sharing that list across computers is part of `multi-user`, not this branch. Removing the model leaves the local file in place.
+The Windows setup includes Tiny English (`ggml-tiny.en.bin`) and the whisper.cpp speech runtime. A new install already has them in `%AppData%\command-center\ai\`. Settings → Local AI shows Tiny English as installed, and live captions do not ask for a download. Remove model deletes that copy. Settings can download it again. On Linux, Settings → Local AI downloads Tiny English onto this computer (about 75 MB, plus the speech runtime). Audio is transcribed here. On `main`, caption fixes — what was heard, and what it should say — stay in `ai-memory.json` next to the config. Sharing that list across computers is part of `multi-user`, not this branch.
 
 ## Build installers
 
@@ -287,7 +287,14 @@ npm run tauri:build
 
 Output under `src-tauri/target/release/bundle/`. Flatpak / `.deb` later — not in this shell.
 
-The Windows setup `.exe` is built in GitHub Actions (`.github/workflows/release-windows.yml`). A pull request runs the build and uploads the installer as a build artifact. It does not publish a release. Pushing a `v*` tag publishes that installer on the GitHub release for the tag. The setup installs Command Center.
+The Windows setup `.exe` is built in GitHub Actions (`.github/workflows/release-windows.yml`). The build downloads the pinned Tiny English model and packs it into the installer. A pull request runs the build and uploads the installer as a build artifact. It does not publish a release. Pushing a `v*` tag publishes that installer on the GitHub release for the tag. The setup installs Command Center and Tiny English.
+
+To compile that installer on a Windows machine, stage the model first:
+
+```bash
+node scripts/fetch-tiny-en.mjs
+npm run tauri:build -- --bundles nsis
+```
 
 ## Updates
 
@@ -305,6 +312,7 @@ node --experimental-strip-types src/lib/safety.test.ts
 node --experimental-strip-types src/lib/feedCaptions.test.ts
 node --experimental-strip-types src/lib/formFields.test.ts
 npm run build
+node scripts/fetch-tiny-en.test.mjs
 ```
 
 ## Future multi-user server
