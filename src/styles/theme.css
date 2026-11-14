@@ -2946,3 +2946,67 @@ label.btn {
     grid-template-columns: 1fr;
   }
 }
+
+.news-outlets {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  padding: 6px 8px;
+}
+
+.news-outlet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.news-local {
+  margin-top: 10px;
+  color: var(--cc-text-muted);
+  font-size: 0.8rem;
+}
+
+.news-local p {
+  margin: 6px 0 0;
+}
+
+.news-local ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.news-local li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--cc-border);
+  color: var(--cc-text);
+}
+
+.news-miles {
+  color: var(--cc-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.news-scope {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  color: var(--cc-accent);
+}
+
+.news-panel .incident-side {
+  grid-template-rows: 1fr;
+}
+
+.news-panel .incident-detail {
+  overflow: auto;
+}

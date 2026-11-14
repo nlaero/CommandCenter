@@ -7,6 +7,7 @@ import { CallsPanel } from "./CallsPanel";
 import { CameraPanel } from "./CameraPanel";
 import { SafetyPanel } from "./SafetyPanel";
 import { IncidentPanel } from "./IncidentPanel";
+import { NewsPanel } from "./NewsPanel";
 import { QuakePanel } from "./QuakePanel";
 import { WeatherPanel } from "./WeatherPanel";
 
@@ -54,6 +55,12 @@ export function SourceBody({ sourceId, source }: Props) {
   if (source.type === "usgs.earthquake") {
     return (
       <QuakePanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
+  }
+
+  if (source.type === "news.rss") {
+    return (
+      <NewsPanel sourceId={sourceId} source={source} configRevision={revision} />
     );
   }
 

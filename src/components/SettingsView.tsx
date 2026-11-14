@@ -29,9 +29,11 @@ import {
   upsertSource,
   validateSourceFields,
 } from "../lib/api";
-import { ensureLocationParams, locationSaveError } from "../lib/location";
+import { confirmedPlaceLabel, ensureLocationParams, locationSaveError } from "../lib/location";
+import { newsSaveError } from "../lib/news";
 import { blankFeed, feedsSaveError, normalizeSafetyParams } from "../lib/safety";
 import { LocationField } from "./LocationField";
+import { NewsOutletsField } from "./NewsOutletsField";
 import { SafetyFeedsField } from "./SafetyFeedsField";
 import { TelevisionSettings } from "./TelevisionSettings";
 import { useSourceRefresh } from "../lib/sourceRefresh";
@@ -210,6 +212,10 @@ export function SettingsView({
       initial.enableCaptions = true;
       initial.feeds = [blankFeed()];
     }
+    if (typeId === "news.rss") {
+      initial.limit = 40;
+      initial.outlets = [];
+    }
     setParams(initial);
     setSecrets(
       typeId === "broadcastify.owner"
@@ -249,7 +255,12 @@ export function SettingsView({
                       kind: "warn",
                       text: "Nearby alerts use sources already set up, including Broadcastify Feed Owner. Each one keeps the county and state it covers. Audio starts muted, and captions stay on while the sound is off.",
                     }
-                  : null,
+                  : typeId === "news.rss"
+                    ? {
+                        kind: "warn",
+                        text: "Pick the national outlets you want. Local outlets are filled in from the confirmed place. Each feed waits for its own schedule, and not faster than once a minute.",
+                      }
+                    : null,
     );
   }
 
@@ -416,6 +427,13 @@ export function SettingsView({
         const safetyError = feedsSaveError(params);
         if (safetyError) {
           setMessage({ kind: "error", text: safetyError });
+          return;
+        }
+      }
+      if (adapter.typeId === "news.rss") {
+        const newsError = newsSaveError(params);
+        if (newsError) {
+          setMessage({ kind: "error", text: newsError });
           return;
         }
       }
@@ -1118,6 +1136,11 @@ function panelTitleFor(
     const label = typeof params.label === "string" ? params.label.trim() : "";
     if (label) return label;
   }
+  if (adapter.typeId === "news.rss") {
+    const place = confirmedPlaceLabel(params);
+    const city = place?.split(",")[0]?.trim() ?? "";
+    if (city && !/^-?\d/.test(city)) return `News · ${city}`;
+  }
   return adapter.name;
 }
 
@@ -1179,6 +1202,17 @@ function panelLayoutFor(
       h: 22,
       minW: 12,
       minH: 12,
+    };
+  }
+  if (typeId === "news.rss") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 28,
+      h: 28,
+      minW: 16,
+      minH: 16,
     };
   }
   if (typeId === "camera.http_image" || typeId === "video.youtube") {
@@ -1268,6 +1302,22 @@ function SourceForm({
       </p>
       <div className="form-grid">
         {adapter.fields.map((field) => {
+          if (field.kind === "checklist") {
+            return (
+              <div className="field" key={field.key}>
+                <label>
+                  {field.label}
+                  {field.required ? <span className="req"> *</span> : null}
+                </label>
+                <NewsOutletsField
+                  params={params}
+                  disabled={busy}
+                  help={field.help}
+                  onChange={onParams}
+                />
+              </div>
+            );
+          }
           if (field.kind === "feeds") {
             return (
               <div className="field" key={field.key}>
