@@ -136,6 +136,7 @@ export function RotatingPanel({ panel, rotation, sources }: Props) {
             key={`${activeId}-r${activeRevision}`}
             sourceId={activeId}
             source={activeSource}
+            sources={sources}
           />
         ) : (
           <div className="alert error" style={{ margin: 10 }}>

@@ -4,7 +4,7 @@
 
 [`multi-user`](https://github.com/nlaero/CommandCenter/tree/multi-user) is the future server version, branched from `main`. A server there can run on this computer or on another machine. Shared caption memory belongs on that branch. `main` keeps caption fixes on this computer.
 
-Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane.
+Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), NOAA space weather and aurora, USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane.
 
 ## Audio rule
 
@@ -125,6 +125,32 @@ USGS updates these about once a minute and sends `Cache-Control: max-age=60` plu
 
 While that window is on the board, notable rows (tsunami flag, PAGER yellow or higher, magnitude at or above the threshold, landslides, volcanic eruptions) show in the right-side alerts pane. Taking the window off the board removes them. Click a row in the pane for the USGS detail link.
 
+## Space weather and aurora
+
+[NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/). No key. The panel waits at least 5 minutes between polls.
+
+| Product | Path |
+|---------|------|
+| Alerts | `/products/alerts.json` |
+| R, S, and G scales | `/products/noaa-scales.json` |
+| Planetary Kp | `/products/noaa-planetary-k-index.json` |
+| Estimated Kp | `/json/planetary_k_index_1m.json` |
+| 10.7 cm flux | `/json/f107_cm_flux.json` |
+| GOES X-ray | `/json/goes/primary/xrays-6-hour.json` |
+| Aurora | `/json/ovation_aurora_latest.json` |
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Location | yes | Same choices as weather. The aurora chance is the OVATION point nearest that place. |
+| Aurora map | yes | Auto, northern, or southern hemisphere |
+| Show aurora map | no | Default on. The chance number stays when the map is off |
+
+**Ham pairing.** Ham propagation / solar (`ham.swpc`) is already in the catalog. When that source is saved, this panel reads its bands and marks each one quiet, fair, poor, or aurora from the current G and R scales. That is storm impact. The ham source itself stays as it is.
+
+While this window is on the board, a current G, S, or R of 1 or higher goes to the alerts pane, along with watches, warnings, and K-index alerts of 5 or higher from the last 72 hours (or still inside their valid-until time). Taking the window off the board removes them.
+
+**In the app:** Settings → Source catalog → Space weather / aurora → Configure. Confirm a place. Save, or Save & add to board.
+
 ## Crime / incident
 
 Municipal open data via Socrata SODA or a custom GeoJSON/JSON URL. Not CrimeRadar / Squawster scraping (ToS). Licensed CrimeRadar APIs can come later behind flags.
@@ -241,7 +267,7 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 ## Shell behavior
 
 - Empty board on first launch
-- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
+- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, NOAA space weather and aurora, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
 - Configure → Save or Save & add to board
 - Settings → Panel rotation for any mix of configured sources in one panel
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
@@ -309,6 +335,7 @@ Checking does not publish a release. Installers stay unpublished until asked.
 ```bash
 npm run test:rust
 node --experimental-strip-types src/lib/safety.test.ts
+node --experimental-strip-types src/lib/spaceWeather.test.ts
 node --experimental-strip-types src/lib/feedCaptions.test.ts
 node --experimental-strip-types src/lib/formFields.test.ts
 npm run build
