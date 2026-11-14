@@ -13,10 +13,13 @@ import { ServerSetup } from "./ServerSetup";
 import { UpdatesBody, useUpdates } from "./UpdatesPanel";
 import { clampAutoHideSec, useAlerts } from "../lib/alerts";
 import {
+  BOARD_DENSITIES,
   DISPLAY_PRESETS,
   applyDisplayPrefs,
+  boardDensityPreset,
   readDisplayPrefs,
   readWorkArea,
+  subscribeDisplayPrefs,
   type DisplayPrefs,
 } from "../lib/display";
 import {
@@ -1041,9 +1044,14 @@ export function SettingsView({
             ) : null}
 
             {tab === "display" ? (
-              <DisplaySettings
-                onMessage={(text, kind) => setMessage({ kind, text })}
-              />
+              <>
+                <BoardDensityControl
+                  onMessage={(text, kind) => setMessage({ kind, text })}
+                />
+                <DisplaySettings
+                  onMessage={(text, kind) => setMessage({ kind, text })}
+                />
+              </>
             ) : null}
 
             {tab === "television" ? (
@@ -1356,6 +1364,70 @@ function SourceForm({
   );
 }
 
+function BoardDensityControl({
+  onMessage,
+}: {
+  onMessage: (text: string, kind: "ok" | "error") => void;
+}) {
+  const [density, setDensity] = useState(() => readDisplayPrefs().density);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => subscribeDisplayPrefs(() => setDensity(readDisplayPrefs().density)), []);
+
+  async function choose(scale: number) {
+    setBusy(true);
+    try {
+      const saved = await applyDisplayPrefs({ ...readDisplayPrefs(), density: scale });
+      setDensity(saved.density);
+      const preset = boardDensityPreset(saved.density);
+      const text =
+        saved.density > 1
+          ? `${preset.label} panels stay easy to read on this screen and on the television.`
+          : saved.density < 1
+            ? `${preset.label} grid. More sources fit on this screen and on the television.`
+            : "Standard grid on this screen and on the television.";
+      onMessage(text, "ok");
+    } catch (err) {
+      onMessage(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const current = boardDensityPreset(density);
+
+  return (
+    <div className="density-block">
+      <p className="section-label">Board density</p>
+      <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
+        How big each source is. Saved on this computer, not on the account. Compact and Dense
+        shrink the panel grid so more sources fit in this window. Larger keeps each panel easy
+        to read. The television, including AirPlay, uses the same choice.
+      </p>
+      <p className="display-current">{current.label}</p>
+      <div className="choice-grid density-grid" role="radiogroup" aria-label="Board density">
+        {BOARD_DENSITIES.map((preset) => {
+          const active = preset.scale === density;
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              className={active ? "choice-card active" : "choice-card"}
+              disabled={busy}
+              onClick={() => void choose(preset.scale)}
+            >
+              <strong>{preset.label}</strong>
+              <span>{preset.detail}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function DisplaySettings({
   onMessage,
 }: {
@@ -1366,10 +1438,12 @@ function DisplaySettings({
   const [customH, setCustomH] = useState(() => String(readDisplayPrefs().height));
   const [busy, setBusy] = useState(false);
 
-  async function apply(next: DisplayPrefs) {
+  useEffect(() => subscribeDisplayPrefs(() => setPrefs(readDisplayPrefs())), []);
+
+  async function apply(next: Omit<DisplayPrefs, "density">) {
     setBusy(true);
     try {
-      const saved = await applyDisplayPrefs(next);
+      const saved = await applyDisplayPrefs({ ...next, density: readDisplayPrefs().density });
       setPrefs(saved);
       setCustomW(String(saved.width));
       setCustomH(String(saved.height));

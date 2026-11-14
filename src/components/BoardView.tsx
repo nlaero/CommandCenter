@@ -6,6 +6,8 @@ import {
   type LayoutItem,
 } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
+import { tvGridChrome } from "../lib/cast";
+import { boardGridMetrics, useBoardDensity } from "../lib/display";
 import type { AppState, Board, GridItem } from "../types";
 import { EmptyBoard } from "./EmptyBoard";
 import { PanelCard } from "./PanelCard";
@@ -55,32 +57,44 @@ export function BoardView({
   displayOnly = false,
   rowHeight,
 }: Props) {
+  const density = useBoardDensity();
+  const metrics = boardGridMetrics(state.layout, density);
+  const television = rowHeight != null;
+  const tvChrome = television ? tvGridChrome(density) : null;
   const layout = useMemo(
     () => toLayout(board.panels.map((p) => p.layout)),
     [board.panels],
   );
+  const row = rowHeight ?? metrics.rowHeight;
+  const margin: [number, number] = tvChrome
+    ? [tvChrome.margin, tvChrome.margin]
+    : metrics.margin;
+  const padding = tvChrome ? tvChrome.padding : metrics.padding;
 
   if (board.panels.length === 0) {
     return <EmptyBoard onOpenSettings={onOpenSettings} displayOnly={displayOnly} />;
   }
 
   return (
-    <div className={`board-canvas${state.editMode ? " is-editing" : ""}`}>
+    <div
+      className={`board-canvas${state.editMode ? " is-editing" : ""}`}
+      style={{ ["--cc-board-scale" as string]: String(metrics.scale) }}
+    >
       {state.editMode ? (
         <div className="edit-banner" role="status">
           Layout edit mode — drag panels or resize from the corner. Changes save automatically.
         </div>
       ) : null}
       <GridLayout
-        key={`grid-${state.editMode ? "edit" : "view"}-${rowHeight ?? state.layout.rowHeight}`}
+        key={`grid-${state.editMode ? "edit" : "view"}-${row}-${margin.join("x")}-${padding}`}
         className="layout"
         layout={layout}
         width={Math.max(width, 320)}
         gridConfig={{
-          cols: state.layout.cols,
-          rowHeight: rowHeight ?? state.layout.rowHeight,
-          margin: state.layout.margin,
-          containerPadding: [8, 8],
+          cols: metrics.cols,
+          rowHeight: row,
+          margin,
+          containerPadding: [padding, padding],
           maxRows: Infinity,
         }}
         dragConfig={{
