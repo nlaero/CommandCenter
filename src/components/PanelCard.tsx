@@ -31,6 +31,7 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     source?.type === "safety.nearby" ||
     source?.type === "camera.http_image" ||
     source?.type === "video.youtube" ||
+    source?.type === "x.follow" ||
     panel.widget === "incident" ||
     panel.widget === "broadcastify" ||
     panel.widget === "calls" ||
@@ -38,6 +39,7 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     panel.widget === "quake" ||
     panel.widget === "safety" ||
     panel.widget === "video" ||
+    panel.widget === "x" ||
     panel.widget === "rotate";
 
   return (

@@ -683,6 +683,90 @@ a {
   overflow-wrap: anywhere;
 }
 
+.x-feed {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.x-post {
+  text-align: left;
+  border: 1px solid var(--cc-border);
+  background: var(--cc-surface-raised);
+  border-radius: var(--cc-radius);
+  border-left: 3px solid var(--cc-accent);
+  padding: 8px 9px;
+}
+
+.x-post.is-new {
+  animation: alert-flash 8s ease-out;
+}
+
+.x-repost,
+.x-open,
+.x-signin-note {
+  color: var(--cc-text-muted);
+  font-size: 0.72rem;
+}
+
+.x-text {
+  margin: 6px 0;
+  color: var(--cc-text);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.x-media {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.x-media img,
+.x-media video,
+.x-audible video,
+.x-audible audio {
+  width: 100%;
+  max-height: 220px;
+  border-radius: var(--cc-radius);
+  background: var(--cc-bg);
+  object-fit: contain;
+}
+
+.x-audible audio {
+  max-height: none;
+}
+
+.x-open {
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.x-signin {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.x-signin p {
+  margin: 0;
+  color: var(--cc-text);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 .incident-toolbar {
   display: flex;
   align-items: center;

@@ -3,6 +3,7 @@ import { AUTH_IN_APP } from "./authFeature";
 import { PENN_HILLS_FEED, isPennHillsPreset } from "./broadcastifyPreset";
 import { isMissingParam, readCoords } from "./location";
 import { fetchUsgsInBrowser } from "./usgs";
+import { xClientIdError } from "./xFollow";
 import type {
   AppState,
   ConfigPaths,
@@ -20,6 +21,8 @@ import type {
   WeatherAlert,
   WeatherConditions,
   WeatherPayload,
+  XAccount,
+  XPost,
 } from "../types";
 
 const BROWSER_KEY = "command-center.app-state.v1";
@@ -617,6 +620,10 @@ export async function fetchSourcePayload(
     if (src.type === "usgs.earthquake") {
       return fetchUsgsInBrowser(sourceId, src);
     }
+    if (src.type === "x.follow") {
+      const payload = browserFetchX(src);
+      return { ...payload, sourceId };
+    }
     throw new Error(`live fetch not implemented for source type: ${src.type}`);
   }
   return invoke<SourcePayload>("fetch_source_payload", {
@@ -662,6 +669,117 @@ function browserFetchCalls(source: SourceConfig): SourcePayload {
       clip(2, "Preview clip · newer", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"),
       clip(9, "Preview clip · earlier", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"),
     ],
+  };
+}
+
+const PREVIEW_WAV =
+  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
+/** Browser preview. Live posts need the desktop app, which keeps the X tokens in the OS keyring. */
+function browserFetchX(source: SourceConfig): SourcePayload {
+  const secrets = readBrowserSecrets();
+  if (secrets["x.session.access_token"] !== "browser-preview") {
+    throw new Error("Sign in to X to load posts from accounts you follow.");
+  }
+  const now = Date.now();
+  const post = (
+    minutesAgo: number,
+    id: string,
+    handle: string,
+    name: string,
+    text: string,
+    media: XPost["media"] = [],
+  ): XPost => ({
+    id,
+    text,
+    createdAt: new Date(now - minutesAgo * 60_000).toISOString(),
+    authorName: name,
+    authorHandle: handle,
+    url: `https://x.com/${handle}/status/${id}`,
+    media,
+  });
+  const posts = [
+    post(1, "1001", "river", "River Gauge", "A new post from an account you follow."),
+    post(4, "1002", "field", "Field Audio", "Clip from the follow feed. Playback starts muted.", [
+      {
+        kind: "audio",
+        url: PREVIEW_WAV,
+        alt: "Preview clip. Playback starts muted.",
+      },
+    ]),
+    post(9, "1003", "ada", "Ada Lovelace", "Notes from the timeline, newest first."),
+    post(15, "1004", "north", "North Desk", "Another post further down the list."),
+    post(22, "1005", "south", "South Desk", "Scroll the list for older posts from accounts you follow."),
+    post(31, "1006", "east", "East Desk", "The desktop app loads this from the X follow timeline."),
+    post(40, "1007", "west", "West Desk", "Sample row so the panel can scroll."),
+    post(55, "1008", "harbor", "Harbor Light", "Oldest sample post in this preview."),
+  ];
+  const label = typeof source.params.label === "string" ? source.params.label.trim() : "";
+  return {
+    sourceId: "browser",
+    typeId: source.type,
+    fetchedAt: new Date().toISOString(),
+    attribution: "X",
+    note: label
+      ? `${label}. Browser preview. The desktop app signs in to X and keeps the token in the OS keyring. Video and audio start muted.`
+      : "Browser preview. The desktop app signs in to X and keeps the token in the OS keyring. Video and audio start muted.",
+    incidents: [],
+    xFeed: {
+      username: secrets["x.session.username"] || "preview",
+      posts: posts.slice(0, Math.max(5, Math.min(100, Number(source.params.limit) || 20))),
+    },
+  };
+}
+
+export async function xAccount(): Promise<XAccount> {
+  if (!isTauri()) return browserXAccount();
+  return invoke<XAccount>("x_account");
+}
+
+export async function xBeginSignIn(sourceId: string): Promise<{ authorizeUrl: string }> {
+  if (!isTauri()) {
+    const state = readBrowser();
+    const source = state.sources[sourceId];
+    const clientId = String(source?.params.clientId ?? "");
+    const problem = xClientIdError(clientId);
+    if (problem) throw new Error(problem);
+    writeBrowserSecrets({
+      ...readBrowserSecrets(),
+      "x.session.access_token": "browser-preview",
+      "x.session.username": "preview",
+      "x.session.name": "Preview account",
+    });
+    return { authorizeUrl: "" };
+  }
+  return invoke<{ authorizeUrl: string }>("x_begin_sign_in", { sourceId });
+}
+
+export async function xPollSignIn(): Promise<XAccount | null> {
+  if (!isTauri()) return browserXAccount();
+  return invoke<XAccount | null>("x_poll_sign_in");
+}
+
+export async function xSignOut(): Promise<XAccount> {
+  if (!isTauri()) {
+    const secrets = { ...readBrowserSecrets() };
+    delete secrets["x.session.access_token"];
+    delete secrets["x.session.username"];
+    delete secrets["x.session.name"];
+    writeBrowserSecrets(secrets);
+    return { signedIn: false, username: null, name: null };
+  }
+  return invoke<XAccount>("x_sign_out");
+}
+
+function browserXAccount(): XAccount {
+  const secrets = readBrowserSecrets();
+  if (secrets["x.session.access_token"] !== "browser-preview") {
+    return { signedIn: false, username: null, name: null };
+  }
+  return {
+    signedIn: true,
+    username: secrets["x.session.username"] || "preview",
+    name: secrets["x.session.name"] || "Preview account",
   };
 }
 

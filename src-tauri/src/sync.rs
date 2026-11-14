@@ -113,7 +113,12 @@ pub fn secret_values(state: &AppState) -> BTreeMap<String, String> {
             }
         }
     }
-    for name in ["auth.access_token", "auth.refresh_token"] {
+    for name in [
+        "auth.access_token",
+        "auth.refresh_token",
+        "x.session.access_token",
+        "x.session.refresh_token",
+    ] {
         if let Ok(Some(value)) = secrets::get_secret(name) {
             if value.len() >= 8 {
                 values.insert(name.to_string(), value);

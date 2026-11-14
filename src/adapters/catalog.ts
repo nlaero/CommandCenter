@@ -1,6 +1,7 @@
 import { USGS_FEED_OPTIONS } from "../lib/usgs";
 import { CALLS_APP } from "../lib/broadcastifyCallsPreset";
 import { PENN_HILLS_FEED } from "../lib/broadcastifyPreset";
+import { X_REDIRECT_URI } from "../lib/xFollow";
 import type { AdapterDefinition } from "../types";
 
 /** Built-in source types for the Settings catalog. */
@@ -379,6 +380,50 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         secret: true,
         placeholder: "Calls app signing secret",
         help: "OS keyring only — never written to the board file, logs, or the window.",
+      },
+    ],
+  },
+  {
+    typeId: "x.follow",
+    category: "product",
+    name: "X",
+    description:
+      "Sign in with X. The panel is a scrolling list of new posts from accounts you follow. Video and audio start muted, and captions show while the sound is off. The access token stays in the OS keyring.",
+    defaultWidget: "x",
+    defaultRefresh: "2m",
+    fields: [
+      {
+        key: "label",
+        label: "Label",
+        kind: "string",
+        required: false,
+        placeholder: "Following",
+        help: "Panel title. The list is posts from accounts you follow.",
+      },
+      {
+        key: "clientId",
+        label: "Client ID",
+        kind: "string",
+        required: true,
+        placeholder: "X app client ID",
+        help: `The app's client ID from the X developer portal. Not an access token. The board file stores this id. Set the app callback URL to ${X_REDIRECT_URI}.`,
+      },
+      {
+        key: "secret:x.client_secret",
+        label: "Client secret",
+        kind: "secret",
+        required: false,
+        secret: true,
+        placeholder: "Only for a confidential X app",
+        help: "OS keyring only. A public app using PKCE leaves this blank. Never written to the board file.",
+      },
+      {
+        key: "limit",
+        label: "Max posts",
+        kind: "number",
+        required: true,
+        placeholder: "20",
+        help: "Newest posts kept in the list. 5 to 100.",
       },
     ],
   },

@@ -3,6 +3,7 @@ pub mod calls;
 pub mod incident;
 pub mod quake;
 pub mod weather;
+pub mod x;
 
 use crate::config::SourceConfig;
 use crate::secrets;
@@ -27,6 +28,9 @@ pub struct SourcePayload {
     /// Present for `usgs.earthquake`. Map, poll interval, and full event list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quake: Option<quake::QuakePayload>,
+    /// Present for `x.follow`. Posts from accounts the signed-in user follows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x_feed: Option<x::FollowFeed>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -64,6 +68,7 @@ pub fn fetch_source(
                 feed: None,
                 weather: None,
                 quake: None,
+                x_feed: None,
             })
         }
         "broadcastify.calls" => {
@@ -79,6 +84,7 @@ pub fn fetch_source(
                 feed: None,
                 weather: None,
                 quake: None,
+                x_feed: None,
             })
         }
         "broadcastify.owner" => {
@@ -94,6 +100,7 @@ pub fn fetch_source(
                 feed: Some(result.feed),
                 weather: None,
                 quake: None,
+                x_feed: None,
             })
         }
         "weather.openmeteo" => {
@@ -109,6 +116,7 @@ pub fn fetch_source(
                 feed: None,
                 weather: Some(result.weather),
                 quake: None,
+                x_feed: None,
             })
         }
         "usgs.earthquake" => {
@@ -123,6 +131,22 @@ pub fn fetch_source(
                 feed: None,
                 weather: None,
                 quake: Some(result.quake),
+                x_feed: None,
+            })
+        }
+        "x.follow" => {
+            let result = x::fetch(source)?;
+            Ok(SourcePayload {
+                source_id: source_id.to_string(),
+                type_id: source.type_id.clone(),
+                fetched_at: result.fetched_at,
+                attribution: Some(result.attribution),
+                note: result.note,
+                incidents: vec![],
+                feed: None,
+                weather: None,
+                quake: None,
+                x_feed: Some(result.feed),
             })
         }
         other => Err(SourceError::Message(format!(

@@ -436,7 +436,8 @@ fn points_at_local(base_url: &str, port: u16) -> bool {
 }
 
 fn is_session_key(name: &str) -> bool {
-    name.trim().to_ascii_lowercase().starts_with("auth.")
+    let name = name.trim().to_ascii_lowercase();
+    name.starts_with("auth.") || name.starts_with("x.session.")
 }
 
 fn normalize_startup(startup: &str) -> Result<&'static str, String> {
@@ -779,6 +780,9 @@ mod tests {
     fn session_keys_are_not_source_secrets() {
         assert!(is_session_key("auth.access_token"));
         assert!(is_session_key("auth.refresh_token"));
+        assert!(is_session_key("x.session.access_token"));
+        assert!(is_session_key("x.session.refresh_token"));
+        assert!(!is_session_key("x.client_secret"));
         assert!(!is_session_key("broadcastify.password"));
         assert_eq!(normalize_role("device-only").unwrap(), "device");
         assert_eq!(normalize_role("shared").unwrap(), "shared");
