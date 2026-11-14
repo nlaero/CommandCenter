@@ -203,6 +203,8 @@ npm run tauri:build
 
 Output under `src-tauri/target/release/bundle/`. Flatpak / `.deb` later — not in this shell.
 
+The Windows setup `.exe` is built in GitHub Actions (`.github/workflows/release-windows.yml`). A pull request runs the build. Pushing a `v*` tag, for example `v0.1.0`, publishes that installer on the GitHub release for the tag. The package is the desktop app only.
+
 ## Tests
 
 ```bash
