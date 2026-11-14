@@ -3,6 +3,7 @@ import { getAdapter } from "../adapters/catalog";
 import { useSourceRevision } from "../lib/sourceRefresh";
 import type { SourceConfig } from "../types";
 import { BroadcastifyPanel } from "./BroadcastifyPanel";
+import { LocalAudioPanel } from "./LocalAudioPanel";
 import { CallsPanel } from "./CallsPanel";
 import { CameraPanel } from "./CameraPanel";
 import { WebScannerPanel } from "./WebScannerPanel";
@@ -47,6 +48,10 @@ export function SourceBody({ sourceId, source, sources = {} }: Props) {
     return (
       <SafetyPanel sourceId={sourceId} source={source} configRevision={revision} />
     );
+  }
+
+  if (source.type === "audio.local") {
+    return <LocalAudioPanel sourceId={sourceId} source={source} />;
   }
 
   if (source.type === "weather.openmeteo") {
