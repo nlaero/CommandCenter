@@ -17,12 +17,23 @@ export type AlertsPrefs = {
   /** Prefer auto-open when new visible alerts arrive (default true). */
   autoOpen: boolean;
   /**
+   * Close the pane this many seconds after it opens.
+   * 0 leaves it open. Pin overrides this. Default 60.
+   */
+  autoHideSec: number;
+  /**
    * Alert ids ignored until Alerts settings change (or user clears ignores).
    * Changing any Alerts preference bumps `settingsEpoch` and clears this list.
    */
   ignoredPersistent: string[];
   settingsEpoch: number;
 };
+
+/** 0 disables auto-hide. Otherwise 5 seconds through 1 hour. */
+export function clampAutoHideSec(sec: number): number {
+  if (!Number.isFinite(sec) || sec <= 0) return 0;
+  return Math.min(3600, Math.max(5, Math.round(sec)));
+}
 
 type AlertsContextValue = {
   prefs: AlertsPrefs;
@@ -44,7 +55,11 @@ type AlertsContextValue = {
   ignoreTemporary: (alertId: string) => void;
   ignorePersistent: (alertId: string) => void;
   clearPersistentIgnores: () => void;
-  updatePrefs: (patch: Partial<Pick<AlertsPrefs, "pinned" | "autoOpen">>) => void;
+  /** Dismiss the alerts currently in the pane for this session. New ids still show. */
+  clearVisible: () => void;
+  updatePrefs: (
+    patch: Partial<Pick<AlertsPrefs, "pinned" | "autoOpen" | "autoHideSec">>,
+  ) => void;
   togglePin: () => void;
 };
 
@@ -54,6 +69,7 @@ function defaultPrefs(): AlertsPrefs {
   return {
     pinned: false,
     autoOpen: true,
+    autoHideSec: 60,
     ignoredPersistent: [],
     settingsEpoch: 0,
   };
@@ -67,6 +83,9 @@ function readPrefs(): AlertsPrefs {
     return {
       pinned: Boolean(parsed.pinned),
       autoOpen: parsed.autoOpen !== false,
+      autoHideSec: clampAutoHideSec(
+        typeof parsed.autoHideSec === "number" ? parsed.autoHideSec : 60,
+      ),
       ignoredPersistent: Array.isArray(parsed.ignoredPersistent)
         ? parsed.ignoredPersistent.filter((id): id is string => typeof id === "string")
         : [],
@@ -147,6 +166,8 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
     [published, ignoredTemporary, persistentSet],
   );
 
+  const visibleKey = useMemo(() => visible.map((alert) => alert.id).join("\n"), [visible]);
+
   const selected = useMemo(
     () => published.find((a) => a.id === selectedId) ?? null,
     [published, selectedId],
@@ -159,7 +180,9 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
     }
   }, [published, selectedId]);
 
-  // Self-open when visible alerts appear; collapse when empty unless pinned.
+  // Self-open when visible alerts appear (including a new id at the same count).
+  // Collapse when empty unless pinned. A manual collapse or the auto-hide timer
+  // stays closed until the visible set changes.
   useEffect(() => {
     if (!primed) {
       setPrimed(true);
@@ -175,7 +198,7 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
     if (prefs.autoOpen || prefs.pinned) {
       setOpen(true);
     }
-  }, [visible.length, prefs.pinned, prefs.autoOpen, primed]);
+  }, [visibleKey, visible.length, prefs.pinned, prefs.autoOpen, primed]);
 
   const publishSourceAlerts = useCallback((sourceId: string, alerts: BoardAlert[]) => {
     setBySource((prev) => {
@@ -231,18 +254,39 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const clearVisible = useCallback(() => {
+    setIgnoredTemporary((prev) => {
+      const next = new Set(prev);
+      for (const alert of visible) next.add(alert.id);
+      return next;
+    });
+    setSelectedId(null);
+  }, [visible]);
+
   const updatePrefs = useCallback(
-    (patch: Partial<Pick<AlertsPrefs, "pinned" | "autoOpen">>) => {
+    (patch: Partial<Pick<AlertsPrefs, "pinned" | "autoOpen" | "autoHideSec">>) => {
       setPrefs((prev) => {
-        const next: AlertsPrefs = {
+        const autoHideSec =
+          patch.autoHideSec !== undefined ? clampAutoHideSec(patch.autoHideSec) : prev.autoHideSec;
+        const pinned = patch.pinned ?? prev.pinned;
+        const autoOpen = patch.autoOpen ?? prev.autoOpen;
+        if (
+          pinned === prev.pinned &&
+          autoOpen === prev.autoOpen &&
+          autoHideSec === prev.autoHideSec
+        ) {
+          return prev;
+        }
+        if (pinned) setOpen(true);
+        return {
           ...prev,
-          ...patch,
+          pinned,
+          autoOpen,
+          autoHideSec,
           // Changing Alerts options clears "until Settings change" ignores.
           ignoredPersistent: [],
           settingsEpoch: prev.settingsEpoch + 1,
         };
-        if (next.pinned) setOpen(true);
-        return next;
       });
     },
     [],
@@ -278,6 +322,7 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
       ignoreTemporary,
       ignorePersistent,
       clearPersistentIgnores,
+      clearVisible,
       updatePrefs,
       togglePin,
     }),
@@ -296,6 +341,7 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
       ignoreTemporary,
       ignorePersistent,
       clearPersistentIgnores,
+      clearVisible,
       updatePrefs,
       togglePin,
     ],

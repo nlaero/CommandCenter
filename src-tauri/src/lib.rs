@@ -30,6 +30,8 @@ pub fn run() {
             commands::auth_login,
             commands::auth_logout,
             commands::sync_board,
+            commands::set_display_size,
+            commands::display_work_area,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Command Center");

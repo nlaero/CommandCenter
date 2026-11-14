@@ -161,12 +161,12 @@ Live Owner API calls need the Tauri app. The browser Vite mock serves a fixture 
 
 ## Timed panel rotation
 
-Optional: cycle two or more saved sources in one panel on a timer.
+Optional: cycle any combination of saved sources in one panel on a timer.
 
 1. Configure at least two sources under Settings → Source catalog.
 2. Settings → Panel rotation.
-3. Enable timed rotation.
-4. Set title + interval (15s / 30s / 1m / 5m, or custom 5–3600s), pick sources, Add rotating panel to board.
+3. Turn on timed rotation.
+4. Set title + interval (15s / 30s / 1m / 5m, or custom 5–3600s), check any mix of sources, Add rotating panel to board. They cycle in the order you check them.
 
 Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on the panel (`rotation.enabled`, `intervalSec`, `sourceIds`). Single-source panels are unchanged.
 
@@ -175,7 +175,9 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 - Empty board on first launch
 - Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras, ham, crime/incident, Broadcastify Feed Owner, plus file / HTTP / SQLite / system-metrics stubs
 - Configure → Save or Save & add to board
-- Settings → Panel rotation for multi-source panels
+- Settings → Panel rotation for any mix of configured sources in one panel
+- Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
+- Settings → Display sets the window size (1280×720 through 4K, this screen, or a custom size). Saved on this computer.
 - Edit layout (toolbar or `Ctrl/Cmd+E`): 48-column fine grid; persists on drag/resize stop
 - Board switcher in the chrome (+ for another empty board)
 
@@ -187,7 +189,7 @@ The board asks for an account before it opens. Older configs that had sign-in tu
 
 Create the account on that same screen (Sign in / Create account). There is no separate admin signup. After it succeeds you land on the board; restarting the app uses the refresh token until you sign out or it expires.
 
-The auth-server URL is a setting. It starts at `http://100.101.141.93:8080`. Change it if yours lives somewhere else. Plain HTTP is allowed for that tailnet address (Tailscale `100.64.0.0/10`). Use HTTPS for anything else. A lab checkbox can allow HTTP to localhost or a private LAN in debug builds; release builds still refuse that.
+The auth-server URL is a setting. It starts at `http://100.101.141.93:8080`. Change it if yours lives somewhere else. Plain HTTP is allowed for Tailscale (`100.64.0.0/10`), private LAN addresses (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), and loopback. That includes an installed build pointed at `http://10.0.0.85:8080`. Public hosts still need HTTPS. A checkbox can also allow HTTP for a `.local` or `.lan` name. It does not allow a public host.
 
 Access and refresh tokens go in the OS keyring (`auth.access_token`, `auth.refresh_token`). The password is not stored. Broadcastify and other source secrets stay in the keyring too and are not sent to auth-server.
 

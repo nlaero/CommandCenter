@@ -37,15 +37,42 @@ export function AlertsPane() {
     closeAlert,
     ignoreTemporary,
     ignorePersistent,
+    clearVisible,
     togglePin,
   } = useAlerts();
 
   const count = visible.length;
   const ignoredCount = published.length - visible.length;
+  const visibleKey = visible.map((alert) => alert.id).join("\n");
+  const [hideInSec, setHideInSec] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!open || prefs.pinned || prefs.autoHideSec <= 0 || selected) {
+      setHideInSec(null);
+      return;
+    }
+    const total = prefs.autoHideSec;
+    const started = Date.now();
+    setHideInSec(total);
+    const timer = window.setInterval(() => {
+      const left = total - Math.floor((Date.now() - started) / 1000);
+      if (left <= 0) {
+        setHideInSec(null);
+        setOpen(false);
+        return;
+      }
+      setHideInSec(left);
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [open, prefs.pinned, prefs.autoHideSec, visibleKey, selected, setOpen]);
+
+  const overlay = open && !prefs.pinned;
 
   return (
     <aside
-      className={`alerts-pane${open ? " is-open" : ""}${prefs.pinned ? " is-pinned" : ""}`}
+      className={`alerts-pane${open ? " is-open" : ""}${prefs.pinned ? " is-pinned" : ""}${
+        overlay ? " is-overlay" : ""
+      }`}
       aria-label="Board alerts"
     >
       <button
@@ -75,7 +102,11 @@ export function AlertsPane() {
               type="button"
               className={`btn btn-ghost alerts-chip${prefs.pinned ? " active" : ""}`}
               onClick={togglePin}
-              title="Pin pane open"
+              title={
+                prefs.pinned
+                  ? "Unpin. New alerts cover the panels instead of resizing them."
+                  : "Pin open. Panels shrink so they sit beside the pane."
+              }
             >
               {prefs.pinned ? "Pinned" : "Pin"}
             </button>
@@ -90,6 +121,25 @@ export function AlertsPane() {
             </button>
           </div>
         </header>
+
+        <div className="alerts-toolbar">
+          <button
+            type="button"
+            className="btn alerts-clear"
+            onClick={clearVisible}
+            disabled={count === 0}
+            title="Dismiss these alerts for this session. New ones still show up."
+          >
+            Clear alerts
+          </button>
+          {hideInSec != null ? (
+            <span className="alerts-hide-note">Hides in {hideInSec}s</span>
+          ) : prefs.pinned ? (
+            <span className="alerts-hide-note is-muted">Pinned</span>
+          ) : prefs.autoHideSec > 0 ? null : (
+            <span className="alerts-hide-note is-muted">Stays open</span>
+          )}
+        </div>
 
         <div className="alerts-list" role="list">
           {visible.length === 0 ? (

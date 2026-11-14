@@ -6,6 +6,7 @@ import { SettingsView } from "./components/SettingsView";
 import { AuthScreen } from "./components/AuthScreen";
 import { AlertsProvider } from "./lib/alerts";
 import { authLogout, loadAuthSession } from "./lib/auth";
+import { applyDisplayPrefs, readDisplayPrefs } from "./lib/display";
 import { syncBoard } from "./lib/sync";
 import {
   createBoard,
@@ -37,6 +38,10 @@ function AppShell() {
   const stageRef = useRef<HTMLDivElement>(null);
   const boardMainRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    void applyDisplayPrefs(readDisplayPrefs()).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

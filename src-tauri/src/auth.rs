@@ -45,7 +45,8 @@ impl AuthError {
     fn unreachable(detail: impl Into<String>) -> Self {
         let detail = detail.into();
         let message = if detail.is_empty() {
-            "auth-server unreachable. Check the server URL and that this computer can reach it.".into()
+            "auth-server unreachable. Check the server URL and that this computer can reach it."
+                .into()
         } else {
             format!(
                 "auth-server unreachable. Check the server URL and that this computer can reach it. ({detail})"
@@ -482,12 +483,18 @@ impl<S: TokenStore> AuthService<S> {
     }
 
     fn current_user(&self, settings: &AuthSettings, access: &str) -> Result<AuthUser, AuthError> {
-        let (status, body) =
-            self.request(settings, reqwest::Method::GET, "/auth/me", None, Some(access))?;
+        let (status, body) = self.request(
+            settings,
+            reqwest::Method::GET,
+            "/auth/me",
+            None,
+            Some(access),
+        )?;
         if status != 200 {
             return Err(error_from(status, body.as_ref()));
         }
-        let body = body.ok_or_else(|| AuthError::Message("auth-server returned an empty profile.".into()))?;
+        let body = body
+            .ok_or_else(|| AuthError::Message("auth-server returned an empty profile.".into()))?;
         serde_json::from_value(body)
             .map_err(|_| AuthError::Message("auth-server returned an unexpected profile.".into()))
     }
@@ -534,11 +541,7 @@ impl<S: TokenStore> AuthService<S> {
     ) -> Result<(u16, Option<Value>), AuthError> {
         let origin = check_url(&settings.base_url, settings.allow_insecure_http)?;
         reject_tailnet_in_tests(&origin);
-        let url = format!(
-            "{}{}",
-            origin.as_str().trim_end_matches('/'),
-            path
-        );
+        let url = format!("{}{}", origin.as_str().trim_end_matches('/'), path);
         let client = build_client(settings)?;
         let mut req = client.request(method, &url);
         if let Some(token) = bearer {
@@ -567,8 +570,10 @@ impl<S: TokenStore> AuthService<S> {
         self.store.set(KEY_REFRESH, &tokens.refresh_token)?;
         self.store.set(KEY_USER_ID, &tokens.user.id)?;
         self.store.set(KEY_USERNAME, &tokens.user.username)?;
-        self.store
-            .set(KEY_EXPIRES, &expires_at_from_ttl(tokens.expires_in).to_string())?;
+        self.store.set(
+            KEY_EXPIRES,
+            &expires_at_from_ttl(tokens.expires_in).to_string(),
+        )?;
         Ok(())
     }
 
@@ -737,18 +742,20 @@ fn expires_at_from_ttl(ttl: i64) -> u64 {
 }
 
 fn check_url(raw: &str, allow_insecure_http: bool) -> Result<Url, AuthError> {
-    check_url_policy(raw, allow_insecure_http, !cfg!(debug_assertions), cfg!(test))
+    check_url_policy(raw, allow_insecure_http)
 }
 
-fn check_url_policy(
-    raw: &str,
-    allow_insecure_http: bool,
-    release_build: bool,
-    in_tests: bool,
-) -> Result<Url, AuthError> {
-    let url = Url::parse(raw.trim()).map_err(|_| {
-        AuthError::Message("Auth-server URL is not a valid URL.".into())
-    })?;
+/// Plain HTTP is allowed on installed builds for:
+/// - Tailscale `100.64.0.0/10` (and the Tailscale IPv6 prefix)
+/// - private LAN `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
+/// - loopback (`localhost`, `127.0.0.0/8`, `::1`)
+///
+/// Public hosts still require HTTPS. `allow_insecure_http` only adds a named
+/// lab host (`.local` / `.lan`) or another non-public lab address such as
+/// link-local. It never permits a public host.
+fn check_url_policy(raw: &str, allow_insecure_http: bool) -> Result<Url, AuthError> {
+    let url = Url::parse(raw.trim())
+        .map_err(|_| AuthError::Message("Auth-server URL is not a valid URL.".into()))?;
     if !url.username().is_empty() || url.password().is_some() {
         return Err(AuthError::Message(
             "Auth-server URL must not include a username or password.".into(),
@@ -769,28 +776,18 @@ fn check_url_policy(
         "https" => Ok(url),
         "http" => {
             let host = url.host_str().unwrap_or("");
-            if is_tailnet_host(host) {
+            if is_tailnet_host(host) || is_private_lan_host(host) || is_loopback_host(host) {
                 warn_plain_http(&url);
-                return Ok(url);
-            }
-            // Loopback only, so the test suite can run a local fake server.
-            // This branch is compiled out of the desktop binary (`cfg(test)` is false).
-            if in_tests && is_loopback_host(host) {
                 return Ok(url);
             }
             if !allow_insecure_http {
                 return Err(AuthError::Message(
-                    "Auth-server URL must be https://. Plain HTTP is allowed for the tailnet address, or for a lab host when Allow HTTP is on.".into(),
-                ));
-            }
-            if release_build {
-                return Err(AuthError::Message(
-                    "Release builds refuse plain HTTP except for the tailnet auth-server address.".into(),
+                    "Auth-server URL must be https:// for a public host. Plain HTTP is allowed for private LAN addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), loopback, and Tailscale (100.64.0.0/10). Allow HTTP also covers a named lab host (.local or .lan).".into(),
                 ));
             }
             if !is_lab_host(host) {
                 return Err(AuthError::Message(
-                    "Plain HTTP is only allowed for localhost, a private LAN address, or a tailnet address.".into(),
+                    "Plain HTTP is only allowed for private LAN addresses, loopback, Tailscale, or a named lab host (.local or .lan) when Allow HTTP is on.".into(),
                 ));
             }
             warn_plain_http(&url);
@@ -829,7 +826,7 @@ fn warn_plain_http(url: &Url) {
         return;
     }
     eprintln!(
-        "command-center auth: plain HTTP ({url}). Allowed for the tailnet address; do not use HTTP on a public network."
+        "command-center auth: plain HTTP ({url}). Allowed for a private LAN address, loopback, or the tailnet; do not use HTTP on a public network."
     );
 }
 
@@ -850,6 +847,18 @@ fn is_tailnet_host(host: &str) -> bool {
     }
 }
 
+fn is_private_lan_host(host: &str) -> bool {
+    let host = host.trim_matches(|ch| ch == '[' || ch == ']');
+    match host.parse::<IpAddr>() {
+        Ok(IpAddr::V4(ip)) => {
+            ipv4_in_cidr(ip, [10, 0, 0, 0], 8)
+                || ipv4_in_cidr(ip, [172, 16, 0, 0], 12)
+                || ipv4_in_cidr(ip, [192, 168, 0, 0], 16)
+        }
+        _ => false,
+    }
+}
+
 fn is_loopback_host(host: &str) -> bool {
     let host = host.trim_matches(|ch| ch == '[' || ch == ']');
     if host.eq_ignore_ascii_case("localhost") {
@@ -867,7 +876,8 @@ fn is_lab_host(host: &str) -> bool {
         return true;
     }
     let host = host.trim_matches(|ch| ch == '[' || ch == ']');
-    if host.ends_with(".localhost") || host.ends_with(".local") || host.ends_with(".lan") {
+    let named = host.to_ascii_lowercase();
+    if named.ends_with(".localhost") || named.ends_with(".local") || named.ends_with(".lan") {
         return true;
     }
     match host.parse::<IpAddr>() {
@@ -889,7 +899,8 @@ fn ipv4_in_cidr(ip: std::net::Ipv4Addr, base: [u8; 4], prefix: u32) -> bool {
     } else {
         u32::MAX << (32 - prefix)
     };
-    (u32::from(ip) & mask) == (u32::from(std::net::Ipv4Addr::new(base[0], base[1], base[2], base[3])) & mask)
+    (u32::from(ip) & mask)
+        == (u32::from(std::net::Ipv4Addr::new(base[0], base[1], base[2], base[3])) & mask)
 }
 
 fn reject_tailnet_in_tests(url: &Url) {
@@ -1014,7 +1025,9 @@ fn build_client(settings: &AuthSettings) -> Result<reqwest::blocking::Client, Au
             AuthError::Message(format!("could not read auth CA file {path}: {err}"))
         })?;
         let cert = reqwest::Certificate::from_pem(&pem).map_err(|err| {
-            AuthError::Message(format!("auth CA file {path} is not a PEM certificate: {err}"))
+            AuthError::Message(format!(
+                "auth CA file {path} is not a PEM certificate: {err}"
+            ))
         })?;
         builder = builder.add_root_certificate(cert);
     }
@@ -1046,7 +1059,9 @@ fn pinned_tls_config(pin: &str, ca_file: Option<&str>) -> Result<rustls::ClientC
         let certs = rustls_pemfile::certs(&mut reader)
             .collect::<Result<Vec<_>, _>>()
             .map_err(|err| {
-                AuthError::Message(format!("auth CA file {path} is not a PEM certificate: {err}"))
+                AuthError::Message(format!(
+                    "auth CA file {path} is not a PEM certificate: {err}"
+                ))
             })?;
         if certs.is_empty() {
             return Err(AuthError::Message(format!(
@@ -1087,8 +1102,13 @@ impl ServerCertVerifier for PinVerifier {
         ocsp_response: &[u8],
         now: UnixTime,
     ) -> Result<ServerCertVerified, TlsError> {
-        self.inner
-            .verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now)?;
+        self.inner.verify_server_cert(
+            end_entity,
+            intermediates,
+            server_name,
+            ocsp_response,
+            now,
+        )?;
         if !pin_matches(end_entity.as_ref(), &self.pin) {
             return Err(TlsError::General(
                 "auth-server TLS pin did not match".into(),
@@ -1289,7 +1309,10 @@ mod tests {
     fn issue(fake: &Fake, id: &str, username: &str) -> Vec<u8> {
         let access = format!("access-{id}-{}", fake.access.lock().unwrap().len() + 1);
         let refresh = format!("refresh-{id}-{}", fake.refresh.lock().unwrap().len() + 1);
-        fake.access.lock().unwrap().insert(access.clone(), id.to_string());
+        fake.access
+            .lock()
+            .unwrap()
+            .insert(access.clone(), id.to_string());
         fake.refresh
             .lock()
             .unwrap()
@@ -1418,7 +1441,7 @@ mod tests {
 
     #[test]
     fn default_tailnet_url_is_allowed_without_the_insecure_flag() {
-        let url = check_url_policy(DEFAULT_AUTH_BASE_URL, false, true, false).unwrap();
+        let url = check_url_policy(DEFAULT_AUTH_BASE_URL, false).unwrap();
         assert_eq!(canonical_url(&url).unwrap(), DEFAULT_AUTH_BASE_URL);
         assert!(is_tailnet_host("100.101.141.93"));
         assert!(is_tailnet_host("100.64.0.1"));
@@ -1429,15 +1452,62 @@ mod tests {
     }
 
     #[test]
-    fn release_refuses_http_except_tailnet() {
-        let err = check_url_policy("http://127.0.0.1:8080", true, true, false).unwrap_err();
-        assert!(err.to_string().contains("Release builds"));
-        let err = check_url_policy("http://example.com", true, false, false).unwrap_err();
-        assert!(err.to_string().contains("private LAN"));
-        let err = check_url_policy("http://10.1.2.3:8080", false, false, false).unwrap_err();
-        assert!(err.to_string().contains("https://"));
-        assert!(check_url_policy("https://auth.example", false, true, false).is_ok());
-        assert!(check_url_policy("http://127.0.0.1:9", true, false, false).is_ok());
+    fn private_lan_loopback_and_tailnet_http_are_allowed() {
+        for raw in [
+            "http://10.0.0.85:8080",
+            "http://10.0.0.0:8080",
+            "http://10.255.255.255:8080",
+            "http://192.168.0.1:8080",
+            "http://192.168.255.254:8080",
+            "http://172.16.0.1:8080",
+            "http://172.31.255.254:8080",
+            "http://127.0.0.1:8080",
+            "http://127.255.255.254:9",
+            "http://localhost:8080",
+            "http://[::1]:8080",
+            DEFAULT_AUTH_BASE_URL,
+            "http://100.64.0.1:8080",
+            "http://100.127.255.255:8080",
+        ] {
+            let url = check_url_policy(raw, false).unwrap_or_else(|err| panic!("{raw}: {err}"));
+            assert_eq!(url.scheme(), "http", "{raw}");
+        }
+
+        let lan = check_url_policy("http://10.0.0.85:8080", false).unwrap();
+        assert_eq!(canonical_url(&lan).unwrap(), "http://10.0.0.85:8080");
+
+        for raw in [
+            "http://9.255.255.255:8080",
+            "http://11.0.0.1:8080",
+            "http://172.15.255.255:8080",
+            "http://172.32.0.1:8080",
+            "http://192.167.0.1:8080",
+            "http://192.169.0.1:8080",
+            "http://8.8.8.8:8080",
+            "http://1.1.1.1",
+            "http://example.com",
+            "http://auth.example.com:8080",
+            "http://100.63.255.255:8080",
+            "http://100.128.0.1:8080",
+        ] {
+            let err = check_url_policy(raw, true).unwrap_err();
+            let message = err.to_string();
+            assert!(
+                message.contains("Plain HTTP") || message.contains("https://"),
+                "{raw}: {message}"
+            );
+            assert!(
+                !message.contains("Release builds"),
+                "installed builds should accept private LAN HTTP, got {message} for {raw}"
+            );
+        }
+
+        let named = check_url_policy("http://auth.local:8080", false).unwrap_err();
+        assert!(named.to_string().contains("https://"));
+        assert!(check_url_policy("http://auth.local:8080", true).is_ok());
+        assert!(check_url_policy("http://printer.lan:8080", true).is_ok());
+        assert!(check_url_policy("https://auth.example", false).is_ok());
+        assert!(check_url_policy("http://10.0.0.85:8080", false).is_ok());
     }
 
     #[test]
@@ -1496,9 +1566,7 @@ mod tests {
         let service = AuthService::with_store(store.clone());
         let cfg = settings(&base);
 
-        let created = service
-            .register(&cfg, "Ada", "correct-password")
-            .unwrap();
+        let created = service.register(&cfg, "Ada", "correct-password").unwrap();
         assert!(created.signed_in);
         assert_eq!(created.user.as_ref().unwrap().username, "Ada");
         assert!(!created.offline);
@@ -1555,7 +1623,9 @@ mod tests {
         // Presenting the rotated token through the live service store fails closed.
         store.set(KEY_REFRESH, old).unwrap();
         store.delete(KEY_ACCESS).unwrap();
-        store.set(KEY_EXPIRES, &(now_unix() + 60).to_string()).unwrap();
+        store
+            .set(KEY_EXPIRES, &(now_unix() + 60).to_string())
+            .unwrap();
         let rejected = AuthService::with_store(store.clone()).session(&cfg);
         assert!(!rejected.signed_in);
         assert_eq!(rejected.suggested_username.as_deref(), Some("Ada"));
