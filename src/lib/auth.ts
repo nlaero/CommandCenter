@@ -429,7 +429,23 @@ async function restore(settings: AuthSettings): Promise<AuthSession> {
   });
 }
 
+/** This build does not sign in. Avoids the auth command, which refuses the call. */
+export function localSignedOutSession(): AuthSession {
+  return {
+    enabled: false,
+    baseUrl: "",
+    allowInsecureHttp: false,
+    signedIn: false,
+    offline: false,
+    user: null,
+    suggestedUsername: null,
+    reachable: null,
+    statusMessage: null,
+  };
+}
+
 export function loadAuthSession(): Promise<AuthSession> {
+  if (!AUTH_IN_APP) return Promise.resolve(localSignedOutSession());
   if (isTauri()) {
     return invoke<AuthSession>("auth_session").catch((err) => {
       throw new Error(errorMessage(err));

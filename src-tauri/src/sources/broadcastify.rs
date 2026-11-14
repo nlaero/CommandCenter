@@ -164,9 +164,9 @@ fn owner_get(
         .query(params)
         .send()
         .map_err(|e| {
-            super::SourceError::Message(format!(
-                "Broadcastify request failed: {}",
-                e.without_url()
+            super::SourceError::Message(redact_owner_text(
+                &format!("Broadcastify request failed: {}", e.without_url()),
+                params,
             ))
         })?;
 
@@ -174,6 +174,7 @@ fn owner_get(
     let text = response
         .text()
         .map_err(|e| super::SourceError::Message(format!("read body: {e}")))?;
+    let text = redact_owner_text(&text, params);
 
     if !status.is_success() {
         return Err(super::SourceError::Message(format!(
@@ -615,6 +616,22 @@ fn looks_like_day(s: &str) -> bool {
         && b[8..10].iter().all(|c| c.is_ascii_digit())
 }
 
+/// Drop account name and password if a failed reply echoes the query.
+fn redact_owner_text(text: &str, params: &[(&str, &str)]) -> String {
+    let mut out = text.to_string();
+    for (key, value) in params {
+        if *key != "u" && *key != "p" {
+            continue;
+        }
+        let value = value.trim();
+        if value.len() < 4 {
+            continue;
+        }
+        out = out.replace(value, "[redacted]");
+    }
+    out
+}
+
 fn param_str(source: &SourceConfig, key: &str) -> Option<String> {
     source.params.get(key).and_then(value_to_string)
 }
@@ -688,6 +705,18 @@ fn truncate(s: &str, max: usize) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn owner_errors_drop_the_account_and_password() {
+        let params = [("u", "feed-owner"), ("p", "desk-password-value"), ("a", "feed")];
+        let shown = redact_owner_text(
+            "ERROR: bad login for feed-owner p=desk-password-value",
+            &params,
+        );
+        assert!(!shown.contains("desk-password-value"), "{shown}");
+        assert!(!shown.contains("feed-owner"), "{shown}");
+        assert!(shown.contains("[redacted]"));
+    }
 
     #[test]
     fn parses_feed_status_online() {

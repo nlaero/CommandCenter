@@ -815,6 +815,7 @@ pub fn auth_login(username: String, password: String) -> Result<AuthSession, Com
 
 #[tauri::command]
 pub fn local_server_status() -> Result<LocalServerStatus, CommandError> {
+    require_auth_feature()?;
     let paths = config::resolve_paths()?;
     Ok(local_server::status(std::path::Path::new(&paths.root)))
 }

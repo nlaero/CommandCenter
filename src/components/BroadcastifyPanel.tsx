@@ -61,7 +61,7 @@ function todayIso(): string {
 }
 
 function captionsEnabled(source: SourceConfig): boolean {
-  return source.params.enableCaptions === true;
+  return source.params.enableCaptions !== false;
 }
 
 export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Props) {
@@ -443,7 +443,9 @@ function ArchiveDetail({
     if (!el) return;
     el.muted = true;
     if (live) {
-      void el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      // Captions read the relay URL on this computer. They still run when the
+      // muted player cannot start, which is the default until the user unmutes.
+      void el.play().then(() => setPlaying(true)).catch(() => setPlaying(true));
       return;
     }
     el.pause();

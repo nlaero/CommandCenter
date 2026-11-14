@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { errorMessage } from "../lib/auth";
 import { AUTH_IN_APP } from "../lib/authFeature";
 import {
   applyUpdate,
@@ -23,6 +22,16 @@ import {
 } from "../lib/updates";
 
 type Note = { kind: "ok" | "error"; text: string };
+
+function updateError(err: unknown): string {
+  if (err instanceof Error && err.message.trim()) return err.message;
+  if (err && typeof err === "object" && "message" in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  if (typeof err === "string" && err.trim()) return err;
+  return "Couldn't check for updates.";
+}
 
 type UpdatesApi = {
   report: UpdateReport | null;
@@ -68,7 +77,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       const next = await checkForUpdates(force);
       setReport(next);
     } catch (err) {
-      setCheckError(errorMessage(err));
+      setCheckError(updateError(err));
     } finally {
       setChecking(false);
     }
@@ -112,7 +121,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       const next = await checkForUpdates(true);
       setReport(next);
     } catch (err) {
-      setApplyNote({ kind: "error", text: errorMessage(err) });
+      setApplyNote({ kind: "error", text: updateError(err) });
     } finally {
       setApplying(null);
     }
@@ -122,7 +131,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
     try {
       await openRelease(url);
     } catch (err) {
-      setApplyNote({ kind: "error", text: errorMessage(err) });
+      setApplyNote({ kind: "error", text: updateError(err) });
     }
   }, []);
 

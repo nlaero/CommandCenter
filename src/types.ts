@@ -132,6 +132,8 @@ export type AdapterField = {
   help?: string;
   options?: { value: string; label: string }[];
   secret?: boolean;
+  /** Unset booleans display and behave as checked. An explicit false stays off. */
+  defaultChecked?: boolean;
   /** Param keys written when kind is `location`. Defaults are lat / lon. */
   latKey?: string;
   lonKey?: string;
