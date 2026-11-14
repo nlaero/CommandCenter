@@ -538,6 +538,18 @@ a {
 .board-canvas {
   min-height: calc(100vh - var(--cc-chrome-h));
   padding: 8px;
+  --cc-board-scale: 1;
+}
+
+.board-canvas .panel-header {
+  font-size: max(0.68rem, calc(0.78rem * var(--cc-board-scale)));
+  gap: calc(8px * var(--cc-board-scale));
+  padding: calc(6px * var(--cc-board-scale)) calc(10px * var(--cc-board-scale));
+}
+
+.board-canvas .panel-body:not(.panel-body-flush) {
+  font-size: max(0.72rem, calc(0.82rem * var(--cc-board-scale)));
+  padding: calc(10px * var(--cc-board-scale));
 }
 
 .board-canvas.is-editing {
@@ -1460,7 +1472,27 @@ button.display-preset:disabled {
 }
 
 html.cc-tv {
-  font-size: clamp(20px, 0.85vw, 28px);
+  font-size: clamp(
+    calc(20px * var(--cc-board-scale, 1)),
+    calc(0.85vw * var(--cc-board-scale, 1)),
+    calc(28px * var(--cc-board-scale, 1))
+  );
+}
+
+html.cc-tv .board-canvas .panel-header,
+html.cc-tv .board-canvas .panel-body:not(.panel-body-flush) {
+  font-size: inherit;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+html.cc-tv .board-canvas .panel-body:not(.panel-body-flush) {
+  font-size: 0.82rem;
+  padding: 10px;
+}
+
+html.cc-tv .board-canvas .panel-header {
+  font-size: 0.78rem;
 }
 
 .app-shell.is-tv {
@@ -2650,6 +2682,28 @@ body.cc-display-framed #root {
   display: grid;
   gap: 8px;
   margin-top: 12px;
+}
+
+.density-block {
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--cc-border);
+}
+
+.density-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.density-grid button.choice-card {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  width: 100%;
+}
+
+.density-grid button.choice-card:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .choice-card {

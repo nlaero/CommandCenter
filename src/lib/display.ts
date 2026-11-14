@@ -1,6 +1,50 @@
-/** Window size for this computer. Not part of the account board document. */
+/** Window size and board density for this computer. Not part of the account board document. */
+
+import { useEffect, useState } from "react";
+import type { LayoutSettings } from "../types";
 
 const DISPLAY_KEY = "command-center.display.v1";
+const DISPLAY_EVENT = "command-center.display";
+
+/** Grid scale. 1 is today's cell size. Lower fits more sources. Higher keeps panels larger. */
+export const BOARD_DENSITY_MIN = 0.45;
+export const BOARD_DENSITY_MAX = 1.5;
+
+export type BoardDensityId = "larger" | "standard" | "compact" | "dense";
+
+export type BoardDensity = {
+  id: BoardDensityId | "custom";
+  label: string;
+  detail: string;
+  scale: number;
+};
+
+export const BOARD_DENSITIES: BoardDensity[] = [
+  {
+    id: "larger",
+    label: "Larger",
+    detail: "Bigger panels that stay easy to read",
+    scale: 1.35,
+  },
+  {
+    id: "standard",
+    label: "Standard",
+    detail: "Current size, about three sources",
+    scale: 1,
+  },
+  {
+    id: "compact",
+    label: "Compact",
+    detail: "More sources in the same window",
+    scale: 0.72,
+  },
+  {
+    id: "dense",
+    label: "Dense",
+    detail: "Smallest panels, including on a 4K television",
+    scale: 0.5,
+  },
+];
 
 export const DISPLAY_MIN_WIDTH = 960;
 export const DISPLAY_MIN_HEIGHT = 640;
@@ -16,6 +60,8 @@ export type DisplayPrefs = {
   height: number;
   /** Preset name, "Custom", "This screen", or "Window". */
   label: string;
+  /** Multiplier on the board grid. Saved on this computer, shared with the television. */
+  density: number;
 };
 
 export type DisplayPreset = {
@@ -48,8 +94,79 @@ export function clampDisplaySize(width: number, height: number): { width: number
   };
 }
 
+export function clampBoardDensity(value: unknown): number {
+  if (typeof value === "string") {
+    const preset = BOARD_DENSITIES.find((item) => item.id === value);
+    if (preset) return preset.scale;
+  }
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return 1;
+  const clamped = Math.min(BOARD_DENSITY_MAX, Math.max(BOARD_DENSITY_MIN, n));
+  return Math.round(clamped * 100) / 100;
+}
+
+export function boardDensityPreset(density: number): BoardDensity {
+  const scale = clampBoardDensity(density);
+  return (
+    BOARD_DENSITIES.find((item) => item.scale === scale) ?? {
+      id: "custom",
+      label: "Custom",
+      detail: "A grid size between the presets",
+      scale,
+    }
+  );
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+/**
+ * Shrink or grow the board grid for this computer.
+ * Cell size changes. Saved panel columns and rows stay put, so a denser
+ * grid fits more sources in the same window and a larger grid keeps each
+ * panel tall enough to read.
+ */
+export function boardGridMetrics(
+  layout: LayoutSettings,
+  density: number,
+): LayoutSettings & { padding: number; scale: number } {
+  const scale = clampBoardDensity(density);
+  const baseRow = Number.isFinite(layout.rowHeight) && layout.rowHeight > 0 ? layout.rowHeight : 12;
+  const marginX = Number.isFinite(layout.margin?.[0]) ? layout.margin[0] : 4;
+  const marginY = Number.isFinite(layout.margin?.[1]) ? layout.margin[1] : 4;
+  return {
+    cols: layout.cols > 0 ? layout.cols : 48,
+    rowHeight: clampInt(baseRow * scale, 4, 48),
+    margin: [clampInt(marginX * scale, 1, 16), clampInt(marginY * scale, 1, 16)],
+    padding: clampInt(8 * scale, 2, 24),
+    scale,
+  };
+}
+
+/** Pixel height of `rows` grid rows, including the grid's own margin and padding. */
+export function gridBlockHeight(rows: number, density: number, layout?: LayoutSettings): number {
+  const metrics = boardGridMetrics(
+    layout ?? { cols: 48, rowHeight: 12, margin: [4, 4] },
+    density,
+  );
+  const span = Math.max(1, Math.round(rows) || 1);
+  return span * metrics.rowHeight + Math.max(0, span - 1) * metrics.margin[1] + metrics.padding * 2;
+}
+
+/** How many stacked panels of `panelRows` fit in `viewport` pixels at this density. */
+export function panelsThatFit(panelRows: number, viewport: number, density: number): number {
+  const rowsEach = Math.max(1, Math.round(panelRows) || 1);
+  let count = 0;
+  while (gridBlockHeight(rowsEach * (count + 1), density) <= viewport) {
+    count += 1;
+    if (count > 100) break;
+  }
+  return count;
+}
+
 export function defaultDisplayPrefs(): DisplayPrefs {
-  return { mode: "auto", width: 1440, height: 900, label: "Window" };
+  return { mode: "auto", width: 1440, height: 900, label: "Window", density: 1 };
 }
 
 export function readDisplayPrefs(): DisplayPrefs {
@@ -65,6 +182,7 @@ export function readDisplayPrefs(): DisplayPrefs {
       width: size.width,
       height: size.height,
       label: typeof parsed.label === "string" && parsed.label.trim() ? parsed.label : mode === "fixed" ? "Custom" : "Window",
+      density: clampBoardDensity(parsed.density),
     };
   } catch {
     return defaultDisplayPrefs();
@@ -73,6 +191,30 @@ export function readDisplayPrefs(): DisplayPrefs {
 
 function writeDisplayPrefs(prefs: DisplayPrefs): void {
   localStorage.setItem(DISPLAY_KEY, JSON.stringify(prefs));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(DISPLAY_EVENT));
+  }
+}
+
+/** Same-window updates plus the storage event the television window receives. */
+export function subscribeDisplayPrefs(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  const onStore = (event: StorageEvent) => {
+    if (event.key !== null && event.key !== DISPLAY_KEY) return;
+    listener();
+  };
+  window.addEventListener(DISPLAY_EVENT, listener);
+  window.addEventListener("storage", onStore);
+  return () => {
+    window.removeEventListener(DISPLAY_EVENT, listener);
+    window.removeEventListener("storage", onStore);
+  };
+}
+
+export function useBoardDensity(): number {
+  const [density, setDensity] = useState(() => readDisplayPrefs().density);
+  useEffect(() => subscribeDisplayPrefs(() => setDensity(readDisplayPrefs().density)), []);
+  return density;
 }
 
 function frameDisplay(width: number, height: number): void {
@@ -100,6 +242,7 @@ export async function applyDisplayPrefs(prefs: DisplayPrefs): Promise<DisplayPre
     width: size.width,
     height: size.height,
     label: prefs.label?.trim() || (prefs.mode === "fixed" ? "Custom" : "Window"),
+    density: clampBoardDensity(prefs.density),
   };
   if (typeof document === "undefined") {
     writeDisplayPrefs(next);

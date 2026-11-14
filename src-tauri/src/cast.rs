@@ -135,23 +135,60 @@ pub fn physical_pixels(css_width: f64, css_height: f64, scale: f64) -> (u32, u32
     )
 }
 
-/// Row height that fills the television without bitmap-scaling the board.
-/// Mirrors the React grid: `rows * rowHeight + (rows - 1) * margin + padding * 2`.
-/// The television view uses the TypeScript copy. Tests lock this one.
+/// Row height for the television. Matches `tvRowHeight` in the desktop UI.
+/// Density 1 fills the glass. A denser scale caps that stretch. Tests lock this copy.
 #[cfg(test)]
 pub fn tv_row_height(base: i32, rows: i32, viewport_height: i32) -> i32 {
+    tv_row_height_scaled(base, rows, viewport_height, 1.0)
+}
+
+#[cfg(test)]
+pub fn tv_row_height_scaled(base: i32, rows: i32, viewport_height: i32, density: f64) -> i32 {
+    let scale = clamp_board_density(density);
     let span = rows.max(1);
-    let margin_y = 4;
-    let padding_y = 8;
+    let safe_base = if base > 0 { base } else { 12 };
+    let (margin_y, padding_y) = tv_grid_chrome(scale);
+    let fitted = fitted_row(span, viewport_height, margin_y, padding_y);
+    if scale >= 1.0 {
+        let natural = ((f64::from(safe_base)) * scale).round().max(4.0) as i32;
+        let cap = ((160.0 * scale).round().max(160.0)).min(200.0) as i32;
+        if fitted >= natural {
+            return fitted.min(cap);
+        }
+        return fitted;
+    }
+    let natural = ((f64::from(safe_base)) * scale).round().max(4.0) as i32;
+    let distance = (f64::from(viewport_height) / 1080.0).clamp(1.0, 2.0);
+    let cap = ((f64::from(natural)) * distance).round().max(f64::from(natural)) as i32;
+    fitted.min(cap)
+}
+
+#[cfg(test)]
+fn clamp_board_density(value: f64) -> f64 {
+    if !value.is_finite() {
+        return 1.0;
+    }
+    let clamped = value.clamp(0.45, 1.5);
+    (clamped * 100.0).round() / 100.0
+}
+
+#[cfg(test)]
+fn tv_grid_chrome(scale: f64) -> (i32, i32) {
+    if scale >= 1.0 {
+        return (4, 8);
+    }
+    (
+        ((4.0 * scale).round() as i32).max(1),
+        ((8.0 * scale).round() as i32).max(2),
+    )
+}
+
+#[cfg(test)]
+fn fitted_row(span: i32, viewport_height: i32, margin_y: i32, padding_y: i32) -> i32 {
     let chrome = padding_y * 2 + margin_y * (span - 1).max(0);
     let available = (viewport_height - chrome).max(span);
-    let fitted = (available / span).max(8);
-    let safe_base = if base > 0 { base } else { 12 };
-    if fitted >= safe_base {
-        fitted.min(160)
-    } else {
-        fitted
-    }
+    let floor = if margin_y == 4 && padding_y == 8 { 8 } else { 4 };
+    (available / span).max(floor)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -899,6 +936,25 @@ mod tests {
         assert_eq!(tv_row_height(12, 32, 2160), 63);
         assert_eq!(tv_row_height(12, 1, 2160), 160);
         assert_eq!(tv_row_height(12, 40, 400), 8);
+        assert_eq!(tv_row_height_scaled(12, 32, 2160, 1.0), 63);
+    }
+
+    fn denser_grid_leaves_room_on_a_four_k_television() {
+        let standard = tv_row_height(12, 66, 2160);
+        let dense = tv_row_height_scaled(12, 66, 2160, 0.5);
+        assert!(dense < standard);
+        assert!(dense <= 16);
+        let rows = 22 * 6;
+        let cell = tv_row_height_scaled(12, rows, 2160, 0.5);
+        let margin = 2;
+        let padding = 4;
+        let chrome = padding * 2 + margin * (rows - 1);
+        assert!(rows * cell + chrome <= 2160);
+    }
+
+    fn larger_grid_stays_readable_on_television() {
+        assert!(tv_row_height_scaled(12, 32, 2160, 1.35) >= tv_row_height(12, 32, 2160));
+        assert_eq!(tv_row_height_scaled(12, 1, 2160, 1.35), 200);
     }
 
     #[test]

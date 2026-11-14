@@ -1,5 +1,7 @@
 /** Television output. Setup stays on this computer. The TV shows the board only. */
 
+import { clampBoardDensity } from "./display";
+
 const CAST_KEY = "command-center.cast.v1";
 const CAST_EVENT = "command-center-cast";
 
@@ -130,17 +132,50 @@ export function boardSpanRows(panels: { layout: { y: number; h: number } }[]): n
   return panels.reduce((max, panel) => Math.max(max, panel.layout.y + panel.layout.h), 0);
 }
 
-/** Fills the television. Matches `tv_row_height` in the desktop app. */
-export function tvRowHeight(base: number, rows: number, viewportHeight: number): number {
+/**
+ * Row height for the television. Matches `tv_row_height_scaled` in the desktop app.
+ * Density 1 fills the glass the way it always has. A denser setting caps that
+ * stretch so a 4K screen can hold more sources without giant tiles. A larger
+ * setting keeps the fill and raises the cap so panels stay easy to read.
+ */
+/** Chrome the television grid uses at this density. Standard and larger keep the original 4 / 8. */
+export function tvGridChrome(density: number): { margin: number; padding: number } {
+  const scale = clampBoardDensity(density);
+  if (scale >= 1) return { margin: 4, padding: 8 };
+  return {
+    margin: Math.max(1, Math.round(4 * scale)),
+    padding: Math.max(2, Math.round(8 * scale)),
+  };
+}
+
+export function tvRowHeight(
+  base: number,
+  rows: number,
+  viewportHeight: number,
+  density = 1,
+): number {
+  const scale = clampBoardDensity(density);
   const span = Math.max(1, Math.round(rows) || 1);
-  const marginY = 4;
-  const paddingY = 8;
+  const safeBase = Number.isFinite(base) && base > 0 ? Math.round(base) : 12;
+  const chrome = tvGridChrome(scale);
+  const fitted = fittedRow(span, viewportHeight, chrome.margin, chrome.padding);
+  if (scale >= 1) {
+    const natural = Math.max(4, Math.round(safeBase * scale));
+    const cap = Math.min(200, Math.max(160, Math.round(160 * scale)));
+    if (fitted >= natural) return Math.min(fitted, cap);
+    return fitted;
+  }
+  const natural = Math.max(4, Math.round(safeBase * scale));
+  const distance = Math.min(2, Math.max(1, Math.round(viewportHeight) / 1080));
+  const cap = Math.max(natural, Math.round(natural * distance));
+  return Math.min(fitted, cap);
+}
+
+function fittedRow(span: number, viewportHeight: number, marginY: number, paddingY: number): number {
   const chrome = paddingY * 2 + marginY * Math.max(0, span - 1);
   const available = Math.max(span, Math.round(viewportHeight) - chrome);
-  const fitted = Math.max(8, Math.floor(available / span));
-  const safeBase = Number.isFinite(base) && base > 0 ? Math.round(base) : 12;
-  if (fitted >= safeBase) return Math.min(fitted, 160);
-  return fitted;
+  const floor = marginY === 4 && paddingY === 8 ? 8 : 4;
+  return Math.max(floor, Math.floor(available / span));
 }
 
 export function mirrorDecision(screen: CastScreen | null): { ok: boolean; reason: string } {

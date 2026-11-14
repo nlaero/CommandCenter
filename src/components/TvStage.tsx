@@ -5,6 +5,7 @@ import { AlertsProvider } from "../lib/alerts";
 import { loadAuthSession } from "../lib/auth";
 import { loadAppState } from "../lib/api";
 import { boardSpanRows, closePictureCheck, tvRowHeight } from "../lib/cast";
+import { useBoardDensity } from "../lib/display";
 import type { AppState, AuthSession, Board } from "../types";
 
 type Props = {
@@ -18,11 +19,16 @@ export function TvStage({ preview }: Props) {
   const [box, setBox] = useState({ width: 1280, height: 720 });
   const stageRef = useRef<HTMLElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
+  const density = useBoardDensity();
 
   useEffect(() => {
     document.documentElement.classList.add("cc-tv");
-    return () => document.documentElement.classList.remove("cc-tv");
-  }, []);
+    document.documentElement.style.setProperty("--cc-board-scale", String(density));
+    return () => {
+      document.documentElement.classList.remove("cc-tv");
+      document.documentElement.style.removeProperty("--cc-board-scale");
+    };
+  }, [density]);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +68,7 @@ export function TvStage({ preview }: Props) {
   const signedOut = Boolean(state?.auth.enabled && session && !session.signedIn);
   const rowHeight =
     state && board
-      ? tvRowHeight(state.layout.rowHeight, boardSpanRows(board.panels), box.height)
+      ? tvRowHeight(state.layout.rowHeight, boardSpanRows(board.panels), box.height, density)
       : undefined;
 
   let body: ReactNode;
