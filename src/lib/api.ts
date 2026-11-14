@@ -1,5 +1,6 @@
 import { withAuth } from "./auth";
 import { PENN_HILLS_FEED, isPennHillsPreset } from "./broadcastifyPreset";
+import { isMissingParam, readCoords } from "./location";
 import { fetchUsgsInBrowser } from "./usgs";
 import type {
   AppState,
@@ -441,11 +442,11 @@ function buildScope(
 }
 
 async function browserFetchWeather(source: SourceConfig): Promise<SourcePayload> {
-  const lat = Number(source.params.lat);
-  const lon = Number(source.params.lon);
-  if (Number.isNaN(lat) || Number.isNaN(lon)) {
+  const coords = readCoords(source.params, "lat", "lon");
+  if (!coords) {
     throw new Error("latitude and longitude are required");
   }
+  const { lat, lon } = coords;
   const units = String(source.params.units ?? "imperial");
   const scopes = parseScopes(String(source.params.scopes ?? "local"));
   if (!scopes.length) throw new Error("at least one scope is required");
@@ -848,14 +849,8 @@ export async function validateSourceFields(
       if (key.startsWith("secret:")) {
         const name = key.slice("secret:".length);
         if (!secrets[name]?.trim()) missing.push(key);
-      } else {
-        const v = params[key];
-        const empty =
-          v === undefined ||
-          v === null ||
-          (typeof v === "number" && Number.isNaN(v)) ||
-          String(v).trim() === "";
-        if (empty) missing.push(key);
+      } else if (isMissingParam(params[key])) {
+        missing.push(key);
       }
     }
     return {

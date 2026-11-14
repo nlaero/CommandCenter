@@ -113,7 +113,7 @@ export type SyncResult = {
   message?: string | null;
 };
 
-export type FieldKind = "string" | "number" | "url" | "secret" | "boolean" | "select";
+export type FieldKind = "string" | "number" | "url" | "secret" | "boolean" | "select" | "location";
 
 export type AdapterField = {
   key: string;
@@ -124,6 +124,9 @@ export type AdapterField = {
   help?: string;
   options?: { value: string; label: string }[];
   secret?: boolean;
+  /** Param keys written when kind is `location`. Defaults are lat / lon. */
+  latKey?: string;
+  lonKey?: string;
 };
 
 export type AdapterDefinition = {

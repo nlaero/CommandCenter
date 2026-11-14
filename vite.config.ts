@@ -14,6 +14,10 @@ function browserProxy(): Plugin {
     "/proxy/goes": "https://cdn.star.nesdis.noaa.gov",
     "/proxy/nws": "https://api.weather.gov",
     "/proxy/usgs": "https://earthquake.usgs.gov",
+    "/proxy/photon": "https://photon.komoot.io",
+    "/proxy/nominatim": "https://nominatim.openstreetmap.org",
+    "/proxy/geocode": "https://geocoding-api.open-meteo.com",
+    "/proxy/ipwho": "https://ipwho.is",
   };
 
   return {
@@ -33,7 +37,9 @@ function browserProxy(): Plugin {
             "user-agent":
               prefix === "/proxy/usgs"
                 ? "CommandCenter/0.1 (personal USGS earthquake feed; +https://github.com/nlaero/CommandCenter)"
-                : "CommandCenter-browser-mock/0.1",
+                : prefix === "/proxy/nominatim" || prefix === "/proxy/photon"
+                  ? "CommandCenter/0.1 (personal location lookup; +https://github.com/nlaero/CommandCenter)"
+                  : "CommandCenter-browser-mock/0.1",
             accept: req.headers.accept ?? "*/*",
           };
           const ifNoneMatch = req.headers["if-none-match"];

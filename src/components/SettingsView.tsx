@@ -22,6 +22,8 @@ import {
   upsertSource,
   validateSourceFields,
 } from "../lib/api";
+import { ensureLocationParams, locationSaveError } from "../lib/location";
+import { LocationField } from "./LocationField";
 import { useSourceRefresh } from "../lib/sourceRefresh";
 import type {
   AdapterDefinition,
@@ -339,7 +341,13 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
           return;
         }
       }
-      const validation = await validateSourceFields(required, params, secretsProvided);
+      const locationError = locationSaveError(adapter.fields, params);
+      if (locationError) {
+        setMessage({ kind: "error", text: locationError });
+        return;
+      }
+      const readyParams = ensureLocationParams(adapter.fields, params);
+      const validation = await validateSourceFields(required, readyParams, secretsProvided);
       if (!validation.ok) {
         setMessage({ kind: "error", text: validation.message });
         return;
@@ -353,7 +361,7 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
           ...Object.keys(secretsProvided),
         ]),
       );
-      const cleanedParams = { ...params };
+      const cleanedParams = { ...readyParams };
       if (
         adapter.typeId === "incident.opendata" &&
         String(cleanedParams.provider) !== "custom"
@@ -658,6 +666,7 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
                 busy={busy}
                 editingSourceId={editingSourceId}
                 onChange={updateField}
+                onParams={setParams}
                 onCancel={() => {
                   const wasEditing = Boolean(editingSourceId);
                   resetForm();
@@ -1073,6 +1082,7 @@ function SourceForm({
   busy,
   editingSourceId,
   onChange,
+  onParams,
   onCancel,
   onSave,
   onSaveAndAdd,
@@ -1083,6 +1093,7 @@ function SourceForm({
   busy: boolean;
   editingSourceId: string | null;
   onChange: (field: AdapterField, raw: string | boolean) => void;
+  onParams: (params: Record<string, unknown>) => void;
   onCancel: () => void;
   onSave: () => void;
   onSaveAndAdd: () => void;
@@ -1115,7 +1126,17 @@ function SourceForm({
                   <span className="req"> *</span>
                 ) : null}
               </label>
-              {field.kind === "boolean" ? (
+              {field.kind === "location" && field.help ? (
+                <div className="help location-help">{field.help}</div>
+              ) : null}
+              {field.kind === "location" ? (
+                <LocationField
+                  field={field}
+                  params={params}
+                  disabled={busy}
+                  onChange={onParams}
+                />
+              ) : field.kind === "boolean" ? (
                 <input
                   id={field.key}
                   type="checkbox"
@@ -1155,7 +1176,9 @@ function SourceForm({
                   autoComplete="off"
                 />
               )}
-              {field.help ? <div className="help">{field.help}</div> : null}
+              {field.help && field.kind !== "location" ? (
+                <div className="help">{field.help}</div>
+              ) : null}
             </div>
           );
         })}
