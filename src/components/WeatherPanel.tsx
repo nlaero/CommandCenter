@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAlerts } from "../lib/alerts";
 import { weatherAlertsToBoardAlerts } from "../lib/boardAlerts";
 import { fetchSourcePayload } from "../lib/api";
+import { confirmedPlaceLabel, formatCoords, readCoords } from "../lib/location";
 import type { ScopeView, SourceConfig, SourcePayload, WeatherPayload } from "../types";
 
 type Props = {
@@ -61,6 +62,8 @@ export function WeatherPanel({ sourceId, source, configRevision = 0 }: Props) {
 
   const weather = payload?.weather;
   const imperial = (weather?.units ?? "imperial") !== "metric";
+  const place = confirmedPlaceLabel(source.params);
+  const savedCoords = readCoords(source.params);
 
   useEffect(() => {
     let cancelled = false;
@@ -209,6 +212,16 @@ export function WeatherPanel({ sourceId, source, configRevision = 0 }: Props) {
 
       {error ? <div className="alert error">{error}</div> : null}
 
+      {!conditions && place ? (
+        <div className="weather-offline-place">
+          <span className="kpi-label">Place</span>
+          <span className="weather-place">{place}</span>
+          {savedCoords ? (
+            <span className="location-found-meta mono">{formatCoords(savedCoords.lat, savedCoords.lon)}</span>
+          ) : null}
+        </div>
+      ) : null}
+
       {conditions ? (
         <div className="weather-kpi" aria-label="Current conditions">
           <div className="weather-kpi-main">
@@ -223,6 +236,7 @@ export function WeatherPanel({ sourceId, source, configRevision = 0 }: Props) {
                 ? `${Math.round(conditions.feelsLikeF)}°F`
                 : `${Math.round(conditions.feelsLikeC)}°C`}
             </div>
+            {place ? <div className="weather-place">{place}</div> : null}
           </div>
           <div className="weather-kpi-grid">
             <div>

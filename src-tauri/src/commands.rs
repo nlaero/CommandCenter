@@ -383,6 +383,15 @@ pub fn transcribe_audio_local(args: TranscribeAudioArgs) -> Result<CaptionResult
     })
 }
 
+/// GPS, network location, another device location service, or a typed address.
+/// Returns only after coordinates are in range — that is the confirmation.
+#[tauri::command]
+pub fn resolve_location(
+    request: crate::location::LocationRequest,
+) -> Result<crate::location::LocationLookup, CommandError> {
+    crate::location::resolve(request).map_err(|message| CommandError { message })
+}
+
 /// Stub validation against a simple required-fields map from the UI.
 #[tauri::command]
 pub fn validate_source_fields(
@@ -404,10 +413,7 @@ pub fn validate_source_fields(
         } else {
             let empty = match params.get(key) {
                 None => true,
-                Some(serde_json::Value::Null) => true,
-                Some(serde_json::Value::String(s)) => s.trim().is_empty(),
-                Some(serde_json::Value::Number(n)) => n.as_f64().is_none(),
-                Some(_) => false,
+                Some(value) => crate::location::value_missing(value),
             };
             if empty {
                 missing.push(key.clone());
@@ -771,5 +777,37 @@ fn slugify(input: &str) -> String {
         format!("board-{}", &uuid::Uuid::new_v4().to_string()[..8])
     } else {
         trimmed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_source_fields;
+    use serde_json::json;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn location_is_missing_until_it_is_confirmed() {
+        let mut params = BTreeMap::new();
+        params.insert(
+            "location".into(),
+            json!({"confirmed": false, "query": "Austin"}),
+        );
+        let rejected = validate_source_fields(vec!["location".into()], params, BTreeMap::new());
+        assert!(!rejected.ok);
+        assert!(rejected.message.contains("location"));
+
+        let mut confirmed = BTreeMap::new();
+        confirmed.insert(
+            "location".into(),
+            json!({
+                "confirmed": true,
+                "lat": 30.26715,
+                "lon": -97.74306,
+                "label": "Austin, Texas, United States"
+            }),
+        );
+        let accepted = validate_source_fields(vec!["location".into()], confirmed, BTreeMap::new());
+        assert!(accepted.ok);
     }
 }

@@ -2,6 +2,7 @@ mod auth;
 mod commands;
 mod config;
 mod local_server;
+mod location;
 mod secrets;
 mod sources;
 mod sync;
@@ -38,6 +39,7 @@ pub fn run() {
             commands::set_active_board,
             commands::set_edit_mode,
             commands::validate_source_fields,
+            commands::resolve_location,
             commands::transcribe_audio_local,
             commands::auth_session,
             commands::auth_probe,

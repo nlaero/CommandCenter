@@ -87,16 +87,24 @@ Optional Open-Meteo commercial key goes in the keyring / `secrets.local.json` as
 
 | Setting | Required | Notes |
 |---------|----------|--------|
-| Lat / lon | yes | Center for all scopes |
+| Location | yes | GPS, network location, another device location service, or an address. The source cannot be saved until Command Center confirms the place. |
 | Display scopes | yes | `local`, `regional`, `nationwide`, or combinations |
 | Units | yes | Imperial or Metric |
 | Show radar | no | Default on |
 | Show satellite | no | Default on |
 | Open-Meteo API key | no | Secret `weather.optional_key` |
 
-**In the app:** Settings → Source catalog → Weather → Configure. Enter lat/lon, scopes, units. Save, or Save & add to board. Panel shows conditions, a short hourly strip, and a map per selected scope. Radar / Satellite chips toggle layers.
+**In the app:** Settings → Source catalog → Weather → Configure. Pick GPS, network location, or another source on this device, or type an address, and wait until the form says the location was found. Then scopes and units. Save, or Save & add to board. Panel shows conditions, the confirmed place, a short hourly strip, and a map per selected scope. Radar / Satellite chips toggle layers.
 
 Add more Weather sources if you want separate panels per scope instead of a combo.
+
+## Location
+
+Weather and ADS-B Exchange take a place in source settings. The choices are GPS, network location, other location services on this computer, or an address you type.
+
+GPS asks the device for a high-accuracy satellite fix. Network location uses a Wi-Fi or cell reading when the operating system has one, and otherwise this computer's public IP address. Other device sources are the OS location service (GeoClue on Linux, or the browser's location service). An address is looked up through Photon, then Nominatim, then Open-Meteo. If several places match, pick one.
+
+Command Center will not save the source until that lookup returns a real place. The form then shows the name, the coordinates, and which input produced them. Older sources that already have latitude and longitude still open; those coordinates count as already found.
 
 ## USGS earthquakes
 

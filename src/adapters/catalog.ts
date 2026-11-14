@@ -14,19 +14,11 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     defaultRefresh: "10m",
     fields: [
       {
-        key: "lat",
-        label: "Latitude",
-        kind: "number",
+        key: "location",
+        label: "Location",
+        kind: "location",
         required: true,
-        placeholder: "30.27",
-        help: "Home / center point for all selected scopes.",
-      },
-      {
-        key: "lon",
-        label: "Longitude",
-        kind: "number",
-        required: true,
-        placeholder: "-97.74",
+        help: "GPS, network location, or another source on this device, or an address. Command Center confirms the place before you can save.",
       },
       {
         key: "scopes",
@@ -96,18 +88,13 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         placeholder: "Required before Add to board",
       },
       {
-        key: "centerLat",
-        label: "Map center latitude",
-        kind: "number",
+        key: "location",
+        label: "Map center",
+        kind: "location",
         required: true,
-        placeholder: "30.27",
-      },
-      {
-        key: "centerLon",
-        label: "Map center longitude",
-        kind: "number",
-        required: true,
-        placeholder: "-97.74",
+        latKey: "centerLat",
+        lonKey: "centerLon",
+        help: "GPS, network location, or another source on this device, or an address. Command Center confirms the place before you can save.",
       },
       {
         key: "rangeNm",

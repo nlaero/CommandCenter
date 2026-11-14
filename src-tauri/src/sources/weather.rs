@@ -131,12 +131,12 @@ pub fn fetch(
     source: &SourceConfig,
     secrets: &std::collections::BTreeMap<String, String>,
 ) -> Result<FetchResult, super::SourceError> {
-    let lat = param_f64(source, "lat").ok_or_else(|| {
-        super::SourceError::Message("latitude is required".into())
-    })?;
-    let lon = param_f64(source, "lon").ok_or_else(|| {
-        super::SourceError::Message("longitude is required".into())
-    })?;
+    let (lat, lon) = match (param_f64(source, "lat"), param_f64(source, "lon")) {
+        (Some(lat), Some(lon)) => (lat, lon),
+        _ => crate::location::lookup_coords(&source.params, "lat", "lon").ok_or_else(|| {
+            super::SourceError::Message("latitude and longitude are required".into())
+        })?,
+    };
     if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
         return Err(super::SourceError::Message(
             "lat/lon out of range".into(),
