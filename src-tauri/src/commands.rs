@@ -999,6 +999,20 @@ pub fn list_audio_inputs() -> Vec<crate::safety::AudioInput> {
 }
 
 #[tauri::command]
+pub fn list_local_audio_inputs() -> Vec<crate::local_audio::LocalAudioInput> {
+    crate::local_audio::list_inputs()
+}
+
+#[tauri::command]
+pub fn listen_local_audio(
+    args: crate::local_audio::ListenRequest,
+) -> Result<crate::local_audio::LocalAudioWindow, CommandError> {
+    let paths = config::resolve_paths()?;
+    crate::local_audio::listen(std::path::Path::new(&paths.root), args)
+        .map_err(|message| CommandError { message })
+}
+
+#[tauri::command]
 pub fn listen_safety_feed(
     args: crate::safety::ListenRequest,
 ) -> Result<crate::safety::ListenResult, CommandError> {

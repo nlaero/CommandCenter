@@ -4,7 +4,7 @@
 
 [`multi-user`](https://github.com/nlaero/CommandCenter/tree/multi-user) is the future server version, branched from `main`. A server there can run on this computer or on another machine. Shared caption memory belongs on that branch. `main` keeps caption fixes on this computer.
 
-Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane.
+Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, nearby public-safety alerts from online streams and audio inputs, and local audio captions from a jack or Bluetooth input. Mounted source windows publish into the right-side alerts pane.
 
 ## Audio rule
 
@@ -13,7 +13,7 @@ Anything that plays audio:
 1. Starts **muted** (user unmutes).
 2. Supports closed captions. They show on their own while the sound is muted. CC is a separate control that keeps them up after you turn the sound on.
 
-Broadcastify Feed Owner plays muted. While the live feed is playing, captions show on their own, including while the sound is off. CC keeps them up after you turn the sound on. Earlier lines stay in a scrolling list, and a wrong line can be corrected on this computer. Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. An audio input there can be a Feed Owner source already on this computer, which reads that panel's caption history instead of the microphone. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
+Broadcastify Feed Owner plays muted. While the live feed is playing, captions show on their own, including while the sound is off. CC keeps them up after you turn the sound on. Earlier lines stay in a scrolling list, and a wrong line can be corrected on this computer. Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. An audio input there can be a Feed Owner source already on this computer, which reads that panel's caption history instead of the microphone. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. A jack or Bluetooth input starts muted and rolls captions from Tiny English on this computer. Scroll that list and it stays put until you jump to the latest line. A correction stays on this computer and is used the next time those words appear. Do not ship new audio playback without both mute-default and CC.
 
 ## Requirements
 
@@ -219,6 +219,24 @@ ffmpeg has to be on PATH for a real recording. The desktop app records the feed.
 
 **In the app:** Settings → Source catalog → Nearby public safety → Configure. Find your location, set the radius, add each feed with its county and state. Save & add to board.
 
+## Local audio
+
+A jack or a Bluetooth input on this computer, such as a scanner on the line-in. This window is not the Broadcastify panel and it is not nearby alerts.
+
+Playback starts muted. Unmute on the panel to hear the latest recorded window. Captions run while the sound is off. CC keeps them up after the sound is turned on.
+
+Tiny English on this computer writes the lines. They roll in a list. Scroll that list and it stays where you left it until you jump to the latest line. Fix caption stores the correction on this computer. The next time those words show up, the line uses the fix.
+
+ffmpeg has to be on PATH to record the input. Audio is not uploaded. The browser preview does not record. It rolls sample lines so the list can be tried, and it says so.
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Label | no | Panel title |
+| Audio input | yes | A jack or Bluetooth device on this computer |
+| Captions | no | Default on. Tiny English from Settings → Local AI |
+
+**In the app:** Settings → Source catalog → Local audio → Configure. Pick the input. Save & add to board.
+
 ## Cameras and YouTube
 
 Public / HTTP camera plays the link in the panel. A still image refreshes on the source interval. It has no audio, so the panel does not generate captions and does not show a caption line. An MP4 or WebM file plays in the video element. An HLS playlist (`.m3u8`), including a master playlist, is decoded in the panel. The window shows the picture and the camera label. It does not print the saved fields.
@@ -241,7 +259,7 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 ## Shell behavior
 
 - Empty board on first launch
-- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
+- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, local audio, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
 - Configure → Save or Save & add to board
 - Settings → Panel rotation for any mix of configured sources in one panel
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
@@ -310,6 +328,7 @@ Checking does not publish a release. Installers stay unpublished until asked.
 npm run test:rust
 node --experimental-strip-types src/lib/safety.test.ts
 node --experimental-strip-types src/lib/feedCaptions.test.ts
+node --experimental-strip-types src/lib/localAudio.test.ts
 node --experimental-strip-types src/lib/formFields.test.ts
 npm run build
 node scripts/fetch-tiny-en.test.mjs

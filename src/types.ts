@@ -121,7 +121,8 @@ export type FieldKind =
   | "boolean"
   | "select"
   | "location"
-  | "feeds";
+  | "feeds"
+  | "audio";
 
 export type AdapterField = {
   key: string;

@@ -29,6 +29,7 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     source?.type === "weather.openmeteo" ||
     source?.type === "usgs.earthquake" ||
     source?.type === "safety.nearby" ||
+    source?.type === "audio.local" ||
     source?.type === "camera.http_image" ||
     source?.type === "video.youtube" ||
     panel.widget === "incident" ||
@@ -37,6 +38,7 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     panel.widget === "weather" ||
     panel.widget === "quake" ||
     panel.widget === "safety" ||
+    panel.widget === "audio" ||
     panel.widget === "video" ||
     panel.widget === "rotate";
 
