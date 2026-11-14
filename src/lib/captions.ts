@@ -2,9 +2,11 @@
  * Local / on-device captioning for Broadcastify Feed Owner (personal use).
  *
  * Prefer keeping archive audio on-device — do not upload clips to cloud ASR.
- * Full whisper.cpp (or similar) sidecar is not bundled yet; this module exposes
- * a stable API plus an offline stub so the panel UI can ship first.
+ * The desktop app runs the installed Tiny English model. Caption fixes sync
+ * through the signed-in server and are applied to the text. Audio is not uploaded.
  */
+
+import { applyCorrections, readLocalMemory } from "./aiMemory";
 
 export type CaptionSegment = {
   id: string;
@@ -52,7 +54,7 @@ export function stubLocalCaptions(sourceUrl: string, clipId: string): CaptionRes
     sourceUrl,
     segments,
     note:
-      "Offline stub captions (personal use). On-device Whisper/local ASR not bundled yet — audio stays local; no cloud upload.",
+      "Local AI is not installed. Settings → Local AI downloads Tiny English onto this computer. Audio stays here.",
     generatedAt: new Date().toISOString(),
   };
 }
@@ -67,8 +69,8 @@ export function activeCaptionAt(
 }
 
 /**
- * Request local transcription. Today: Tauri stub command or browser fixture.
- * Future: same entry point will call whisper.cpp / local ASR without leaving device.
+ * Request local transcription. The desktop app runs Tiny English when it is
+ * installed. The browser preview applies the same caption fixes to placeholder text.
  */
 export async function transcribeArchiveLocal(args: {
   sourceUrl: string;
@@ -87,10 +89,20 @@ export async function transcribeArchiveLocal(args: {
         },
       });
     } catch {
-      // Fall through to identical stub if command unavailable in older builds.
+      // Fall through to the placeholder if this build has no local model command.
     }
   }
-  // Simulate a short local job so the panel shows running → ready.
   await new Promise((r) => setTimeout(r, 350));
-  return stubLocalCaptions(args.sourceUrl, args.clipId);
+  return applyMemory(stubLocalCaptions(args.sourceUrl, args.clipId));
+}
+
+function applyMemory(result: CaptionResult): CaptionResult {
+  const memory = readLocalMemory();
+  return {
+    ...result,
+    segments: result.segments.map((segment) => ({
+      ...segment,
+      text: applyCorrections(segment.text, memory),
+    })),
+  };
 }

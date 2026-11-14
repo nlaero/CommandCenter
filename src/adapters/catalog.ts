@@ -270,7 +270,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Captions / transcription",
         kind: "boolean",
         required: false,
-        help: "Required capability for any audio source (global product rule). Prefers local/on-device ASR; Whisper sidecar not bundled yet — offline stub first. Audio always starts muted.",
+        help: "Required for any audio source. Starts muted. Uses the Tiny English model from Settings → Local AI when it is installed on this computer.",
       },
       {
         key: "secret:broadcastify.username",

@@ -6,6 +6,7 @@ import {
   isPennHillsPreset,
 } from "../lib/broadcastifyPreset";
 import { AccountSettings } from "./AuthScreen";
+import { LocalAiPanel } from "./LocalAiPanel";
 import { ServerSetup } from "./ServerSetup";
 import { UpdatesBody, useUpdates } from "./UpdatesPanel";
 import { clampAutoHideSec, useAlerts } from "../lib/alerts";
@@ -33,7 +34,7 @@ import type {
   SourceConfig,
 } from "../types";
 
-type Tab = "sources" | "configured" | "rotation" | "alerts" | "display" | "account" | "server" | "updates" | "paths";
+type Tab = "sources" | "configured" | "rotation" | "alerts" | "display" | "account" | "server" | "ai" | "updates" | "paths";
 
 const ROTATION_PRESETS = [
   { label: "15s", value: 15 },
@@ -180,7 +181,7 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
           : typeId === "broadcastify.owner"
             ? {
                 kind: "warn",
-                text: "Penn Hills / Plum Police Dispatch (47291) is filled in. The password stays in the OS keyring. The desktop app calls the Feed Owner API for status, the relay listen URL, and personal-use archives.",
+                text: "Penn Hills / Plum Police Dispatch (47291) is filled in. The password stays in the OS keyring. The desktop app calls the Feed Owner API for status, the relay listen URL, and personal-use archives. Captions use Local AI when Tiny English is installed. Audio stays on this computer.",
               }
             : typeId === "weather.openmeteo"
               ? {
@@ -615,6 +616,13 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
             </button>
             <button
               type="button"
+              className={tab === "ai" ? "active" : ""}
+              onClick={() => setTab("ai")}
+            >
+              Local AI
+            </button>
+            <button
+              type="button"
               className={tab === "updates" ? "active" : ""}
               onClick={() => setTab("updates")}
             >
@@ -953,6 +961,8 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
             ) : null}
 
             {tab === "server" ? <ServerSetup onState={onState} /> : null}
+
+            {tab === "ai" ? <LocalAiPanel session={session} /> : null}
 
             {tab === "updates" ? <UpdatesBody /> : null}
 

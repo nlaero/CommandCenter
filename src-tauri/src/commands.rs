@@ -1,4 +1,6 @@
+use crate::ai_sync::{self, AiMemory, AiSyncOutcome};
 use crate::auth::{self, AuthError, AuthProbe, AuthService, AuthSession};
+use crate::local_ai::{self, LocalAiStatus};
 use crate::local_server::{self, BackupDocument, LocalServerChange, LocalServerStatus};
 use crate::config::{
     self, AppState, AuthSettings, ConfigPaths, GridItem, LoadResult, SourceConfig,
@@ -328,11 +330,8 @@ pub fn set_edit_mode(enabled: bool) -> Result<AppState, CommandError> {
     Ok(loaded.state)
 }
 
-/// Local / on-device captioning stub for Broadcastify archive audio (personal use).
-///
-/// Prefer keeping clips on-device — do not upload to cloud ASR. Full whisper.cpp
-/// (or similar) sidecar is not bundled yet; this returns structured stub segments
-/// so the panel UI can ship before the model path lands.
+/// Transcribe on this computer. Uses the installed model when Settings has one.
+/// Otherwise returns a short placeholder so the caption UI still has something to show.
 #[tauri::command]
 pub fn transcribe_audio_local(args: TranscribeAudioArgs) -> Result<CaptionResult, CommandError> {
     let url = args.source_url.trim();
@@ -341,17 +340,41 @@ pub fn transcribe_audio_local(args: TranscribeAudioArgs) -> Result<CaptionResult
             message: "sourceUrl required for local transcription".into(),
         });
     }
-    if !(url.starts_with("https://") || url.starts_with("http://") || url.starts_with("file://")) {
+    if !(url.starts_with("https://") || url.starts_with("http://") || url.starts_with("file:")) {
         return Err(CommandError {
             message: "sourceUrl must be http(s) or file:// for local transcription".into(),
         });
     }
-
+    let paths = config::resolve_paths()?;
     let clip = if args.clip_id.trim().is_empty() {
         "clip".to_string()
     } else {
         args.clip_id.trim().to_string()
     };
+    match local_ai::transcribe(std::path::Path::new(&paths.root), url) {
+        Ok((segments, note)) => Ok(CaptionResult {
+            engine: "local-whisper".into(),
+            status: "ready".into(),
+            source_url: url.to_string(),
+            segments: segments
+                .into_iter()
+                .enumerate()
+                .map(|(index, segment)| CaptionSegment {
+                    id: format!("{clip}-seg-{index}"),
+                    start_sec: segment.start_sec,
+                    end_sec: segment.end_sec,
+                    text: segment.text,
+                })
+                .collect(),
+            note,
+            generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        }),
+        Err(local_ai::TranscribeError::NotInstalled) => Ok(stub_captions(url, &clip)),
+        Err(local_ai::TranscribeError::Message(message)) => Err(CommandError { message }),
+    }
+}
+
+fn stub_captions(url: &str, clip: &str) -> CaptionResult {
     let seed = clip.len() + url.len();
     let lines = [
         "Dispatch, unit responding.",
@@ -372,15 +395,82 @@ pub fn transcribe_audio_local(args: TranscribeAudioArgs) -> Result<CaptionResult
             }
         })
         .collect();
-
-    Ok(CaptionResult {
+    CaptionResult {
         engine: "local-stub".into(),
         status: "stub".into(),
         source_url: url.to_string(),
         segments,
-        note: "Offline stub captions (personal use). On-device Whisper/local ASR not bundled yet — audio stays local; no cloud upload.".into(),
+        note: "Local AI is not installed. Settings → Local AI downloads Tiny English onto this computer. Audio stays here.".into(),
         generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-    })
+    }
+}
+
+#[tauri::command]
+pub fn local_ai_status() -> Result<LocalAiStatus, CommandError> {
+    let paths = config::resolve_paths()?;
+    Ok(local_ai::status(std::path::Path::new(&paths.root)))
+}
+
+#[tauri::command]
+pub fn local_ai_install() -> Result<LocalAiStatus, CommandError> {
+    let paths = config::resolve_paths()?;
+    local_ai::install(std::path::Path::new(&paths.root)).map_err(|message| CommandError { message })
+}
+
+#[tauri::command]
+pub fn local_ai_remove() -> Result<LocalAiStatus, CommandError> {
+    let paths = config::resolve_paths()?;
+    local_ai::remove(std::path::Path::new(&paths.root)).map_err(|message| CommandError { message })
+}
+
+#[tauri::command]
+pub fn sync_ai_memory() -> Result<AiSyncOutcome, CommandError> {
+    let loaded = config::load_or_create()?;
+    let paths = config::resolve_paths()?;
+    ai_memory_call(&loaded.state, std::path::Path::new(&paths.root), None)
+}
+
+#[tauri::command]
+pub fn save_ai_memory(memory: AiMemory) -> Result<AiSyncOutcome, CommandError> {
+    let loaded = config::load_or_create()?;
+    let paths = config::resolve_paths()?;
+    ai_memory_call(&loaded.state, std::path::Path::new(&paths.root), Some(memory))
+}
+
+fn ai_memory_call(
+    state: &config::AppState,
+    root: &std::path::Path,
+    memory: Option<AiMemory>,
+) -> Result<AiSyncOutcome, CommandError> {
+    let service = auth_service();
+    let result = if let Some(memory) = memory {
+        ai_sync::save(&service, state, root, &memory)
+    } else {
+        ai_sync::reconcile(&service, state, root)
+    };
+    match result {
+        Ok(outcome) => Ok(outcome),
+        Err(err) if quiet_ai(&err) => Ok(AiSyncOutcome {
+            memory: ai_sync::load(root),
+            revision: None,
+            server: state.auth.base_url.clone(),
+            published: false,
+            restored: false,
+            message: None,
+        }),
+        Err(err) => Err(CommandError {
+            message: err.to_string(),
+        }),
+    }
+}
+
+fn quiet_ai(err: &AuthError) -> bool {
+    err.is_unreachable()
+        || matches!(
+            err,
+            AuthError::Message(message) if message.contains("Sign in before")
+        )
+        || matches!(err, AuthError::Api { status: 401, .. })
 }
 
 /// Stub validation against a simple required-fields map from the UI.

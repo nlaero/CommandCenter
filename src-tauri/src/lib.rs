@@ -1,6 +1,8 @@
+mod ai_sync;
 mod auth;
 mod commands;
 mod config;
+mod local_ai;
 mod local_server;
 mod secrets;
 mod sources;
@@ -56,6 +58,11 @@ pub fn run() {
             commands::local_server_set_secrets,
             commands::local_server_export_backup,
             commands::local_server_import_backup,
+            commands::local_ai_status,
+            commands::local_ai_install,
+            commands::local_ai_remove,
+            commands::sync_ai_memory,
+            commands::save_ai_memory,
             commands::check_updates,
             commands::apply_update,
         ])
