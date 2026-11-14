@@ -66,6 +66,7 @@ export function incidentsToBoardAlerts(args: {
       occurredAt: item.occurredAt,
       detailUrl: item.detailUrl,
       audioUrl: item.audioUrl,
+      transcript: item.transcript,
     }));
 }
 

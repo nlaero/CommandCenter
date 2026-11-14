@@ -113,7 +113,15 @@ export type SyncResult = {
   message?: string | null;
 };
 
-export type FieldKind = "string" | "number" | "url" | "secret" | "boolean" | "select" | "location";
+export type FieldKind =
+  | "string"
+  | "number"
+  | "url"
+  | "secret"
+  | "boolean"
+  | "select"
+  | "location"
+  | "feeds";
 
 export type AdapterField = {
   key: string;
@@ -160,6 +168,8 @@ export type Incident = {
   audioUrl?: string;
   detailUrl?: string;
   severity?: IncidentSeverity;
+  /** Words heard on an audio alert, when the source already has them. */
+  transcript?: string;
 };
 
 export type FeedStatus = {

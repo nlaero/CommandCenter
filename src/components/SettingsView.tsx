@@ -25,7 +25,9 @@ import {
   validateSourceFields,
 } from "../lib/api";
 import { ensureLocationParams, locationSaveError } from "../lib/location";
+import { blankFeed, feedsSaveError, normalizeSafetyParams } from "../lib/safety";
 import { LocationField } from "./LocationField";
+import { SafetyFeedsField } from "./SafetyFeedsField";
 import { TelevisionSettings } from "./TelevisionSettings";
 import { useSourceRefresh } from "../lib/sourceRefresh";
 import type {
@@ -192,6 +194,11 @@ export function SettingsView({
       initial.notableMinMag = 4.5;
       initial.autoPan = true;
     }
+    if (typeId === "safety.nearby") {
+      initial.radiusMi = 10;
+      initial.enableCaptions = true;
+      initial.feeds = [blankFeed()];
+    }
     setParams(initial);
     setSecrets(
       typeId === "broadcastify.owner"
@@ -221,7 +228,12 @@ export function SettingsView({
                     kind: "warn",
                     text: "Free USGS summary feed. The panel polls on Cache-Control (never faster than once a minute) and pans the map to each new earthquake, tsunami flag, or other event. Notable rows also show in the alerts pane while this window is on the board.",
                   }
-                : null,
+                : typeId === "safety.nearby"
+                  ? {
+                      kind: "warn",
+                      text: "Each feed covers one county and state. The street is read from the audio, then placed in that county. Set how far from your location a call has to be. Audio starts muted. Captions use Local AI when Tiny English is installed.",
+                    }
+                  : null,
     );
   }
 
@@ -235,6 +247,17 @@ export function SettingsView({
     const nextParams = { ...source.params };
     if (source.type === "usgs.earthquake" && nextParams.autoPan === undefined) {
       nextParams.autoPan = true;
+    }
+    if (source.type === "safety.nearby") {
+      if (!Array.isArray(nextParams.feeds) || nextParams.feeds.length === 0) {
+        nextParams.feeds = [blankFeed()];
+      }
+      if (nextParams.radiusMi === undefined || nextParams.radiusMi === "") {
+        nextParams.radiusMi = 10;
+      }
+      if (nextParams.enableCaptions === undefined) {
+        nextParams.enableCaptions = true;
+      }
     }
     if (source.type === "broadcastify.owner") {
       const feedId = String(nextParams.feedId ?? "").trim();
@@ -373,6 +396,13 @@ export function SettingsView({
         setMessage({ kind: "error", text: locationError });
         return;
       }
+      if (adapter.typeId === "safety.nearby") {
+        const safetyError = feedsSaveError(params);
+        if (safetyError) {
+          setMessage({ kind: "error", text: safetyError });
+          return;
+        }
+      }
       const readyParams = ensureLocationParams(adapter.fields, params);
       const validation = await validateSourceFields(required, readyParams, secretsProvided);
       if (!validation.ok) {
@@ -398,6 +428,9 @@ export function SettingsView({
       if (adapter.typeId === "broadcastify.owner" && isPennHillsPreset(cleanedParams)) {
         cleanedParams.preset = PENN_HILLS_FEED.preset;
         cleanedParams.feedId = PENN_HILLS_FEED.feedId;
+      }
+      if (adapter.typeId === "safety.nearby") {
+        Object.assign(cleanedParams, normalizeSafetyParams(cleanedParams));
       }
       const source: SourceConfig = {
         type: adapter.typeId,
@@ -507,7 +540,8 @@ export function SettingsView({
           type === "incident.opendata" ||
           type === "broadcastify.owner" ||
           type === "camera.http_image" ||
-          type === "video.youtube",
+          type === "video.youtube" ||
+          type === "safety.nearby",
       );
       // Match the single-source panel size so a weather or quake slot is not crushed.
       const layoutSize = hasQuake
@@ -1087,6 +1121,17 @@ function panelLayoutFor(
       minH: 18,
     };
   }
+  if (typeId === "safety.nearby") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 40,
+      h: 46,
+      minW: 22,
+      minH: 24,
+    };
+  }
   if (typeId === "broadcastify.owner") {
     return {
       i: panelId,
@@ -1194,6 +1239,18 @@ function SourceForm({
       </p>
       <div className="form-grid">
         {adapter.fields.map((field) => {
+          if (field.kind === "feeds") {
+            return (
+              <div className="field" key={field.key}>
+                <label>
+                  {field.label}
+                  {field.required ? <span className="req"> *</span> : null}
+                </label>
+                <SafetyFeedsField params={params} disabled={busy} onChange={onParams} />
+                {field.help ? <div className="help">{field.help}</div> : null}
+              </div>
+            );
+          }
           const value = fieldValue(field, params, secrets);
           const isSecret =
             field.kind === "secret" || field.secret || field.key.startsWith("secret:");
