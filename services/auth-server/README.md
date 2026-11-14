@@ -4,4 +4,4 @@ This scaffold lives in [`nlaero/command-center-auth`](https://github.com/nlaero/
 
 Clone and run it there. Binary/service name is `auth-server`. A Fedora Pi (or any LAN Linux box) is only a test host.
 
-Source API secrets (Broadcastify, etc.) stay on the Command Center desktop keyring — not on auth-server.
+A server installed for this computer only can store source passwords and API keys. A server for other devices does not. The server admin created during setup opens the server settings page. That account is not a Command Center board login.

@@ -1,4 +1,4 @@
-import { DEFAULT_AUTH_BASE_URL, withAuth } from "./auth";
+import { withAuth } from "./auth";
 import { fetchUsgsInBrowser } from "./usgs";
 import type {
   AppState,
@@ -40,7 +40,7 @@ function defaultState(): AppState {
     editMode: false,
     auth: {
       enabled: true,
-      baseUrl: DEFAULT_AUTH_BASE_URL,
+      baseUrl: "",
       allowInsecureHttp: false,
       caFile: null,
       tlsPinSha256: null,

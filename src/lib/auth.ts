@@ -1,8 +1,5 @@
 import type { AppState, AuthProbe, AuthSession, AuthSettings, AuthUser } from "../types";
 
-/** Tailnet auth-server. Plain HTTP is allowed for this address. */
-export const DEFAULT_AUTH_BASE_URL = "http://100.101.141.93:8080";
-
 const TOKEN_KEY = "command-center.auth-tokens.v1";
 
 type StoredTokens = {
@@ -29,7 +26,7 @@ export function errorMessage(err: unknown): string {
 export function defaultAuthSettings(enabled: boolean): AuthSettings {
   return {
     enabled,
-    baseUrl: DEFAULT_AUTH_BASE_URL,
+    baseUrl: "",
     allowInsecureHttp: false,
     caFile: null,
     tlsPinSha256: null,
@@ -45,7 +42,7 @@ export function withAuth(state: AppState): AppState {
     ...state,
     auth: {
       enabled: true,
-      baseUrl: auth.baseUrl?.trim() || DEFAULT_AUTH_BASE_URL,
+      baseUrl: auth.baseUrl?.trim() ?? "",
       allowInsecureHttp: Boolean(auth.allowInsecureHttp),
       caFile: auth.caFile?.trim() || null,
       tlsPinSha256: auth.tlsPinSha256?.trim() || null,
@@ -69,6 +66,8 @@ function friendlyCode(code: string): string {
       return "Registration is turned off on this auth-server.";
     case "bad_request":
       return "Check the username and password and try again.";
+    case         "secret_store_disabled":
+      return "This server does not store passwords or API keys. They stay on each computer.";
     case "internal":
       return "auth-server had a problem. Try again in a moment.";
     default:
@@ -136,7 +135,10 @@ function isLabHost(hostname: string): boolean {
 
 /** Same origin rules as the desktop client, including installed builds. */
 export function normalizeAuthSettings(settings: AuthSettings): AuthSettings {
-  const raw = settings.baseUrl.trim() || DEFAULT_AUTH_BASE_URL;
+  const raw = settings.baseUrl.trim();
+  if (!raw) {
+    throw new Error("Enter the auth-server URL, or install a server on this computer.");
+  }
   let url: URL;
   try {
     url = new URL(raw);

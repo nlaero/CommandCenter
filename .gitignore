@@ -9,6 +9,10 @@ lerna-debug.log*
 
 node_modules
 dist
+
+# Staged by CI before the Windows build. Do not commit the binary.
+src-tauri/resources/auth-server.exe
+src-tauri/resources/auth-server
 dist-ssr
 *.local
 

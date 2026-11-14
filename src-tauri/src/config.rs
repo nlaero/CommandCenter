@@ -11,8 +11,12 @@ pub const CONFIG_FILE: &str = "config.yaml";
 pub const LAYOUTS_DIR: &str = "layouts";
 pub const BACKUP_SUFFIX: &str = ".bak";
 
-/// Default auth-server for this install. Plain HTTP is allowed for this tailnet address.
-pub const DEFAULT_AUTH_BASE_URL: &str = "http://100.101.141.93:8080";
+/// Tailscale lab address. Plain HTTP is allowed for it. A new install does not assume this host.
+pub const TAILNET_AUTH_BASE_URL: &str = "http://100.101.141.93:8080";
+
+/// Shared with config and local-server tests so they do not clobber `COMMAND_CENTER_HOME`.
+#[cfg(test)]
+pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -125,7 +129,7 @@ fn default_true() -> bool {
 }
 
 fn default_auth_base_url() -> String {
-    DEFAULT_AUTH_BASE_URL.to_string()
+    String::new()
 }
 
 /// Username/password session against auth-server. Source API secrets are not part of this.
@@ -138,7 +142,7 @@ pub struct AuthSettings {
     /// Always true after load. Kept so older files that stored `enabled: false` still parse.
     #[serde(default = "default_auth_enabled")]
     pub enabled: bool,
-    /// Auth-server origin. Change this if the server is not the default tailnet host.
+    /// Auth-server origin. Empty until this computer is pointed at a server or installs one.
     #[serde(default = "default_auth_base_url")]
     pub base_url: String,
     /// Lab only: allow `http://` to localhost or a private LAN. Ignored for the tailnet
@@ -264,14 +268,21 @@ pub fn load_or_create() -> Result<LoadResult, ConfigError> {
         if require_account {
             save_state(&paths, &state)?;
         }
-        Ok(LoadResult {
+        let mut result = LoadResult {
             state,
             paths,
             created: false,
-        })
+        };
+        if crate::local_server::adopt_server(&result.paths, &mut result.state)? {
+            save_state(&result.paths, &result.state)?;
+        }
+        Ok(result)
     } else {
-        let state = AppState::default();
+        let mut state = AppState::default();
         save_state(&paths, &state)?;
+        if crate::local_server::adopt_server(&paths, &mut state)? {
+            save_state(&paths, &state)?;
+        }
         Ok(LoadResult {
             state,
             paths,
@@ -336,9 +347,6 @@ fn backup_if_exists(path: &Path) -> Result<(), ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn default_state_is_empty_board() {
@@ -348,7 +356,7 @@ mod tests {
         assert!(state.sources.is_empty());
         assert_eq!(state.layout.cols, 48);
         assert!(state.auth.enabled);
-        assert_eq!(state.auth.base_url, DEFAULT_AUTH_BASE_URL);
+        assert_eq!(state.auth.base_url, "");
         assert!(!state.auth.allow_insecure_http);
     }
 
@@ -364,12 +372,12 @@ boards:
 "#;
         let state: AppState = serde_yaml::from_str(yaml).unwrap();
         assert!(state.auth.enabled);
-        assert_eq!(state.auth.base_url, DEFAULT_AUTH_BASE_URL);
+        assert_eq!(state.auth.base_url, "");
     }
 
     #[test]
     fn load_turns_off_local_only_mode() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = super::TEST_ENV_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("cc-auth-required-{}", uuid::Uuid::new_v4()));
         env::set_var(ENV_HOME_OVERRIDE, &dir);
         let paths = resolve_paths().unwrap();
@@ -391,6 +399,7 @@ auth:
         .unwrap();
         let loaded = load_or_create().unwrap();
         assert!(loaded.state.auth.enabled);
+        assert_eq!(loaded.state.auth.base_url, TAILNET_AUTH_BASE_URL);
         let raw = fs::read_to_string(&loaded.paths.config_file).unwrap();
         assert!(raw.contains("enabled: true"));
         assert!(!raw.contains("enabled: false"));
@@ -406,14 +415,14 @@ auth:
         let yaml = serde_yaml::to_string(&state).unwrap();
         let back: AppState = serde_yaml::from_str(&yaml).unwrap();
         assert!(back.auth.enabled);
-        assert_eq!(back.auth.base_url, DEFAULT_AUTH_BASE_URL);
+        assert_eq!(back.auth.base_url, "");
         assert!(back.auth.allow_insecure_http);
         assert_eq!(back.auth.ca_file.as_deref(), Some("/tmp/ca.pem"));
     }
 
     #[test]
     fn override_env_sets_root() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = super::TEST_ENV_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("cc-test-{}", uuid::Uuid::new_v4()));
         env::set_var(ENV_HOME_OVERRIDE, &dir);
         let paths = resolve_paths().unwrap();

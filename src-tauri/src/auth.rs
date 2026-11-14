@@ -4,7 +4,9 @@
 //! are never attached to these requests. Unit tests talk only to 127.0.0.1.
 //! They refuse the tailnet address so `cargo test` cannot call the live server.
 
-use crate::config::{AuthSettings, ConfigError, DEFAULT_AUTH_BASE_URL};
+use crate::config::{AuthSettings, ConfigError};
+#[cfg(test)]
+use crate::config::TAILNET_AUTH_BASE_URL;
 use crate::secrets;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
@@ -86,6 +88,9 @@ fn friendly_code(code: &str) -> String {
         "weak_password" => "Password must be at least 8 characters.".into(),
         "registration_disabled" => "Registration is turned off on this auth-server.".into(),
         "bad_request" => "Check the username and password and try again.".into(),
+        "secret_store_disabled" => {
+            "This server does not store passwords or API keys. They stay on each computer.".into()
+        }
         "internal" => "auth-server had a problem. Try again in a moment.".into(),
         other => format!("auth-server rejected the request ({other})."),
     }
@@ -246,6 +251,51 @@ impl<S: TokenStore> AuthService<S> {
     pub fn probe(&self, settings: &AuthSettings) -> AuthProbe {
         let _guard = token_lock();
         self.probe_locked(settings)
+    }
+
+    /// Merge source secrets with the device-only vault. Local non-empty values win,
+    /// then the merged map is written back. Session tokens are never sent.
+    pub fn sync_source_secrets(
+        &self,
+        settings: &AuthSettings,
+        local: &std::collections::BTreeMap<String, String>,
+    ) -> Result<std::collections::BTreeMap<String, String>, AuthError> {
+        let (status, body) = self.authorized(
+            settings,
+            reqwest::Method::GET,
+            "/vault",
+            None,
+        )?;
+        if status == 404 {
+            return Err(AuthError::Message(
+                "This auth-server does not store passwords and API keys.".into(),
+            ));
+        }
+        if status != 200 {
+            return Err(error_from(status, body.as_ref()));
+        }
+        let mut merged = vault_map(body.as_ref());
+        for (name, value) in local {
+            if is_vault_session_key(name) {
+                continue;
+            }
+            let value = value.trim();
+            if !value.is_empty() {
+                merged.insert(name.clone(), value.to_string());
+            }
+        }
+        merged.retain(|name, _| !is_vault_session_key(name));
+        let payload = serde_json::json!({ "secrets": merged });
+        let (status, body) = self.authorized(
+            settings,
+            reqwest::Method::PUT,
+            "/vault",
+            Some(payload),
+        )?;
+        if status != 200 {
+            return Err(error_from(status, body.as_ref()));
+        }
+        Ok(merged)
     }
 
     /// Normalize settings. If the origin changed, revoke the old refresh (best effort)
@@ -654,13 +704,38 @@ fn token_lock() -> MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(|err| err.into_inner())
 }
 
+fn is_vault_session_key(name: &str) -> bool {
+    name.trim().to_ascii_lowercase().starts_with("auth.")
+}
+
+fn vault_map(body: Option<&Value>) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    let Some(secrets) = body
+        .and_then(|value| value.get("secrets"))
+        .and_then(|value| value.as_object())
+    else {
+        return out;
+    };
+    for (name, value) in secrets {
+        if is_vault_session_key(name) {
+            continue;
+        }
+        if let Some(text) = value.as_str() {
+            if !text.is_empty() {
+                out.insert(name.clone(), text.to_string());
+            }
+        }
+    }
+    out
+}
+
 pub fn normalize_settings(mut settings: AuthSettings) -> Result<AuthSettings, AuthError> {
     let raw = settings.base_url.trim();
-    let raw = if raw.is_empty() {
-        DEFAULT_AUTH_BASE_URL
-    } else {
-        raw
-    };
+    if raw.is_empty() {
+        return Err(AuthError::Message(
+            "Enter the auth-server URL, or install a server on this computer.".into(),
+        ));
+    }
     settings.base_url = canonical_url(&check_url(raw, settings.allow_insecure_http)?)?;
     settings.ca_file = settings
         .ca_file
@@ -1441,8 +1516,8 @@ mod tests {
 
     #[test]
     fn default_tailnet_url_is_allowed_without_the_insecure_flag() {
-        let url = check_url_policy(DEFAULT_AUTH_BASE_URL, false).unwrap();
-        assert_eq!(canonical_url(&url).unwrap(), DEFAULT_AUTH_BASE_URL);
+        let url = check_url_policy(TAILNET_AUTH_BASE_URL, false).unwrap();
+        assert_eq!(canonical_url(&url).unwrap(), TAILNET_AUTH_BASE_URL);
         assert!(is_tailnet_host("100.101.141.93"));
         assert!(is_tailnet_host("100.64.0.1"));
         assert!(is_tailnet_host("100.127.255.255"));
@@ -1465,7 +1540,7 @@ mod tests {
             "http://127.255.255.254:9",
             "http://localhost:8080",
             "http://[::1]:8080",
-            DEFAULT_AUTH_BASE_URL,
+            TAILNET_AUTH_BASE_URL,
             "http://100.64.0.1:8080",
             "http://100.127.255.255:8080",
         ] {
@@ -1538,15 +1613,13 @@ mod tests {
     }
 
     #[test]
-    fn disabled_auth_does_not_contact_the_tailnet() {
+    fn empty_server_url_does_not_contact_anything() {
         let service = AuthService::with_store(MemoryStore::default());
-        let session = service.session(&AuthSettings {
-            enabled: false,
-            ..AuthSettings::default()
-        });
-        assert!(!session.enabled);
+        let session = service.session(&AuthSettings::default());
         assert!(!session.signed_in);
-        assert_eq!(session.base_url, DEFAULT_AUTH_BASE_URL);
+        assert_eq!(session.base_url, "");
+        let message = session.status_message.unwrap();
+        assert!(message.contains("install a server"), "{message}");
     }
 
     #[test]
@@ -1555,6 +1628,7 @@ mod tests {
         let service = AuthService::with_store(MemoryStore::default());
         let _ = service.probe(&AuthSettings {
             enabled: true,
+            base_url: TAILNET_AUTH_BASE_URL.into(),
             ..AuthSettings::default()
         });
     }

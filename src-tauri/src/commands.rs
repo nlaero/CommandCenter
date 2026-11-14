@@ -1,4 +1,5 @@
 use crate::auth::{self, AuthError, AuthProbe, AuthService, AuthSession};
+use crate::local_server::{self, BackupDocument, LocalServerChange, LocalServerStatus};
 use crate::config::{
     self, AppState, AuthSettings, ConfigPaths, GridItem, LoadResult, SourceConfig,
 };
@@ -36,6 +37,12 @@ impl From<auth::AuthError> for CommandError {
         Self {
             message: value.to_string(),
         }
+    }
+}
+
+impl From<String> for CommandError {
+    fn from(message: String) -> Self {
+        Self { message }
     }
 }
 
@@ -161,6 +168,9 @@ pub fn upsert_source(args: UpsertSourceArgs) -> Result<AppState, CommandError> {
     loaded.state.sources.insert(args.id, args.source);
     let paths = config::resolve_paths()?;
     config::save_state(&paths, &loaded.state)?;
+    if !args.secrets.is_empty() {
+        let _ = local_server::sync_vault(&auth_service(), &loaded.state);
+    }
     publish_settings(&loaded.state);
     Ok(loaded.state)
 }
@@ -168,6 +178,9 @@ pub fn upsert_source(args: UpsertSourceArgs) -> Result<AppState, CommandError> {
 #[tauri::command]
 pub fn store_secrets(args: StoreSecretsArgs) -> Result<(), CommandError> {
     secrets::set_secrets(&args.secrets)?;
+    if let Ok(loaded) = config::load_or_create() {
+        let _ = local_server::sync_vault(&auth_service(), &loaded.state);
+    }
     Ok(())
 }
 
@@ -506,8 +519,7 @@ pub fn sync_board() -> Result<sync::SyncOutcome, CommandError> {
                 let _ = sync::write_cursor(&paths.root, cursor);
             }
             let message = work.restored.then(|| {
-                "Restored your boards and sources from this account. API keys stay on this computer."
-                    .to_string()
+                "Restored your boards and sources from this account.".to_string()
             });
             Ok(sync::SyncOutcome {
                 state: work.state,
@@ -556,13 +568,113 @@ pub fn auth_save_settings(settings: AuthSettings) -> Result<AppState, CommandErr
 #[tauri::command]
 pub fn auth_register(username: String, password: String) -> Result<AuthSession, CommandError> {
     let loaded = config::load_or_create()?;
-    Ok(auth_service().register(&loaded.state.auth, &username, &password)?)
+    let session = auth_service().register(&loaded.state.auth, &username, &password)?;
+    if session.signed_in {
+        let _ = local_server::sync_vault(&auth_service(), &loaded.state);
+    }
+    Ok(session)
 }
 
 #[tauri::command]
 pub fn auth_login(username: String, password: String) -> Result<AuthSession, CommandError> {
     let loaded = config::load_or_create()?;
-    Ok(auth_service().login(&loaded.state.auth, &username, &password)?)
+    let session = auth_service().login(&loaded.state.auth, &username, &password)?;
+    if session.signed_in {
+        let _ = local_server::sync_vault(&auth_service(), &loaded.state);
+    }
+    Ok(session)
+}
+
+#[tauri::command]
+pub fn local_server_status() -> Result<LocalServerStatus, CommandError> {
+    let paths = config::resolve_paths()?;
+    Ok(local_server::status(std::path::Path::new(&paths.root)))
+}
+
+#[tauri::command]
+pub fn local_server_install(
+    role: String,
+    store_secrets: bool,
+    port: u16,
+    startup: String,
+    admin_username: String,
+    admin_password: String,
+) -> Result<LocalServerChange, CommandError> {
+    let paths = config::resolve_paths()?;
+    let root = std::path::PathBuf::from(&paths.root);
+    let url = local_server::install_local(
+        &root,
+        &role,
+        store_secrets,
+        port,
+        &startup,
+        &admin_username,
+        &admin_password,
+    )?;
+    let mut loaded = config::load_or_create()?;
+    loaded.state.auth.base_url = url;
+    loaded.state.auth.allow_insecure_http = true;
+    loaded.state.auth.enabled = true;
+    config::save_state(&paths, &loaded.state)?;
+    if store_secrets {
+        let _ = local_server::sync_vault(&auth_service(), &loaded.state);
+    }
+    Ok(LocalServerChange {
+        status: local_server::status(&root),
+        state: loaded.state,
+    })
+}
+
+#[tauri::command]
+pub fn local_server_open_admin() -> Result<(), CommandError> {
+    let paths = config::resolve_paths()?;
+    local_server::open_admin(std::path::Path::new(&paths.root))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn local_server_start() -> Result<LocalServerStatus, CommandError> {
+    let paths = config::resolve_paths()?;
+    let root = std::path::PathBuf::from(&paths.root);
+    local_server::start_installed(&root)?;
+    Ok(local_server::status(&root))
+}
+
+#[tauri::command]
+pub fn local_server_stop() -> Result<LocalServerStatus, CommandError> {
+    let paths = config::resolve_paths()?;
+    let root = std::path::PathBuf::from(&paths.root);
+    local_server::stop_installed(&root)?;
+    Ok(local_server::status(&root))
+}
+
+#[tauri::command]
+pub fn local_server_set_secrets(store_secrets: bool) -> Result<LocalServerChange, CommandError> {
+    let paths = config::resolve_paths()?;
+    let root = std::path::PathBuf::from(&paths.root);
+    local_server::set_store_secrets(&root, store_secrets)?;
+    let loaded = config::load_or_create()?;
+    if store_secrets {
+        let _ = local_server::sync_vault(&auth_service(), &loaded.state);
+    }
+    Ok(LocalServerChange {
+        status: local_server::status(&root),
+        state: loaded.state,
+    })
+}
+
+#[tauri::command]
+pub fn local_server_export_backup() -> Result<BackupDocument, CommandError> {
+    let paths = config::resolve_paths()?;
+    Ok(local_server::export_backup(std::path::Path::new(&paths.root))?)
+}
+
+#[tauri::command]
+pub fn local_server_import_backup(document: String) -> Result<LocalServerStatus, CommandError> {
+    let paths = config::resolve_paths()?;
+    let root = std::path::PathBuf::from(&paths.root);
+    local_server::import_backup(&root, &document)?;
+    Ok(local_server::status(&root))
 }
 
 #[tauri::command]

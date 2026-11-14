@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ADAPTER_CATALOG, getAdapter } from "../adapters/catalog";
 import { AccountSettings } from "./AuthScreen";
+import { ServerSetup } from "./ServerSetup";
 import { clampAutoHideSec, useAlerts } from "../lib/alerts";
 import {
   DISPLAY_PRESETS,
@@ -26,7 +27,7 @@ import type {
   SourceConfig,
 } from "../types";
 
-type Tab = "sources" | "configured" | "rotation" | "alerts" | "display" | "account" | "paths";
+type Tab = "sources" | "configured" | "rotation" | "alerts" | "display" | "account" | "server" | "paths";
 
 const ROTATION_PRESETS = [
   { label: "15s", value: 15 },
@@ -546,6 +547,13 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
             </button>
             <button
               type="button"
+              className={tab === "server" ? "active" : ""}
+              onClick={() => setTab("server")}
+            >
+              Server
+            </button>
+            <button
+              type="button"
               className={tab === "paths" ? "active" : ""}
               onClick={() => setTab("paths")}
             >
@@ -874,6 +882,8 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
                 onSession={onSession}
               />
             ) : null}
+
+            {tab === "server" ? <ServerSetup onState={onState} /> : null}
 
             {tab === "paths" ? (
               <>

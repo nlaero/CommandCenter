@@ -1183,7 +1183,9 @@ mod tests {
     #[should_panic(expected = "refusing to contact a tailnet auth-server")]
     fn sync_refuses_the_tailnet_address() {
         let client = service("user-1", "user-1.a");
-        let state = AppState::default();
+        let mut state = AppState::default();
+        state.auth.base_url = crate::config::TAILNET_AUTH_BASE_URL.into();
+        state.auth.enabled = true;
         let _ = reconcile(&client, &state, &BTreeMap::new(), None);
     }
 }

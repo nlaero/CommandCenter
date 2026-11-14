@@ -189,9 +189,11 @@ The board asks for an account before it opens. Older configs that had sign-in tu
 
 Create the account on that same screen (Sign in / Create account). There is no separate admin signup. After it succeeds you land on the board; restarting the app uses the refresh token until you sign out or it expires.
 
-The auth-server URL is a setting. It starts at `http://100.101.141.93:8080`. Change it if yours lives somewhere else. Plain HTTP is allowed for Tailscale (`100.64.0.0/10`), private LAN addresses (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), and loopback. That includes an installed build pointed at `http://10.0.0.85:8080`. Public hosts still need HTTPS. A checkbox can also allow HTTP for a `.local` or `.lan` name. It does not allow a public host.
+The auth-server URL is a setting on this computer. A new install leaves it empty until you enter a server or install one here. An older config that already has a URL keeps it. Plain HTTP is allowed for Tailscale (`100.64.0.0/10`), private LAN addresses (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), and loopback. Public hosts still need HTTPS. A checkbox can also allow HTTP for a `.local` or `.lan` name. It does not allow a public host.
 
-Access and refresh tokens go in the OS keyring (`auth.access_token`, `auth.refresh_token`). The password is not stored. Broadcastify and other source secrets stay in the keyring too and are not sent to auth-server.
+Access and refresh tokens go in the OS keyring (`auth.access_token`, `auth.refresh_token`). The board password is not stored. Source passwords and API keys stay in the keyring unless you turn on secret storage for a server that only this computer uses. A server for other devices does not store those.
+
+The Windows setup, and Settings → Server, can install auth-server on this computer. That walkthrough asks for a server admin. That account opens the server settings page. It is not a Command Center board login. Setup also asks whether the server runs as a Windows service or starts when you sign in and shows a taskbar icon. Uninstall removes the program, the service, and that startup entry.
 
 Boards, layout, and source setup (including the names of secrets, not their values) are stored on auth-server for the signed-in account. Signing in on another computer replaces the local board with that copy. The auth-server URL stays on this computer. If auth-server is unreachable, the board you already have stays put. `GET /settings` and `PUT /settings` are the account document; a missing route leaves the local board alone.
 
@@ -205,7 +207,7 @@ npm run tauri:build
 
 Output under `src-tauri/target/release/bundle/`. Flatpak / `.deb` later — not in this shell.
 
-The Windows setup `.exe` is built in GitHub Actions (`.github/workflows/release-windows.yml`). A pull request runs the build. Pushing a `v*` tag, for example `v0.1.0`, publishes that installer on the GitHub release for the tag. The package is the desktop app only.
+The Windows setup `.exe` is built in GitHub Actions (`.github/workflows/release-windows.yml`). A pull request runs the build and uploads the installer as a build artifact. It does not publish a release. Pushing a `v*` tag publishes that installer on the GitHub release for the tag. The setup can install Command Center, the auth-server, or both. The auth-server binary is built from `nlaero/command-center-auth` during that workflow. Until that server pull request is merged, the workflow checks out `cursor/local-server-install-8964`. Point it at `main` after the merge.
 
 ## Tests
 
@@ -216,7 +218,7 @@ npm run build
 
 ## auth-server
 
-The account API lives in [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth): register, login, refresh, logout, `/auth/me`, and the board document at `/settings`. The desktop app is only a client. A server that does not have `/settings` yet still signs in; it just cannot restore a board until that route is deployed.
+The account API lives in [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth): register, login, refresh, logout, `/auth/me`, and the board document at `/settings`. A device-only server can also keep source passwords and API keys at `/vault`. The server settings page at `/admin` uses a separate server admin created during setup. That sign-in is not a board account. The desktop app is a client of the board API. A server that does not have `/settings` yet still signs in; it just cannot restore a board until that route is deployed.
 
 `npm run test:rust` does not contact that server. It uses an in-process fake on `127.0.0.1`. To run the same client against a local auth-server you started yourself:
 
