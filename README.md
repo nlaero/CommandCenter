@@ -4,7 +4,7 @@
 
 [`multi-user`](https://github.com/nlaero/CommandCenter/tree/multi-user) is the future server version, branched from `main`. A server there can run on this computer or on another machine. Shared caption memory belongs on that branch. `main` keeps caption fixes on this computer.
 
-Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane.
+Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, news RSS, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane. Headlines stay in the news panel.
 
 ## Audio rule
 
@@ -125,6 +125,22 @@ USGS updates these about once a minute and sends `Cache-Control: max-age=60` plu
 
 While that window is on the board, notable rows (tsunami flag, PAGER yellow or higher, magnitude at or above the threshold, landslides, volcanic eruptions) show in the right-side alerts pane. Taking the window off the board removes them. Click a row in the pane for the USGS detail link.
 
+## News
+
+Free RSS. No key. You pick the national outlets. Local outlets come from the same confirmed place as weather: up to three catalog feeds inside their radius, nearest first. If none cover that place, the local feed is a Google News search for the place name. Google publishes that search RSS for a personal reader.
+
+Each feed is polled on its own schedule. The wait is the shortest hint the feed states — RSS `ttl`, the syndication update period, or the remaining `Cache-Control` max-age — and never shorter than a minute. A few-second CDN max-age does not override a longer ttl. If the feed states nothing, the panel waits 15 minutes. `Retry-After` can only make the wait longer. Refresh does not skip the wait. Repeat requests send `If-None-Match` and `If-Modified-Since` and keep the previous body on 304.
+
+Headlines stay in the news panel. They are not copied to the alerts pane.
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Location | yes | Same confirmation as weather. Local outlets follow this place. |
+| National outlets | yes | At least one |
+| Max stories | yes | Newest first (default 40, max 100) |
+
+**In the app:** Settings → Source catalog → News → Configure. Confirm the place, check the national outlets, and save. The window title uses the city. New stories flash in the list. Click a row for the summary and the story link.
+
 ## Crime / incident
 
 Municipal open data via Socrata SODA or a custom GeoJSON/JSON URL. Not CrimeRadar / Squawster scraping (ToS). Licensed CrimeRadar APIs can come later behind flags.
@@ -241,7 +257,7 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 ## Shell behavior
 
 - Empty board on first launch
-- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
+- Settings → Source catalog: weather, USGS earthquakes, news RSS, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
 - Configure → Save or Save & add to board
 - Settings → Panel rotation for any mix of configured sources in one panel
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
@@ -308,6 +324,7 @@ Checking does not publish a release. Installers stay unpublished until asked.
 
 ```bash
 npm run test:rust
+node --experimental-strip-types src/lib/news.test.ts
 node --experimental-strip-types src/lib/safety.test.ts
 node --experimental-strip-types src/lib/feedCaptions.test.ts
 node --experimental-strip-types src/lib/formFields.test.ts

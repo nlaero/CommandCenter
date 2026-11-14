@@ -1,3 +1,4 @@
+import { NATIONAL_OUTLETS } from "../lib/news";
 import { USGS_FEED_OPTIONS } from "../lib/usgs";
 import { CALLS_APP } from "../lib/broadcastifyCallsPreset";
 import { PENN_HILLS_FEED } from "../lib/broadcastifyPreset";
@@ -518,6 +519,40 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         required: false,
         defaultChecked: true,
         help: "On each poll, move the map to every new earthquake, tsunami flag, or other event. Clicking a row always pans.",
+      },
+    ],
+  },
+  {
+    typeId: "news.rss",
+    category: "product",
+    name: "News",
+    description:
+      "Free RSS. Pick national outlets. Local outlets are filled in from the confirmed place. Each feed is polled on its own ttl, update period, or cache header, and not faster than once a minute.",
+    defaultWidget: "news",
+    defaultRefresh: "15m",
+    fields: [
+      {
+        key: "location",
+        label: "Location",
+        kind: "location",
+        required: true,
+        help: "GPS, network location, or another source on this device, or an address. Command Center confirms the place before you can save. Local outlets come from that place.",
+      },
+      {
+        key: "outlets",
+        label: "National outlets",
+        kind: "checklist",
+        required: true,
+        options: NATIONAL_OUTLETS.map((outlet) => ({ value: outlet.id, label: outlet.name })),
+        help: "At least one. Local outlets are not picked here — they follow the confirmed place.",
+      },
+      {
+        key: "limit",
+        label: "Max stories",
+        kind: "number",
+        required: true,
+        placeholder: "40",
+        help: "Newest first, across every feed. 1 to 100.",
       },
     ],
   },
