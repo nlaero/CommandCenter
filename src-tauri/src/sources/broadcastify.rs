@@ -1,7 +1,7 @@
 //! Broadcastify Feed Owner API (`https://api.broadcastify.com/owner/`).
 //!
 //! Personal use for the feed owner only. Archives may not be redistributed.
-//! Does not implement Catalog ($2500) or Calls commercial APIs.
+//! Does not implement the Catalog API ($2500). Calls is a separate source.
 
 use crate::config::SourceConfig;
 use crate::sources::incident::{Incident, IncidentSeverity};

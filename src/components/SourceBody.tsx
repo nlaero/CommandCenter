@@ -3,6 +3,7 @@ import { getAdapter } from "../adapters/catalog";
 import { useSourceRevision } from "../lib/sourceRefresh";
 import type { SourceConfig } from "../types";
 import { BroadcastifyPanel } from "./BroadcastifyPanel";
+import { CallsPanel } from "./CallsPanel";
 import { CameraPanel } from "./CameraPanel";
 import { SafetyPanel } from "./SafetyPanel";
 import { IncidentPanel } from "./IncidentPanel";
@@ -29,6 +30,12 @@ export function SourceBody({ sourceId, source }: Props) {
   if (source.type === "broadcastify.owner") {
     return (
       <BroadcastifyPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
+  }
+
+  if (source.type === "broadcastify.calls") {
+    return (
+      <CallsPanel sourceId={sourceId} source={source} configRevision={revision} />
     );
   }
 

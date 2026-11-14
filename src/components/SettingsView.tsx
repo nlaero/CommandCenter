@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ADAPTER_CATALOG, getAdapter } from "../adapters/catalog";
+import { CALLS_APP } from "../lib/broadcastifyCallsPreset";
 import {
   PENN_HILLS_FEED,
   applyBroadcastifyPreset,
@@ -182,6 +183,12 @@ export function SettingsView({
       // Global rule: audio sources support closed captions (default on; user may opt out).
       initial.enableCaptions = true;
     }
+    if (typeId === "broadcastify.calls") {
+      initial.selector = "system";
+      initial.limit = 40;
+      initial.keyId = CALLS_APP.keyId;
+      initial.issuer = CALLS_APP.issuer;
+    }
     if (typeId === "weather.openmeteo") {
       initial.scopes = "local";
       initial.units = "imperial";
@@ -218,7 +225,12 @@ export function SettingsView({
                 kind: "warn",
                 text: "Penn Hills / Plum Police Dispatch (47291) is filled in. The password stays in the OS keyring. The desktop app calls the Feed Owner API for status, the relay listen URL, and personal-use archives. The live feed starts muted and captions run while it plays. Fixes stay on this computer. Audio stays on this computer.",
               }
-            : typeId === "weather.openmeteo"
+            : typeId === "broadcastify.calls"
+              ? {
+                  kind: "warn",
+                  text: "Separate from Feed Owner. Key ID and issuer are filled in for the approved Calls app. The signing secret stays in the OS keyring. The panel lists the call clips the API returns and plays them muted. A live playlist can wait.",
+                }
+              : typeId === "weather.openmeteo"
               ? {
                   kind: "warn",
                   text: "Open-Meteo conditions + RainViewer radar + NOAA GOES satellite + local NWS alerts (when this source is on the board). Optional Open-Meteo API key stays in the OS keyring.",
@@ -539,6 +551,7 @@ export function SettingsView({
         (type) =>
           type === "incident.opendata" ||
           type === "broadcastify.owner" ||
+          type === "broadcastify.calls" ||
           type === "camera.http_image" ||
           type === "video.youtube" ||
           type === "safety.nearby",
@@ -1088,6 +1101,10 @@ function panelTitleFor(
   if (adapter.typeId === "broadcastify.owner" && isPennHillsPreset(params)) {
     return PENN_HILLS_FEED.name;
   }
+  if (adapter.typeId === "broadcastify.calls") {
+    const label = typeof params.label === "string" ? params.label.trim() : "";
+    if (label) return label;
+  }
   if (adapter.typeId === "camera.http_image" || adapter.typeId === "video.youtube") {
     const label = typeof params.label === "string" ? params.label.trim() : "";
     if (label) return label;
@@ -1133,7 +1150,7 @@ function panelLayoutFor(
       minH: 24,
     };
   }
-  if (typeId === "broadcastify.owner") {
+  if (typeId === "broadcastify.owner" || typeId === "broadcastify.calls") {
     return {
       i: panelId,
       x: 0,
