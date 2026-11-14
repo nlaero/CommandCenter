@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ADAPTER_CATALOG, getAdapter } from "../adapters/catalog";
 import { AccountSettings } from "./AuthScreen";
 import { ServerSetup } from "./ServerSetup";
+import { UpdatesBody, useUpdates } from "./UpdatesPanel";
 import { clampAutoHideSec, useAlerts } from "../lib/alerts";
 import {
   DISPLAY_PRESETS,
@@ -27,7 +28,7 @@ import type {
   SourceConfig,
 } from "../types";
 
-type Tab = "sources" | "configured" | "rotation" | "alerts" | "display" | "account" | "server" | "paths";
+type Tab = "sources" | "configured" | "rotation" | "alerts" | "display" | "account" | "server" | "updates" | "paths";
 
 const ROTATION_PRESETS = [
   { label: "15s", value: 15 },
@@ -76,6 +77,7 @@ function fieldValue(
 }
 
 export function SettingsView({ state, paths, session, onClose, onState, onSession }: Props) {
+  const updates = useUpdates();
   const { notifySourceSaved } = useSourceRefresh();
   const [tab, setTab] = useState<Tab>("sources");
   const [selectedType, setSelectedType] = useState<string | null>(null);
@@ -554,6 +556,14 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
             </button>
             <button
               type="button"
+              className={tab === "updates" ? "active" : ""}
+              onClick={() => setTab("updates")}
+            >
+              Updates
+              {updates.hasUpdate ? <span className="badge">new</span> : null}
+            </button>
+            <button
+              type="button"
               className={tab === "paths" ? "active" : ""}
               onClick={() => setTab("paths")}
             >
@@ -884,6 +894,8 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
             ) : null}
 
             {tab === "server" ? <ServerSetup onState={onState} /> : null}
+
+            {tab === "updates" ? <UpdatesBody /> : null}
 
             {tab === "paths" ? (
               <>

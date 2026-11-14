@@ -9,6 +9,7 @@ import {
   saveAuthSettings,
 } from "../lib/auth";
 import { ServerSetup } from "./ServerSetup";
+import { useUpdates } from "./UpdatesPanel";
 import type { AppState, AuthSession, AuthSettings } from "../types";
 
 type Mode = "signin" | "register";
@@ -21,6 +22,7 @@ type Props = {
 };
 
 export function AuthScreen({ settings, session, onSession, onState }: Props) {
+  const updates = useUpdates();
   const [mode, setMode] = useState<Mode>("signin");
   const [username, setUsername] = useState(session.suggestedUsername ?? "");
   const [password, setPassword] = useState("");
@@ -263,6 +265,12 @@ export function AuthScreen({ settings, session, onSession, onState }: Props) {
             </button>
           </div>
           <ServerSetup onState={onState} />
+          <div className="form-actions">
+            <button type="button" className="btn" onClick={() => updates.openUpdates()}>
+              Check for updates
+              {updates.hasUpdate ? <span className="badge">new</span> : null}
+            </button>
+          </div>
         </div>
       </form>
     </div>

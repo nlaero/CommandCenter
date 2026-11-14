@@ -654,6 +654,17 @@ fn health_ok(port: u16) -> bool {
     body.get("ok").and_then(|value| value.as_bool()) == Some(true)
 }
 
+pub fn local_endpoint(root: &Path) -> Option<(u16, String)> {
+    let marker = read_marker(root)?;
+    Some((marker.port, marker.base_url))
+}
+
+/// Empty means this computer has not been pointed at a server yet, so a local install is the target.
+pub fn targets_local_server(base_url: &str, port: u16) -> bool {
+    let base = base_url.trim();
+    base.is_empty() || points_at_local(base, port)
+}
+
 fn read_marker(root: &Path) -> Option<InstallMarker> {
     let raw = fs::read_to_string(root.join("server").join("install.json")).ok()?;
     serde_json::from_str(&raw).ok()

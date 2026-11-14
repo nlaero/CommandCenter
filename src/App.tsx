@@ -15,13 +15,16 @@ import {
   setActiveBoard,
   setEditMode,
 } from "./lib/api";
+import { UpdatesProvider, useUpdates } from "./components/UpdatesPanel";
 import { SourceRefreshProvider } from "./lib/sourceRefresh";
 import type { AppState, AuthSession, ConfigPaths, GridItem } from "./types";
 
 export default function App() {
   return (
     <SourceRefreshProvider>
-      <AppShell />
+      <UpdatesProvider>
+        <AppShell />
+      </UpdatesProvider>
     </SourceRefreshProvider>
   );
 }
@@ -239,6 +242,7 @@ function AppShell() {
           >
             {state.editMode ? "Editing layout" : "Edit layout"}
           </button>
+          <UpdateButton />
           <button
             type="button"
             className="btn btn-primary"
@@ -301,5 +305,20 @@ function AppShell() {
         </main>
       </div>
     </AlertsProvider>
+  );
+}
+
+function UpdateButton() {
+  const updates = useUpdates();
+  return (
+    <button
+      type="button"
+      className={`btn${updates.hasUpdate ? " active" : ""}`}
+      onClick={() => updates.openUpdates()}
+      title="Check for updates"
+    >
+      Check for updates
+      {updates.hasUpdate ? <span className="badge">new</span> : null}
+    </button>
   );
 }
