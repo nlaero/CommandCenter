@@ -30,8 +30,12 @@ import {
   validateSourceFields,
 } from "../lib/api";
 import { ensureLocationParams, locationSaveError } from "../lib/location";
+import { brandId, canonicalStreamUrl, streamLinkError } from "../lib/privateCameras";
+import { sealPublicCamera } from "../lib/publicCameras";
 import { blankFeed, feedsSaveError, normalizeSafetyParams } from "../lib/safety";
 import { LocationField } from "./LocationField";
+import { PrivateCameraField } from "./PrivateCameraField";
+import { PublicCamerasField } from "./PublicCamerasField";
 import { SafetyFeedsField } from "./SafetyFeedsField";
 import { TelevisionSettings } from "./TelevisionSettings";
 import { useSourceRefresh } from "../lib/sourceRefresh";
@@ -210,6 +214,9 @@ export function SettingsView({
       initial.enableCaptions = true;
       initial.feeds = [blankFeed()];
     }
+    if (typeId === "camera.private") {
+      initial.brand = "custom";
+    }
     setParams(initial);
     setSecrets(
       typeId === "broadcastify.owner"
@@ -249,7 +256,17 @@ export function SettingsView({
                       kind: "warn",
                       text: "Nearby alerts use sources already set up, including Broadcastify Feed Owner. Each one keeps the county and state it covers. Audio starts muted, and captions stay on while the sound is off.",
                     }
-                  : null,
+                  : typeId === "camera.public"
+                    ? {
+                        kind: "warn",
+                        text: "Search published traffic cameras, or confirm a place and the nearest ones come first. Picking one fills in the link. A still has no captions. Video starts muted.",
+                      }
+                    : typeId === "camera.private"
+                      ? {
+                          kind: "warn",
+                          text: "Pick the brand or system for the steps, then paste the stream link. HLS, a video file, a still, and YouTube play here. A still has no captions. Sound starts muted. UDP and RTSP stay on the camera system.",
+                        }
+                      : null,
     );
   }
 
@@ -419,6 +436,20 @@ export function SettingsView({
           return;
         }
       }
+      if (adapter.typeId === "camera.public") {
+        const sealed = sealPublicCamera(params);
+        if (!sealed.ok) {
+          setMessage({ kind: "error", text: sealed.message });
+          return;
+        }
+      }
+      if (adapter.typeId === "camera.private") {
+        const linkError = streamLinkError(params.url);
+        if (linkError) {
+          setMessage({ kind: "error", text: linkError });
+          return;
+        }
+      }
       const readyParams = ensureLocationParams(adapter.fields, params);
       const validation = await validateSourceFields(required, readyParams, secretsProvided);
       if (!validation.ok) {
@@ -448,10 +479,24 @@ export function SettingsView({
       if (adapter.typeId === "safety.nearby") {
         Object.assign(cleanedParams, normalizeSafetyParams(cleanedParams));
       }
+      let refresh = existing?.refresh ?? adapter.defaultRefresh;
+      if (adapter.typeId === "camera.public") {
+        const sealed = sealPublicCamera(cleanedParams);
+        if (!sealed.ok) {
+          setMessage({ kind: "error", text: sealed.message });
+          return;
+        }
+        Object.assign(cleanedParams, sealed.params);
+        refresh = sealed.refresh;
+      }
+      if (adapter.typeId === "camera.private") {
+        cleanedParams.url = canonicalStreamUrl(cleanedParams.url);
+        cleanedParams.brand = brandId(cleanedParams.brand);
+      }
       const source: SourceConfig = {
         type: adapter.typeId,
         params: cleanedParams,
-        refresh: existing?.refresh ?? adapter.defaultRefresh,
+        refresh,
         secrets: secretRefs,
         enabled: true,
         draft: false,
@@ -557,6 +602,8 @@ export function SettingsView({
           type === "broadcastify.owner" ||
           type === "broadcastify.calls" ||
           type === "camera.http_image" ||
+          type === "camera.public" ||
+          type === "camera.private" ||
           type === "video.youtube" ||
           type === "safety.nearby",
       );
@@ -1114,7 +1161,12 @@ function panelTitleFor(
     const label = typeof params.label === "string" ? params.label.trim() : "";
     if (label) return label;
   }
-  if (adapter.typeId === "camera.http_image" || adapter.typeId === "video.youtube") {
+  if (
+    adapter.typeId === "camera.http_image" ||
+    adapter.typeId === "camera.public" ||
+    adapter.typeId === "camera.private" ||
+    adapter.typeId === "video.youtube"
+  ) {
     const label = typeof params.label === "string" ? params.label.trim() : "";
     if (label) return label;
   }
@@ -1181,7 +1233,12 @@ function panelLayoutFor(
       minH: 12,
     };
   }
-  if (typeId === "camera.http_image" || typeId === "video.youtube") {
+  if (
+    typeId === "camera.http_image" ||
+    typeId === "camera.public" ||
+    typeId === "camera.private" ||
+    typeId === "video.youtube"
+  ) {
     return {
       i: panelId,
       x: 0,
@@ -1276,6 +1333,22 @@ function SourceForm({
                   {field.required ? <span className="req"> *</span> : null}
                 </label>
                 <SafetyFeedsField params={params} sources={sources} disabled={busy} onChange={onParams} />
+                {field.help ? <div className="help">{field.help}</div> : null}
+              </div>
+            );
+          }
+          if (field.kind === "publicCameras" || field.kind === "privateCamera") {
+            return (
+              <div className="field" key={field.key}>
+                <label>
+                  {field.label}
+                  {field.required ? <span className="req"> *</span> : null}
+                </label>
+                {field.kind === "publicCameras" ? (
+                  <PublicCamerasField params={params} disabled={busy} onChange={onParams} />
+                ) : (
+                  <PrivateCameraField params={params} disabled={busy} onChange={onParams} />
+                )}
                 {field.help ? <div className="help">{field.help}</div> : null}
               </div>
             );

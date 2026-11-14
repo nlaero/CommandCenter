@@ -4,7 +4,7 @@
 
 [`multi-user`](https://github.com/nlaero/CommandCenter/tree/multi-user) is the future server version, branched from `main`. A server there can run on this computer or on another machine. Shared caption memory belongs on that branch. `main` keeps caption fixes on this computer.
 
-Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane.
+Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public cameras (search and recommendations), a private camera link, pasted image / video / HLS links, YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane.
 
 ## Audio rule
 
@@ -13,7 +13,7 @@ Anything that plays audio:
 1. Starts **muted** (user unmutes).
 2. Supports closed captions. They show on their own while the sound is muted. CC is a separate control that keeps them up after you turn the sound on.
 
-Broadcastify Feed Owner plays muted. While the live feed is playing, captions show on their own, including while the sound is off. CC keeps them up after you turn the sound on. Earlier lines stay in a scrolling list, and a wrong line can be corrected on this computer. Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. An audio input there can be a Feed Owner source already on this computer, which reads that panel's caption history instead of the microphone. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
+Broadcastify Feed Owner plays muted. While the live feed is playing, captions show on their own, including while the sound is off. CC keeps them up after you turn the sound on. Earlier lines stay in a scrolling list, and a wrong line can be corrected on this computer. Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. An audio input there can be a Feed Owner source already on this computer, which reads that panel's caption history instead of the microphone. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public cameras, a private camera, pasted camera links, and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
 
 ## Requirements
 
@@ -221,9 +221,17 @@ ffmpeg has to be on PATH for a real recording. The desktop app records the feed.
 
 ## Cameras and YouTube
 
-Public / HTTP camera plays the link in the panel. A still image refreshes on the source interval. It has no audio, so the panel does not generate captions and does not show a caption line. An MP4 or WebM file plays in the video element. An HLS playlist (`.m3u8`), including a master playlist, is decoded in the panel. The window shows the picture and the camera label. It does not print the saved fields.
+Public cameras, a private camera, a pasted camera link, and YouTube Live all use the same panel. It plays an HLS playlist (`.m3u8`, including a master playlist), an MP4 or WebM file, a still image, or a YouTube link. The window shows the picture and the camera label. A public camera also shows the agency credit. It does not print the rest of the saved fields.
 
-YouTube Live is its own source. Paste a watch link, a youtu.be link, a `/live/…` link, or a channel live URL (`/@name/live` or `/channel/UC…/live`). Same panel: picture, label, muted until you turn sound on.
+**Public cameras.** Search the cameras shipped with the app, or confirm a place and the nearest ones come first. A search for a city also checks the published catalog for New York City, Caltrans, or Maryland when that place matches. Picking a camera fills in the link, the label, and how often a still refreshes. Those are New York City DOT stills, Caltrans stills, and Maryland CHART playlists. PennDOT video is not in the list.
+
+**Private camera.** Pick a brand or system (Frigate, go2rtc, Blue Iris, Scrypted, Synology, UniFi Protect, Reolink, Hikvision / Amcrest / Dahua, Axis, or Ring / Nest / Arlo) and follow the steps, then paste the stream link. A UDP or RTSP address does not play in this panel. The camera system has to give you an HLS playlist, a video file, a still, or a YouTube link. The link is saved with the board on this computer, so leave a password out of it when you can. Ring, Nest, and Arlo do not hand over a stream link; use Scrypted or Home Assistant on this network and paste the local link that bridge shows.
+
+**Camera link.** Paste a still, a video file, or an HLS playlist you are allowed to view. Same panel as the two sources above.
+
+A still image refreshes on the source interval. It has no audio, so the panel does not generate captions and does not show a caption line.
+
+YouTube Live is its own source, and a YouTube link pasted on a camera plays the same way. Paste a watch link, a youtu.be link, a `/live/…` link, or a channel live URL (`/@name/live` or `/channel/UC…/live`). Picture, label, muted until you turn sound on.
 
 Captions are only for a source that has sound. HLS WebVTT or CEA-708 is used when the playlist already has it, and YouTube uses its own captions. An HLS stream or video file with no caption track is transcribed here with Tiny English from Settings → Local AI. Music and a repeated non-speech phrase are not shown; if the audio has no speech the caption line stays empty. The lines show while the panel is muted. Turn the sound on and they hide, unless CC is on. CC does not have to be pressed for the muted case. A still image never takes this path. YouTube audio is not downloaded for this. Preparing the audio for the local model uses ffmpeg when it is on the computer, and otherwise decodes AAC, MP3, and MP4 here. RTSP and USB cameras still need a native player.
 
@@ -241,7 +249,7 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 ## Shell behavior
 
 - Empty board on first launch
-- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
+- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (public list, private link, pasted image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
 - Configure → Save or Save & add to board
 - Settings → Panel rotation for any mix of configured sources in one panel
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
@@ -311,6 +319,8 @@ npm run test:rust
 node --experimental-strip-types src/lib/safety.test.ts
 node --experimental-strip-types src/lib/feedCaptions.test.ts
 node --experimental-strip-types src/lib/formFields.test.ts
+node --experimental-strip-types src/lib/publicCameras.test.ts
+node --experimental-strip-types src/lib/privateCameras.test.ts
 npm run build
 node scripts/fetch-tiny-en.test.mjs
 ```
