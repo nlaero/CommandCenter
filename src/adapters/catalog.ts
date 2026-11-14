@@ -288,7 +288,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         kind: "boolean",
         required: false,
         defaultChecked: true,
-        help: "On by default. The live feed is captioned on this computer while it plays, including while the sound is muted. A wrong line can be corrected here, and that fix stays on this computer. Nearby public safety can select this feed as an audio input and read those captions.",
+        help: "On by default. The live feed is captioned on this computer while it plays, including while the sound is muted. A wrong line can be corrected here, and that fix stays on this computer. Nearby public safety lists this feed and reads its audio and captions.",
       },
       {
         key: "secret:broadcastify.username",
@@ -387,7 +387,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     category: "product",
     name: "Nearby public safety",
     description:
-      "Listens to online streams and audio inputs. Tiny English transcribes each window on this computer. The dispatch type and street are read from that caption and placed in the feed's county and state. Later traffic stays on the incident while a unit is dispatched, responding, or on scene, and a cleared unit's next call is a new incident. A unit ID is not a person. Calls inside your radius open with the transcript and the audio.",
+      "Reads audio and captions from sources already set up in the program, including a Broadcastify Feed Owner feed. Tiny English reads each window on this computer. The dispatch type and street are placed in that feed's county and state. Later traffic stays on the incident while a unit is dispatched, responding, or on scene, and a cleared unit's next call is a new incident. A unit ID is not a person. Calls inside your radius open with the transcript and the audio.",
     defaultWidget: "safety",
     defaultRefresh: "1m",
     fields: [
@@ -411,7 +411,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Feeds",
         kind: "feeds",
         required: true,
-        help: "Each feed is an online stream or an audio input. County and state are how a street heard on that feed gets placed. Not a zip code list.",
+        help: "Each feed is a source already set up in the program, or an input on this computer. County and state place a street heard on that feed. Not a scanner web address and not a zip code list.",
       },
       {
         key: "enableCaptions",

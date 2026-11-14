@@ -247,7 +247,7 @@ export function SettingsView({
                 : typeId === "safety.nearby"
                   ? {
                       kind: "warn",
-                      text: "Each feed covers one county and state. The street is read from the audio, then placed in that county. Set how far from your location a call has to be. Audio starts muted. Captions use Local AI when Tiny English is installed.",
+                      text: "Nearby alerts use sources already set up, including Broadcastify Feed Owner. Each one keeps the county and state it covers. Audio starts muted, and captions stay on while the sound is off.",
                     }
                   : null,
     );

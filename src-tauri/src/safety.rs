@@ -95,7 +95,7 @@ pub fn listen(root: &Path, request: ListenRequest) -> Result<ListenResult, Strin
     let size = fs::metadata(&dest).map(|meta| meta.len()).unwrap_or(0);
     if size < 1000 || size > MAX_CLIP_BYTES {
         let _ = fs::remove_file(&dest);
-        return Err("The recording was empty. Check the stream URL or the audio input.".into());
+        return Err("The recording was empty. Check that audio source.".into());
     }
     let file_url = url::Url::from_file_path(&dest)
         .map_err(|_| "Could not read the recorded window.".to_string())?;
@@ -174,15 +174,15 @@ fn capture_input(device_id: &str, dest: &Path) -> Result<(), String> {
 
 fn validate_stream_url(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
-    if trimmed.is_empty() || trimmed.chars().count() > 500 {
-        return Err("Online feeds use an http or https stream URL.".into());
+    if trimmed.is_empty() || trimmed.chars().count() > 4096 {
+        return Err("Could not caption that audio.".into());
     }
-    let parsed = url::Url::parse(trimmed).map_err(|_| "The stream URL is not valid.".to_string())?;
+    let parsed = url::Url::parse(trimmed).map_err(|_| "Could not caption that audio.".to_string())?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
-        return Err("Online feeds use an http or https stream URL.".into());
+        return Err("Could not caption that audio.".into());
     }
     if parsed.host_str().is_none() {
-        return Err("The stream URL needs a host.".into());
+        return Err("Could not caption that audio.".into());
     }
     Ok(trimmed.to_string())
 }
@@ -308,7 +308,7 @@ fn run_ffmpeg(args: &[String], limit: Duration) -> Result<(), String> {
 fn redact_ffmpeg(err: &str) -> String {
     let trimmed = err.trim();
     if trimmed.is_empty() || trimmed.contains("://") {
-        return "Could not record that feed. Check the stream URL or the audio input.".into();
+        return "Could not record that feed. Check that audio source.".into();
     }
     let short: String = trimmed.chars().take(180).collect();
     format!("Could not record that feed. {short}")

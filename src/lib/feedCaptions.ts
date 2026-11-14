@@ -10,8 +10,10 @@
  */
 
 import { isPennHillsPreset, PENN_HILLS_FEED } from "./broadcastifyPreset.ts";
+import { blankFeed, canonicalState, readFeeds, type SafetyFeed } from "./safety.ts";
 
 export const FEED_OWNER_INPUT_PREFIX = "feed-owner:";
+export const CALLS_INPUT_PREFIX = "calls:";
 
 const MAX_LINES = 120;
 
@@ -68,15 +70,40 @@ export function feedOwnerInputId(sourceId: string): string {
 }
 
 export function parseFeedOwnerInputId(deviceId: string): string | null {
+  return parsePrefixedSourceId(deviceId, FEED_OWNER_INPUT_PREFIX);
+}
+
+export function callsInputId(sourceId: string): string {
+  return `${CALLS_INPUT_PREFIX}${sourceId}`;
+}
+
+export function parseCallsInputId(deviceId: string): string | null {
+  return parsePrefixedSourceId(deviceId, CALLS_INPUT_PREFIX);
+}
+
+function parsePrefixedSourceId(deviceId: string, prefix: string): string | null {
   const trimmed = deviceId.trim();
-  if (!trimmed.startsWith(FEED_OWNER_INPUT_PREFIX)) return null;
-  const sourceId = trimmed.slice(FEED_OWNER_INPUT_PREFIX.length);
+  if (!trimmed.startsWith(prefix)) return null;
+  const sourceId = trimmed.slice(prefix.length);
   if (!sourceId || sourceId.length > 80 || /\s/.test(sourceId)) return null;
   return sourceId;
 }
 
+export function feedIdForSource(sourceId: string): string {
+  const cleaned = sourceId.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 31);
+  return `feed-${cleaned || "audio"}`;
+}
+
 export function isFeedOwnerAudio(feed: { kind: string; deviceId: string }): boolean {
   return feed.kind === "audio-in" && parseFeedOwnerInputId(feed.deviceId) !== null;
+}
+
+export function isCallsAudio(feed: { kind: string; deviceId: string }): boolean {
+  return feed.kind === "audio-in" && parseCallsInputId(feed.deviceId) !== null;
+}
+
+export function isProgramAudioFeed(feed: { kind: string; deviceId: string }): boolean {
+  return isFeedOwnerAudio(feed) || isCallsAudio(feed);
 }
 
 /** Continuous relay audio is captured from "now". A file is seeked window by window. */
@@ -119,25 +146,125 @@ export function publicStreamUrl(raw: string): string {
   return parsed.toString();
 }
 
-export function broadcastifyAudioInputs(
-  sources: Record<string, { type: string; params?: Record<string, unknown> } | undefined>,
-): { id: string; label: string }[] {
-  const inputs: { id: string; label: string }[] = [];
+export type ProgramAudioSource = {
+  id: string;
+  label: string;
+  inputId: string;
+  kind: "feed-owner" | "calls";
+  county: string;
+  state: string;
+};
+
+type SourceRecord = { type: string; params?: Record<string, unknown> } | undefined;
+
+/** Configured audio sources. A saved source is listed even when disabled or still a draft. */
+export function programAudioSources(
+  sources: Record<string, SourceRecord>,
+): ProgramAudioSource[] {
+  const inputs: ProgramAudioSource[] = [];
   for (const [sourceId, source] of Object.entries(sources)) {
-    if (!source || source.type !== "broadcastify.owner") continue;
+    if (!source || source.type === "safety.nearby") continue;
     const params = source.params ?? {};
-    const feedId = String(params.feedId ?? "").trim();
-    const name = isPennHillsPreset(params)
-      ? PENN_HILLS_FEED.name
-      : feedId
-        ? `Feed ${feedId}`
-        : "Broadcastify feed";
-    inputs.push({
-      id: feedOwnerInputId(sourceId),
-      label: `${name} · captions`,
+    if (source.type === "broadcastify.owner") {
+      const personal = isPennHillsPreset(params);
+      const feedId = String(params.feedId ?? "").trim();
+      inputs.push({
+        id: sourceId,
+        label: personal ? PENN_HILLS_FEED.name : feedId ? `Feed ${feedId}` : "Broadcastify feed",
+        inputId: feedOwnerInputId(sourceId),
+        kind: "feed-owner",
+        county: personal ? PENN_HILLS_FEED.county : "",
+        state: personal ? "PA" : "",
+      });
+      continue;
+    }
+    if (source.type === "broadcastify.calls") {
+      const label = String(params.label ?? "").trim();
+      inputs.push({
+        id: sourceId,
+        label: label || "Broadcastify Calls",
+        inputId: callsInputId(sourceId),
+        kind: "calls",
+        county: "",
+        state: "",
+      });
+    }
+  }
+  return inputs.sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
+}
+
+export function broadcastifyAudioInputs(
+  sources: Record<string, SourceRecord>,
+): { id: string; label: string }[] {
+  return programAudioSources(sources)
+    .filter((item) => item.kind === "feed-owner")
+    .map((item) => ({ id: item.inputId, label: `${item.label} · captions` }));
+}
+
+function isPlaceholderFeed(feed: SafetyFeed): boolean {
+  return (
+    feed.kind === "audio-in" &&
+    !feed.name.trim() &&
+    !feed.county.trim() &&
+    !feed.state.trim() &&
+    !feed.url.trim() &&
+    (feed.deviceId === "default" || !feed.deviceId.trim())
+  );
+}
+
+/**
+ * The nearby feed list is the audio sources already saved in the program.
+ * A pasted stream URL is not a feed. County and state already stored on a
+ * matching row are kept.
+ */
+export function syncSafetyFeeds(
+  params: Record<string, unknown>,
+  sources: Record<string, SourceRecord>,
+): Record<string, unknown> {
+  const program = programAudioSources(sources);
+  const current = readFeeds(params.feeds);
+  const linked = new Set(program.map((item) => item.inputId));
+  const retired = current.find((feed) => feed.kind === "online" && feed.county.trim() && canonicalState(feed.state));
+  let donatedRetired = false;
+  const manual = current.filter((feed) => feed.kind !== "online" && !linked.has(feed.deviceId));
+  const alreadyLinked = current.some((feed) => linked.has(feed.deviceId));
+  const dropPlaceholder = program.length > 0 && !alreadyLinked && manual.every(isPlaceholderFeed);
+  const keptManual = dropPlaceholder ? [] : manual;
+  const next: SafetyFeed[] = [];
+
+  for (const item of program) {
+    const existing = current.find((feed) => feed.deviceId === item.inputId || feed.id === feedIdForSource(item.id));
+    if (existing) {
+      next.push({
+        ...existing,
+        kind: "audio-in",
+        url: "",
+        deviceId: item.inputId,
+        deviceLabel: existing.deviceLabel.trim() || item.label,
+        listen: existing.listen !== false,
+      });
+      continue;
+    }
+    const donate = !item.county && retired && !donatedRetired ? retired : null;
+    if (donate) donatedRetired = true;
+    next.push({
+      id: feedIdForSource(item.id),
+      name: item.label,
+      kind: "audio-in",
+      url: "",
+      deviceId: item.inputId,
+      deviceLabel: item.label,
+      county: item.county || donate?.county || "",
+      state: item.state || (donate ? (canonicalState(donate.state) ?? "") : ""),
+      listen: true,
     });
   }
-  return inputs.sort((a, b) => a.label.localeCompare(b.label));
+
+  for (const feed of keptManual) {
+    next.push({ ...feed, listen: feed.listen !== false });
+  }
+  if (!next.length) next.push(blankFeed());
+  return { ...params, feeds: next.slice(0, 24) };
 }
 
 export function subscribeFeedCaptions(listener: () => void): () => void {

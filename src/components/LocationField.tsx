@@ -3,6 +3,7 @@ import {
   clearConfirmation,
   findLocations,
   formatCoords,
+  locationFailure,
   readLocationState,
   selectedProvider,
   sourcePhrase,
@@ -76,7 +77,7 @@ export function LocationField({ field, params, disabled, onChange }: Props) {
       }
     } catch (err) {
       onChange(clearConfirmation(params, field, provider, state.query));
-      setError(err instanceof Error ? err.message : String(err));
+      setError(locationFailure(err));
     } finally {
       setSearching(false);
     }

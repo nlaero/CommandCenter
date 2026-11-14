@@ -8,6 +8,8 @@ export type SafetyFeed = {
   deviceLabel: string;
   county: string;
   state: string;
+  /** Unchecked rows stay in the list and are not monitored. */
+  listen: boolean;
 };
 
 export type HeardCall = {
@@ -73,7 +75,7 @@ type DispatchKind = {
   patterns: RegExp[];
 };
 
-const MAX_FEEDS = 8;
+const MAX_FEEDS = 24;
 
 const STREET_SUFFIX =
   "street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|way|court|ct|place|pl|circle|cir|highway|hwy|pike|parkway|pkwy|terrace|ter|trail|trl";
@@ -198,12 +200,13 @@ export function blankFeed(): SafetyFeed {
   return {
     id,
     name: "",
-    kind: "online",
+    kind: "audio-in",
     url: "",
     deviceId: "default",
     deviceLabel: "Default input",
     county: "",
     state: "",
+    listen: true,
   };
 }
 
@@ -256,6 +259,7 @@ export function readFeeds(value: unknown): SafetyFeed[] {
       deviceLabel: clipText(record.deviceLabel, 160) || "Default input",
       county: clipText(record.county, 60),
       state: clipText(record.state, 40),
+      listen: record.listen !== false,
     });
   }
   return feeds;
@@ -279,6 +283,7 @@ export function streamUrlError(url: string): string | null {
 }
 
 export function feedProblem(feed: SafetyFeed): string | null {
+  if (feed.listen === false) return null;
   const name = feed.name.trim() || "A feed";
   if (!feed.name.trim()) return "Each feed needs a name.";
   if (!feed.county.trim()) return `${name} needs the county it covers.`;
@@ -300,10 +305,11 @@ export function feedsSaveError(params: Record<string, unknown>): string | null {
     return "Radius must be between 1 and 100 miles.";
   }
   const feeds = readFeeds(params.feeds);
-  if (!feeds.length) {
+  const listening = feeds.filter((feed) => feed.listen !== false);
+  if (!feeds.length || !listening.length) {
     return "Add at least one feed. Each one needs the county and state it covers.";
   }
-  for (const feed of feeds) {
+  for (const feed of listening) {
     const problem = feedProblem(feed);
     if (problem) return problem;
   }
@@ -319,6 +325,7 @@ export function normalizeSafetyParams(params: Record<string, unknown>): Record<s
     feeds: readFeeds(params.feeds).map((feed) => ({
       ...feed,
       state: canonicalState(feed.state) ?? feed.state.trim(),
+      listen: feed.listen !== false,
     })),
   };
 }
