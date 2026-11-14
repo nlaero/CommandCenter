@@ -8,6 +8,7 @@ import { CameraPanel } from "./CameraPanel";
 import { SafetyPanel } from "./SafetyPanel";
 import { IncidentPanel } from "./IncidentPanel";
 import { QuakePanel } from "./QuakePanel";
+import { TrafficPanel } from "./TrafficPanel";
 import { WeatherPanel } from "./WeatherPanel";
 
 type Props = {
@@ -54,6 +55,12 @@ export function SourceBody({ sourceId, source }: Props) {
   if (source.type === "usgs.earthquake") {
     return (
       <QuakePanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
+  }
+
+  if (source.type === "traffic.roads") {
+    return (
+      <TrafficPanel sourceId={sourceId} source={source} configRevision={revision} />
     );
   }
 

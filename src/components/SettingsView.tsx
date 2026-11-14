@@ -249,7 +249,12 @@ export function SettingsView({
                       kind: "warn",
                       text: "Nearby alerts use sources already set up, including Broadcastify Feed Owner. Each one keeps the county and state it covers. Audio starts muted, and captions stay on while the sound is off.",
                     }
-                  : null,
+                  : typeId === "traffic.roads"
+                    ? {
+                        kind: "warn",
+                        text: "The map shows the whole 80-mile region around the confirmed place. Incidents that can slow a trip go to the alerts pane when a free feed covers that region. Pennsylvania and Ohio need the free credentials on this source. Maryland, Iowa, British Columbia, and Maine, New Hampshire, and Vermont load without a key.",
+                      }
+                    : null,
     );
   }
 
@@ -550,6 +555,7 @@ export function SettingsView({
       const primaryId = rotateSourceIds[0];
       const memberTypes = rotateSourceIds.map((id) => state.sources[id]?.type);
       const hasQuake = memberTypes.includes("usgs.earthquake");
+      const hasTraffic = memberTypes.includes("traffic.roads");
       const hasWeather = memberTypes.includes("weather.openmeteo");
       const hasRichPanel = memberTypes.some(
         (type) =>
@@ -561,7 +567,7 @@ export function SettingsView({
           type === "safety.nearby",
       );
       // Match the single-source panel size so a weather or quake slot is not crushed.
-      const layoutSize = hasQuake
+      const layoutSize = hasQuake || hasTraffic
         ? { w: 32, h: 34, minW: 18, minH: 18 }
         : hasWeather
           ? { w: 28, h: 32, minW: 16, minH: 18 }
@@ -1137,7 +1143,7 @@ function panelLayoutFor(
       minH: 18,
     };
   }
-  if (typeId === "usgs.earthquake") {
+  if (typeId === "usgs.earthquake" || typeId === "traffic.roads") {
     return {
       i: panelId,
       x: 0,

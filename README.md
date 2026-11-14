@@ -4,7 +4,7 @@
 
 [`multi-user`](https://github.com/nlaero/CommandCenter/tree/multi-user) is the future server version, branched from `main`. A server there can run on this computer or on another machine. Shared caption memory belongs on that branch. `main` keeps caption fixes on this computer.
 
-Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane.
+Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), traffic and road conditions for the region around a confirmed place, USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane.
 
 ## Audio rule
 
@@ -102,11 +102,30 @@ Add more Weather sources if you want separate panels per scope instead of a comb
 
 ## Location
 
-Weather and ADS-B Exchange take a place in source settings. The choices are GPS, network location, other location services on this computer, or an address you type.
+Weather, traffic, and ADS-B Exchange take a place in source settings. The choices are GPS, network location, other location services on this computer, or an address you type.
 
 GPS asks the device for a high-accuracy satellite fix. Network location uses a Wi-Fi or cell reading when the operating system has one, and otherwise this computer's public IP address. Other device sources are the OS location service (GeoClue on Linux, or the browser's location service). An address is looked up through Photon, then Nominatim, then Open-Meteo. If several places match, pick one.
 
 Command Center will not save the source until that lookup returns a real place. The form then shows the name, the coordinates, and which input produced them. Older sources that already have latitude and longitude still open; those coordinates count as already found.
+
+## Traffic / road conditions
+
+One source, centered on the same confirmed place as weather. The map opens on the whole 80-mile region around that place. Selecting a row highlights it. The Region control puts the map back on that circle.
+
+A row that can change travel time (a closure, crash, lane restriction, meaningful delay, or an icy, snow-covered, or impassable road) also shows in the alerts pane while the window is on the board. Clear and wet road reports stay off the list. The map still draws when a feed is missing.
+
+| Region | Feed | Auth |
+|--------|------|------|
+| Pennsylvania | PennDOT RCRS live incidents and winter conditions (`gisdata.penndot.pa.gov`) | Free username and password, secrets `penndot.username` and `penndot.password` |
+| Ohio | [OHGO](https://publicapi.ohgo.com/api/v1/incidents) incidents and travel delays | Free API key, secret `ohgo.api_key`. Public-domain data. Header `Authorization: APIKEY …` |
+| Maryland | CHART event and closure JSON (`chartexp1.sha.maryland.gov`) | None |
+| Iowa | [511ia](https://511ia.org/) ArcGIS events and road conditions | None |
+| British Columbia | [DriveBC Open511](https://api.open511.gov.bc.ca/events) | None. Open Government License - BC |
+| Maine, New Hampshire, Vermont | New England Compass incident XML (`nec-por.ne-compass.com`) | None |
+
+The app asks a feed only when the 80-mile circle meets that feed's coverage. A place with no free feed still shows the map, and the note says so. Credentials stay in the OS keyring. The basemap is Esri Dark Gray.
+
+**In the app:** Settings → Source catalog → Traffic / road conditions → Configure. Confirm a place the same way as weather. Save the PennDOT or OHGO credentials only if this region reaches Pennsylvania or Ohio. Save, or Save & add to board.
 
 ## USGS earthquakes
 
@@ -241,7 +260,7 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 ## Shell behavior
 
 - Empty board on first launch
-- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
+- Settings → Source catalog: weather, traffic / road conditions, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
 - Configure → Save or Save & add to board
 - Settings → Panel rotation for any mix of configured sources in one panel
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
@@ -309,6 +328,7 @@ Checking does not publish a release. Installers stay unpublished until asked.
 ```bash
 npm run test:rust
 node --experimental-strip-types src/lib/safety.test.ts
+node --experimental-strip-types src/lib/traffic.test.ts
 node --experimental-strip-types src/lib/feedCaptions.test.ts
 node --experimental-strip-types src/lib/formFields.test.ts
 npm run build

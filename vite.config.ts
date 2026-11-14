@@ -19,6 +19,12 @@ function browserProxy(): Plugin {
     "/proxy/nominatim": "https://nominatim.openstreetmap.org",
     "/proxy/geocode": "https://geocoding-api.open-meteo.com",
     "/proxy/ipwho": "https://ipwho.is",
+    "/proxy/penndot": "https://gisdata.penndot.pa.gov",
+    "/proxy/ohgo": "https://publicapi.ohgo.com",
+    "/proxy/chart": "https://chartexp1.sha.maryland.gov",
+    "/proxy/arcgis": "https://services.arcgis.com",
+    "/proxy/open511": "https://api.open511.gov.bc.ca",
+    "/proxy/compass": "https://nec-por.ne-compass.com",
   };
 
   return {
@@ -47,6 +53,12 @@ function browserProxy(): Plugin {
           const ifModifiedSince = req.headers["if-modified-since"];
           if (typeof ifNoneMatch === "string") headers["if-none-match"] = ifNoneMatch;
           if (typeof ifModifiedSince === "string") headers["if-modified-since"] = ifModifiedSince;
+          if (prefix === "/proxy/penndot" || prefix === "/proxy/ohgo") {
+            const authorization = req.headers.authorization;
+            if (typeof authorization === "string" && authorization.trim()) {
+              headers.authorization = authorization;
+            }
+          }
           const upstreamRes = await fetch(upstream, { headers });
           res.statusCode = upstreamRes.status;
           for (const name of [
