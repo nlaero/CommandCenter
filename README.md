@@ -13,7 +13,7 @@ Anything that plays audio:
 1. Starts **muted** (user unmutes).
 2. Supports closed captions. They show on their own while the sound is muted. CC is a separate control that keeps them up after you turn the sound on.
 
-Broadcastify Feed Owner already follows this (muted players + Settings captions / panel CC). Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
+Broadcastify Feed Owner plays muted. While the live feed is playing, captions show on their own, including while the sound is off. CC keeps them up after you turn the sound on. Earlier lines stay in a scrolling list, and a wrong line can be corrected on this computer. Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. An audio input there can be a Feed Owner source already on this computer, which reads that panel's caption history instead of the microphone. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
 
 ## Requirements
 
@@ -162,15 +162,15 @@ The form opens on **Penn Hills / Plum Police Dispatch** (feed `47291`, account `
 | Feed ID | if other | Numeric id from feed management / listen URL. Penn Hills is 47291 |
 | Archive day | no | `YYYY-MM-DD`; blank lists available dates |
 | Include archives | no | Default on |
-| Captions / transcription | no | Default on; panel CC for archive and live audio |
+| Captions / transcription | no | Default on. Live captions run while the feed plays, including muted. CC keeps them after unmute |
 | Username | yes | Secret `broadcastify.username` (filled in for this account) |
 | Password | yes | Secret `broadcastify.password` (keyring only) |
 
 Players start muted. Keep personal archive audio on-device — no cloud ASR upload.
 
-With captions enabled, the panel shows CC and a captions pane. Transcribe local uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Audio stays on this computer.
+With captions enabled, the live row starts muted and transcribes while it plays. The newest line sits above a scrolling list of earlier lines. Scroll up and the list stays put until Latest. Fix caption writes the correction to the caption store on this computer, and later lines pick it up. The history keeps the relay listen URL with any password removed, so another source can use that audio. Archive clips still use Transcribe local: Tiny English when it is installed, and a short placeholder until then. Live captions do not invent that placeholder. If Tiny English is not installed, the live line says so. Audio stays on this computer.
 
-**In the app:** Settings → Source catalog → Broadcastify (Feed Owner) → Configure. Confirm the feed, enter the password, optional archive day. Save & add to board. The window is titled Penn Hills / Plum Police Dispatch. It shows online/offline, listeners, and archives. Change day in the toolbar; use CC + Transcribe local on a clip when captions are on.
+**In the app:** Settings → Source catalog → Broadcastify (Feed Owner) → Configure. Confirm the feed, enter the password, optional archive day. Save & add to board. The window is titled Penn Hills / Plum Police Dispatch. It shows online/offline, listeners, and archives. The live row plays muted with captions. Change day in the toolbar; use CC + Transcribe local on a clip when captions are on.
 
 Live Owner API calls need the Tauri app. The browser Vite mock previews this feed without calling the API (CORS, and the password never leaves the desktop keyring).
 
@@ -180,7 +180,9 @@ Online streams and audio inputs (a jack, Bluetooth, or the sound card). Each fee
 
 A unit ID (Engine 12, Medic 4) is not a person. While that unit is dispatched, responding, or on scene, a later caption that names it stays on the same incident. Cleared, available, or left the scene releases the unit, and its next dispatch or response starts a new incident. The same person may keep one unit every day or move to another; a different person may use that unit ID tomorrow. This Tiny English build cannot learn a voice: whisper.cpp b5454 (`whisper-cli`, `ggml-tiny.en`) writes words and timestamps only, with no speaker key and no voice embedding. Command Center does not run a separate local diarizer and does not upload audio to identify a speaker. The hook is the optional `speaker` field on a transcript segment. It is stored as a person key, never as a unit ID. What is missing is a local diarizer that fills that key per person on this computer.
 
-Click a call for the transcript and the audio. Each transmission shows the unit that was on the air, and the person only when a local voice key is known. Playback starts muted. Captions are on unless you turn them off. The browser preview does not record. It runs the reader on a sample: Engine 12 responding and on scene are one incident, Engine 12 clears, and the next response is a second incident. The person stays "not learned."
+An audio input can also be a Broadcastify Feed Owner source already added in Settings. That choice does not open the microphone. It reads caption windows from that panel while the panel is playing, and the incident can play the relay URL stored with those captions. The URL has no password. If the panel is closed, the feed line says to open it.
+
+Click a call for the transcript and the audio. Each transmission shows the unit that was on the air, and the person only when a local voice key is known. Playback starts muted. Captions are on unless you turn them off. The browser preview does not record a microphone or an online URL. It runs the reader on a sample: Engine 12 responding and on scene are one incident, Engine 12 clears, and the next response is a second incident. The person stays "not learned." A Feed Owner audio input in that preview still reads the panel captions instead of the sample.
 
 | Setting | Required | Notes |
 |---------|----------|--------|
@@ -276,6 +278,7 @@ Checking does not publish a release. Installers stay unpublished until asked.
 ```bash
 npm run test:rust
 node --experimental-strip-types src/lib/safety.test.ts
+node --experimental-strip-types src/lib/feedCaptions.test.ts
 npm run build
 ```
 

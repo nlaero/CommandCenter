@@ -27,6 +27,7 @@ import {
   type OpenIncident,
   type SafetyFeed,
 } from "../lib/safety";
+import { isFeedOwnerAudio, subscribeFeedCaptions } from "../lib/feedCaptions";
 import { listenSafetyFeed, listensOnDevice, placeHeardAddress, type SafetyWindow } from "../lib/safetyListen";
 import type { Incident, SourceConfig } from "../types";
 import { CaptionCorrection, withCorrections } from "./LocalAiPanel";
@@ -288,6 +289,8 @@ export function SafetyPanel({ sourceId, source, configRevision = 0 }: Props) {
       }));
     }
 
+    let ownerWaiting = false;
+
     async function cycle() {
       if (running || cancelled || !home) return;
       const onDevice = listensOnDevice();
@@ -297,7 +300,7 @@ export function SafetyPanel({ sourceId, source, configRevision = 0 }: Props) {
         for (let index = 0; index < feeds.length; index += 1) {
           const feed = feeds[index];
           if (!feed || cancelled) return;
-          if (!onDevice && index > 0) {
+          if (!onDevice && index > 0 && !isFeedOwnerAudio(feed)) {
             setLines((prev) => ({
               ...prev,
               [feed.id]: "Browser preview plays the sample on the first feed so the same unit is not dispatched twice.",
@@ -310,9 +313,23 @@ export function SafetyPanel({ sourceId, source, configRevision = 0 }: Props) {
             continue;
           }
           setListeningId(feed.id);
-          setLines((prev) => ({ ...prev, [feed.id]: "Listening…" }));
+          if (!isFeedOwnerAudio(feed)) {
+            setLines((prev) => ({ ...prev, [feed.id]: "Listening…" }));
+          }
           try {
             const windows = await listenSafetyFeed(feed);
+            if (!windows.length && isFeedOwnerAudio(feed)) {
+              if (!cancelled) {
+                setLines((prev) => ({
+                  ...prev,
+                  [feed.id]:
+                    prev[feed.id] && prev[feed.id] !== "Listening…"
+                      ? prev[feed.id]
+                      : "Waiting for live captions from the Feed Owner panel.",
+                }));
+              }
+              continue;
+            }
             if (cancelled) {
               for (const heard of windows) {
                 if (heard.audioUrl) URL.revokeObjectURL(heard.audioUrl);
@@ -337,13 +354,60 @@ export function SafetyPanel({ sourceId, source, configRevision = 0 }: Props) {
         if (!cancelled && !onDevice) samplePlayed = true;
       } finally {
         running = false;
+        if (ownerWaiting && !cancelled) {
+          ownerWaiting = false;
+          void readOwners();
+        }
+      }
+    }
+
+    async function readOwners() {
+      if (!feeds.some((feed) => isFeedOwnerAudio(feed))) return;
+      if (running || cancelled || !home) {
+        ownerWaiting = true;
+        return;
+      }
+      running = true;
+      try {
+        for (const feed of feeds) {
+          if (!feed || cancelled || !isFeedOwnerAudio(feed)) continue;
+          const problem = feedProblem(feed);
+          if (problem) {
+            setLines((prev) => ({ ...prev, [feed.id]: problem }));
+            continue;
+          }
+          try {
+            const windows = await listenSafetyFeed(feed);
+            for (const heard of windows) {
+              if (cancelled) return;
+              await consider(feed, heard);
+            }
+          } catch (err) {
+            if (!cancelled) {
+              setLines((prev) => ({
+                ...prev,
+                [feed.id]: err instanceof Error ? err.message : String(err),
+              }));
+            }
+          }
+        }
+      } finally {
+        running = false;
+        if (ownerWaiting && !cancelled) {
+          ownerWaiting = false;
+          void readOwners();
+        }
       }
     }
 
     void cycle();
     const timer = window.setInterval(() => void cycle(), monitorMs(source.refresh));
+    const unsubscribe = subscribeFeedCaptions(() => {
+      void readOwners();
+    });
     return () => {
       cancelled = true;
+      unsubscribe();
       window.clearInterval(timer);
       if (flashTimer) window.clearTimeout(flashTimer);
       for (const hit of current) {

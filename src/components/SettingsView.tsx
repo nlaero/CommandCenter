@@ -216,7 +216,7 @@ export function SettingsView({
           : typeId === "broadcastify.owner"
             ? {
                 kind: "warn",
-                text: "Penn Hills / Plum Police Dispatch (47291) is filled in. The password stays in the OS keyring. The desktop app calls the Feed Owner API for status, the relay listen URL, and personal-use archives. Captions use Local AI when Tiny English is installed. Audio stays on this computer.",
+                text: "Penn Hills / Plum Police Dispatch (47291) is filled in. The password stays in the OS keyring. The desktop app calls the Feed Owner API for status, the relay listen URL, and personal-use archives. The live feed starts muted and captions run while it plays. Fixes stay on this computer. Audio stays on this computer.",
               }
             : typeId === "weather.openmeteo"
               ? {
@@ -743,6 +743,7 @@ export function SettingsView({
                 adapter={adapter}
                 params={params}
                 secrets={secrets}
+                sources={state.sources}
                 busy={busy}
                 editingSourceId={editingSourceId}
                 onChange={updateField}
@@ -1203,6 +1204,7 @@ function SourceForm({
   adapter,
   params,
   secrets,
+  sources,
   busy,
   editingSourceId,
   onChange,
@@ -1214,6 +1216,7 @@ function SourceForm({
   adapter: AdapterDefinition;
   params: Record<string, unknown>;
   secrets: Record<string, string>;
+  sources: Record<string, { type: string; params: Record<string, unknown> }>;
   busy: boolean;
   editingSourceId: string | null;
   onChange: (field: AdapterField, raw: string | boolean) => void;
@@ -1246,7 +1249,7 @@ function SourceForm({
                   {field.label}
                   {field.required ? <span className="req"> *</span> : null}
                 </label>
-                <SafetyFeedsField params={params} disabled={busy} onChange={onParams} />
+                <SafetyFeedsField params={params} sources={sources} disabled={busy} onChange={onParams} />
                 {field.help ? <div className="help">{field.help}</div> : null}
               </div>
             );
