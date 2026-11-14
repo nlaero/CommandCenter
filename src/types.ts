@@ -335,6 +335,38 @@ export type QuakePayload = {
   notModified: boolean;
 };
 
+export type XMediaKind = "photo" | "video" | "animated_gif" | "audio";
+
+export type XMedia = {
+  kind: XMediaKind;
+  url?: string;
+  previewUrl?: string;
+  alt?: string;
+};
+
+/** One post from accounts the signed-in user follows. */
+export type XPost = {
+  id: string;
+  text: string;
+  createdAt?: string;
+  authorName?: string;
+  authorHandle?: string;
+  repostedBy?: string;
+  url: string;
+  media: XMedia[];
+};
+
+export type XFeed = {
+  username?: string;
+  posts: XPost[];
+};
+
+export type XAccount = {
+  signedIn: boolean;
+  username?: string | null;
+  name?: string | null;
+};
+
 export type SourcePayload = {
   sourceId: string;
   typeId: string;
@@ -345,4 +377,6 @@ export type SourcePayload = {
   feed?: FeedStatus;
   weather?: WeatherPayload;
   quake?: QuakePayload;
+  /** Present for `x.follow`. */
+  xFeed?: XFeed;
 };

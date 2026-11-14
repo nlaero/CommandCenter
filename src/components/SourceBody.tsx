@@ -9,6 +9,7 @@ import { SafetyPanel } from "./SafetyPanel";
 import { IncidentPanel } from "./IncidentPanel";
 import { QuakePanel } from "./QuakePanel";
 import { WeatherPanel } from "./WeatherPanel";
+import { XPanel } from "./XPanel";
 
 type Props = {
   sourceId: string;
@@ -55,6 +56,10 @@ export function SourceBody({ sourceId, source }: Props) {
     return (
       <QuakePanel sourceId={sourceId} source={source} configRevision={revision} />
     );
+  }
+
+  if (source.type === "x.follow") {
+    return <XPanel sourceId={sourceId} source={source} configRevision={revision} />;
   }
 
   if (source.type === "camera.http_image" || source.type === "video.youtube") {

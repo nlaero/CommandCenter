@@ -4,7 +4,7 @@
 
 [`multi-user`](https://github.com/nlaero/CommandCenter/tree/multi-user) is the future server version, branched from `main`. A server there can run on this computer or on another machine. Shared caption memory belongs on that branch. `main` keeps caption fixes on this computer.
 
-Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane.
+Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), Broadcastify Calls, public camera links (image, video file, or HLS), YouTube Live, X following (posts from accounts you follow), and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane. X posts stay in their own panel.
 
 ## Audio rule
 
@@ -13,7 +13,7 @@ Anything that plays audio:
 1. Starts **muted** (user unmutes).
 2. Supports closed captions. They show on their own while the sound is muted. CC is a separate control that keeps them up after you turn the sound on.
 
-Broadcastify Feed Owner plays muted. While the live feed is playing, captions show on their own, including while the sound is off. CC keeps them up after you turn the sound on. Earlier lines stay in a scrolling list, and a wrong line can be corrected on this computer. Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. An audio input there can be a Feed Owner source already on this computer, which reads that panel's caption history instead of the microphone. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
+Broadcastify Feed Owner plays muted. While the live feed is playing, captions show on their own, including while the sound is off. CC keeps them up after you turn the sound on. Earlier lines stay in a scrolling list, and a wrong line can be corrected on this computer. Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. An X post with video or audio starts muted, and captions show while the sound is off. An audio input there can be a Feed Owner source already on this computer, which reads that panel's caption history instead of the microphone. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
 
 ## Requirements
 
@@ -198,6 +198,25 @@ Players start muted. Unmute a clip to hear it. Each refresh is a metered read, s
 
 Live Calls requests need the Tauri app. The browser preview shows two sample clips after the secret field is filled and does not call the API.
 
+## X following
+
+Posts from accounts you follow, newest first. Sign in from the panel. Command Center does not ship an access token. The access token and refresh token stay in the OS keyring (`x.session.access_token`, `x.session.refresh_token`). A client secret, if the X app has one, is `x.client_secret` in the keyring. The client ID is the app id from the [developer portal](https://developer.x.com/), not a token, and it is the only X value saved in the board file.
+
+The X app callback URL has to be `http://127.0.0.1:8737/callback`. Sign-in asks for `tweet.read`, `users.read`, and `offline.access`. The panel calls `GET /2/users/:id/timelines/reverse_chronological`.
+
+Video and audio start muted. Captions show while the sound is off. CC keeps them up after you turn the sound on. Spoken words are transcribed on this computer with Tiny English when that model is installed. A still image has no audio line.
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Label | no | Panel title |
+| Client ID | yes | X app client ID. Not an access token |
+| Client secret | no | Keyring only, for a confidential app |
+| Max posts | yes | Newest first, 5–100 |
+
+**In the app:** Settings → Source catalog → X → Configure. Enter the client ID. Save & add to board. Sign in on the panel. The list scrolls. Posts that show up after the first load are marked.
+
+The browser preview signs in locally and shows sample posts. It does not call X, and it does not use a real token. Live posts need the desktop app.
+
 ## Nearby public safety
 
 Online streams and audio inputs (a jack, Bluetooth, or the sound card). Each feed stores the county and state it covers. There is no zip code list. A short window is recorded on this computer and transcribed with Tiny English when that model is installed. Those captions are the input. The reader takes a dispatch type and a street from the words, then looks the street up in that county and state. If the point sits inside the radius around your confirmed location, it shows on this panel and in the alerts pane.
@@ -241,7 +260,7 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 ## Shell behavior
 
 - Empty board on first launch
-- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
+- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, X following, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
 - Configure → Save or Save & add to board
 - Settings → Panel rotation for any mix of configured sources in one panel
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
@@ -311,6 +330,7 @@ npm run test:rust
 node --experimental-strip-types src/lib/safety.test.ts
 node --experimental-strip-types src/lib/feedCaptions.test.ts
 node --experimental-strip-types src/lib/formFields.test.ts
+node --experimental-strip-types src/lib/xFollow.test.ts
 npm run build
 node scripts/fetch-tiny-en.test.mjs
 ```
