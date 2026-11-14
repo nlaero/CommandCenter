@@ -174,6 +174,30 @@ With captions enabled, the panel shows CC and a captions pane. Transcribe local 
 
 Live Owner API calls need the Tauri app. The browser Vite mock previews this feed without calling the API (CORS, and the password never leaves the desktop keyring).
 
+## Broadcastify Calls
+
+[Calls Client API](https://support.broadcastify.com/hc/en-us/articles/50488286518427-Broadcastify-Calls-Client-API) — `GET https://api.bcfy.io/calls/v1/live/` with one selector: `sid`, `groups` (1–5), or `nodeId`.
+
+This is a separate source from Feed Owner. It does not change that panel. The live request returns individual call clips (MP3 on `calls.broadcastify.com`). A continuous Calls playlist can wait.
+
+Auth is an HS256 JWT. The header carries `kid`, and the payload carries `iss`, `iat`, and `exp`. Key ID and issuer are filled in for the approved Command Center app. The signing secret is secret `broadcastify.calls.secret` and stays in the OS keyring. It is not written to the board file.
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Label | no | Panel title |
+| Listen by | yes | System, groups, or node |
+| System, groups, or node | yes | Numeric system or node id, or `sid-talkgroup` / `c-frequency` groups |
+| Max clips | yes | Newest shown (default 40). The API still bills for the page it returns |
+| Key ID | yes | JWT `kid`, filled in |
+| Issuer | yes | JWT `iss`, filled in |
+| Signing secret | yes | Keyring only |
+
+Players start muted. Unmute a clip to hear it. Each refresh is a metered read, so the panel does not poll faster than every 30 seconds.
+
+**In the app:** Settings → Source catalog → Broadcastify Calls → Configure. Confirm the system, groups, or node. Enter the signing secret. Save & add to board. The window lists the clips the API returned.
+
+Live Calls requests need the Tauri app. The browser preview shows two sample clips after the secret field is filled and does not call the API.
+
 ## Nearby public safety
 
 Online streams and audio inputs (a jack, Bluetooth, or the sound card). Each feed stores the county and state it covers. There is no zip code list. A short window is recorded on this computer and transcribed with Tiny English when that model is installed. Those captions are the input. The reader takes a dispatch type and a street from the words, then looks the street up in that county and state. If the point sits inside the radius around your confirmed location, it shows on this panel and in the alerts pane.
@@ -215,7 +239,7 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 ## Shell behavior
 
 - Empty board on first launch
-- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
+- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
 - Configure → Save or Save & add to board
 - Settings → Panel rotation for any mix of configured sources in one panel
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.

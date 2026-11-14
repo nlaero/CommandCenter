@@ -25,12 +25,14 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     Boolean(rotation) ||
     source?.type === "incident.opendata" ||
     source?.type === "broadcastify.owner" ||
+    source?.type === "broadcastify.calls" ||
     source?.type === "weather.openmeteo" ||
     source?.type === "usgs.earthquake" ||
     source?.type === "camera.http_image" ||
     source?.type === "video.youtube" ||
     panel.widget === "incident" ||
     panel.widget === "broadcastify" ||
+    panel.widget === "calls" ||
     panel.widget === "weather" ||
     panel.widget === "quake" ||
     panel.widget === "video" ||

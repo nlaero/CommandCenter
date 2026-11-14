@@ -660,6 +660,17 @@ a {
   color: var(--cc-text);
 }
 
+.calls-panel .incident-detail {
+  min-height: 0;
+  overflow: auto;
+}
+
+.calls-panel .incident-dl dd,
+.calls-panel .bcfy-audio-hint,
+.calls-panel .incident-footer {
+  overflow-wrap: anywhere;
+}
+
 .incident-toolbar {
   display: flex;
   align-items: center;

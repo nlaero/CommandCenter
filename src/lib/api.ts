@@ -606,6 +606,10 @@ export async function fetchSourcePayload(
       const payload = browserFetchBroadcastify(src, overrides);
       return { ...payload, sourceId };
     }
+    if (src.type === "broadcastify.calls") {
+      const payload = browserFetchCalls(src);
+      return { ...payload, sourceId };
+    }
     if (src.type === "weather.openmeteo") {
       const payload = await browserFetchWeather(src);
       return { ...payload, sourceId };
@@ -618,6 +622,47 @@ export async function fetchSourcePayload(
   return invoke<SourcePayload>("fetch_source_payload", {
     args: { sourceId, overrides },
   });
+}
+
+/** Browser preview — fixture clips only. The desktop app calls the Calls API. */
+function browserFetchCalls(source: SourceConfig): SourcePayload {
+  const secrets = readBrowserSecrets();
+  const signing = secrets["broadcastify.calls.secret"]?.trim();
+  if (!signing) {
+    throw new Error(
+      "Broadcastify Calls signing secret is required. It stays in the OS keyring. The browser preview cannot call the Calls API — use the desktop app for live clips.",
+    );
+  }
+  const label =
+    typeof source.params.label === "string" && source.params.label.trim()
+      ? source.params.label.trim()
+      : "Broadcastify Calls";
+  const selectorId = String(source.params.selectorId ?? "").trim() || "preview";
+  const now = Date.now();
+  const clip = (offsetMin: number, title: string, file: string): Incident => {
+    const when = new Date(now - offsetMin * 60_000).toISOString();
+    return {
+      id: `preview-${selectorId}-${offsetMin}`,
+      title,
+      category: "call",
+      description: "Browser preview clip. The desktop app loads the clip URL from the Calls API.",
+      occurredAt: when,
+      address: label,
+      audioUrl: file,
+      severity: "info",
+    };
+  };
+  return {
+    sourceId: "browser",
+    typeId: source.type,
+    fetchedAt: new Date().toISOString(),
+    attribution: "Broadcastify Calls",
+    note: "Browser preview. Live clips come from the Calls API in the desktop app. Playback starts muted. A live playlist is not played.",
+    incidents: [
+      clip(2, "Preview clip · newer", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"),
+      clip(9, "Preview clip · earlier", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"),
+    ],
+  };
 }
 
 /** Browser UI mock — fixture only (Owner API is not CORS-friendly). Prefer tauri:dev. */

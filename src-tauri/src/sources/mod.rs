@@ -1,4 +1,5 @@
 pub mod broadcastify;
+pub mod calls;
 pub mod incident;
 pub mod quake;
 pub mod weather;
@@ -53,6 +54,21 @@ pub fn fetch_source(
         "incident.opendata" => {
             let secrets = resolve_secrets(&source.secrets)?;
             let result = incident::fetch(source, &secrets)?;
+            Ok(SourcePayload {
+                source_id: source_id.to_string(),
+                type_id: source.type_id.clone(),
+                fetched_at: result.fetched_at,
+                attribution: Some(result.attribution),
+                note: result.note,
+                incidents: result.incidents,
+                feed: None,
+                weather: None,
+                quake: None,
+            })
+        }
+        "broadcastify.calls" => {
+            let secrets = resolve_secrets(&source.secrets)?;
+            let result = calls::fetch(source, &secrets)?;
             Ok(SourcePayload {
                 source_id: source_id.to_string(),
                 type_id: source.type_id.clone(),

@@ -1,4 +1,5 @@
 import { USGS_FEED_OPTIONS } from "../lib/usgs";
+import { CALLS_APP } from "../lib/broadcastifyCallsPreset";
 import { PENN_HILLS_FEED } from "../lib/broadcastifyPreset";
 import type { AdapterDefinition } from "../types";
 
@@ -302,6 +303,78 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         secret: true,
         placeholder: "Feed owner password",
         help: "OS keyring only — never stored in plain config.",
+      },
+    ],
+  },
+  {
+    typeId: "broadcastify.calls",
+    category: "product",
+    name: "Broadcastify Calls",
+    description:
+      "Approved Calls API app. Live requests return individual call clips for a system, up to five groups, or a node. Playback starts muted. The signing secret stays in the OS keyring. This is separate from the Feed Owner panel.",
+    defaultWidget: "calls",
+    defaultRefresh: "1m",
+    fields: [
+      {
+        key: "label",
+        label: "Label",
+        kind: "string",
+        required: false,
+        placeholder: "Allegheny County",
+        help: "Panel title. The Calls window is not the Feed Owner feed.",
+      },
+      {
+        key: "selector",
+        label: "Listen by",
+        kind: "select",
+        required: true,
+        options: [
+          { value: "system", label: "System" },
+          { value: "groups", label: "Groups" },
+          { value: "node", label: "Node" },
+        ],
+        help: "One selector per request. A live playlist can wait — this shows the call clips the API returns.",
+      },
+      {
+        key: "selectorId",
+        label: "System, groups, or node",
+        kind: "string",
+        required: true,
+        placeholder: "12573 or 2-3416",
+        help: "System id, a node id, or 1–5 group ids separated by commas (sid-talkgroup or c-frequency).",
+      },
+      {
+        key: "limit",
+        label: "Max clips",
+        kind: "number",
+        required: true,
+        placeholder: "40",
+        help: "Newest clips kept in the panel. The API still bills for the records it returns.",
+      },
+      {
+        key: "keyId",
+        label: "Key ID",
+        kind: "string",
+        required: true,
+        placeholder: CALLS_APP.keyId,
+        help: "JWT kid for the approved Calls app. Filled in. Not the signing secret.",
+      },
+      {
+        key: "issuer",
+        label: "Issuer",
+        kind: "string",
+        required: true,
+        placeholder: CALLS_APP.issuer,
+        help: "JWT iss for the approved Calls app. Filled in. Not the signing secret.",
+      },
+      {
+        key: "secret:broadcastify.calls.secret",
+        label: "Signing secret",
+        kind: "secret",
+        required: true,
+        secret: true,
+        placeholder: "Calls app signing secret",
+        help: "OS keyring only — never written to the board file, logs, or the window.",
       },
     ],
   },
