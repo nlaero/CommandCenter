@@ -7,7 +7,10 @@
  */
 
 import { applyCorrections, readLocalMemory } from "./aiMemory";
+import { captionFailureText } from "./captionFailure";
 import { blocksCaptionDownload } from "./streamCaptions";
+
+export { captionFailureText };
 
 export type CaptionSegment = {
   id: string;
@@ -142,13 +145,11 @@ export async function transcribeMediaLocal(args: {
     body = null;
   }
   if (!response.ok) {
-    const message =
-      body && typeof body === "object" && "message" in body && typeof body.message === "string"
-        ? body.message
-        : "Couldn't create captions on this device.";
-    throw new Error(message);
+    throw new Error(captionFailureText(body ?? { message: response.statusText }));
   }
-  if (!body || !("segments" in body)) throw new Error("Couldn't create captions on this device.");
+  if (!body || !("segments" in body)) {
+    throw new Error(captionFailureText(body));
+  }
   return applyMemory(body);
 }
 

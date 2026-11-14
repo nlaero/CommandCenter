@@ -24,6 +24,7 @@ const WINDOWS_RUNTIME_URL: &str =
 const WINDOWS_RUNTIME_SHA256: &str =
     "6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb";
 const MAX_AUDIO_BYTES: u64 = 20 * 1024 * 1024;
+const RELAY_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 CommandCenter/0.1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -527,6 +528,9 @@ fn run_whisper(
     let mut child = cmd
         .spawn()
         .map_err(|err| format!("could not start the local model: {err}"))?;
+    // Drain stderr while the model runs. A full pipe stalls whisper-cli until the timeout.
+    let stderr = child.stderr.take();
+    let reader = std::thread::spawn(move || read_capped(stderr, 4_000));
     let started = Instant::now();
     let status = loop {
         match child.try_wait() {
@@ -534,26 +538,24 @@ fn run_whisper(
             Ok(None) if started.elapsed() > Duration::from_secs(180) => {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = reader.join();
                 let _ = fs::remove_file(out_json(&out_base));
                 return Err("The local model took too long and was stopped.".into());
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(50)),
-            Err(err) => return Err(format!("the local model stopped: {err}")),
+            Err(err) => {
+                let _ = child.kill();
+                let _ = reader.join();
+                return Err(format!("the local model stopped: {err}"));
+            }
         }
     };
+    let err_text = reader.join().unwrap_or_default();
     let json_path = out_json(&out_base);
     if !status.success() {
-        let err = child
-            .stderr
-            .as_mut()
-            .and_then(|stderr| {
-                let mut raw = String::new();
-                stderr.read_to_string(&mut raw).ok()?;
-                Some(raw)
-            })
-            .unwrap_or_default();
         let _ = fs::remove_file(&json_path);
-        let trimmed = err.chars().take(400).collect::<String>();
+        let trimmed: String = redact_urls(&err_text).chars().take(400).collect();
+        let trimmed = trimmed.trim();
         return Err(if trimmed.is_empty() {
             "The local model could not transcribe that clip.".into()
         } else {
@@ -707,27 +709,312 @@ pub fn transcribe_media(
 }
 
 fn prepare_whisper_audio(source_url: &str, seek: f64, duration: f64) -> Result<TempAudio, String> {
+    prepare_caption_audio(source_url, seek, duration, true)
+}
+
+fn prepare_caption_audio(
+    source_url: &str,
+    seek: f64,
+    duration: f64,
+    use_ffmpeg: bool,
+) -> Result<TempAudio, String> {
     if seek <= 0.05 {
         if let Some(audio) = existing_whisper_wav(source_url) {
             return Ok(audio);
         }
     }
-    match ffmpeg_to_wav(source_url, seek, duration) {
+    let ffmpeg_error = if use_ffmpeg {
+        match ffmpeg_to_wav(source_url, seek, duration) {
+            Ok(audio) => return Ok(audio),
+            Err(err) => err,
+        }
+    } else {
+        "FFMPEG_MISSING".to_string()
+    };
+    if finite_caption_source(source_url) {
+        return match decode_to_whisper_wav(source_url, seek, duration) {
+            Ok(audio) => Ok(audio),
+            Err(decode_err) if ffmpeg_error == "FFMPEG_MISSING" => Err(decode_err),
+            Err(decode_err) => Err(merge_caption_errors(&ffmpeg_error, &decode_err)),
+        };
+    }
+    // A relay does not end. Read one window; do not download it whole.
+    match capture_relay_audio(source_url, duration) {
         Ok(audio) => Ok(audio),
-        Err(err) if err == "FFMPEG_MISSING" => {
-            if finite_caption_source(source_url) {
-                decode_to_whisper_wav(source_url, seek, duration)
-            } else {
-                Err("ffmpeg is not installed, so this live audio cannot be captioned on this computer. Audio was not uploaded.".into())
+        Err(capture_err) if ffmpeg_error == "FFMPEG_MISSING" => Err(capture_err),
+        Err(capture_err) => Err(merge_caption_errors(&ffmpeg_error, &capture_err)),
+    }
+}
+
+/// One short slice of a live relay, decoded on this computer. The read stops
+/// after the window, so an open Icecast mount is not saved to disk in full.
+fn capture_relay_audio(source_url: &str, duration: f64) -> Result<TempAudio, String> {
+    if !(source_url.starts_with("https://") || source_url.starts_with("http://")) {
+        return Err("Audio must be a local file or an http(s) URL.".into());
+    }
+    let window = duration.clamp(1.0, 30.0);
+    let client = reqwest::blocking::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(4))
+        .connect_timeout(Duration::from_secs(8))
+        .timeout(Duration::from_secs_f64(window + 12.0))
+        .user_agent(RELAY_USER_AGENT)
+        .build()
+        .map_err(|_| "Couldn't open the relay.".to_string())?;
+    let response = client
+        .get(source_url)
+        .header("Icy-MetaData", "0")
+        .header("Accept", "audio/*,*/*;q=0.1")
+        .send()
+        .map_err(|err| relay_send_error(&err))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!(
+            "The relay refused the audio (HTTP {}). Audio was not uploaded.",
+            status.as_u16()
+        ));
+    }
+    let icy_interval = response
+        .headers()
+        .get("icy-metaint")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(0);
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let mut bytes = read_window(response, window)?;
+    if icy_interval > 0 {
+        bytes = strip_icy(&bytes, icy_interval);
+    }
+    if looks_like_page(&bytes) {
+        return Err("The relay sent a web page instead of audio. Audio was not uploaded.".into());
+    }
+    if looks_like_playlist(&bytes) {
+        return Err("The relay sent a playlist instead of audio. Audio was not uploaded.".into());
+    }
+    let extension = sniff_audio_extension(&bytes, &content_type);
+    let (rate, samples) = decode_audio_bytes(&bytes, &extension)?;
+    samples_to_whisper_file(&samples, rate, 0.0, window)
+}
+
+fn relay_send_error(err: &reqwest::Error) -> String {
+    if err.is_timeout() {
+        return "The relay did not send audio in time. Audio was not uploaded.".into();
+    }
+    if err.is_connect() {
+        return "Couldn't connect to the relay. Audio was not uploaded.".into();
+    }
+    let detail = redact_urls(&err.to_string());
+    let detail = detail.trim();
+    if detail.is_empty() || detail == "the relay" {
+        "Couldn't reach the relay. Audio was not uploaded.".into()
+    } else {
+        format!("Couldn't reach the relay. Audio was not uploaded. {detail}")
+    }
+}
+
+fn read_window(mut reader: impl Read, window: f64) -> Result<Vec<u8>, String> {
+    let deadline = Instant::now() + Duration::from_secs_f64(window + 1.5);
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 8192];
+    const CAP: usize = 1_500_000;
+    while buf.len() < CAP && Instant::now() < deadline {
+        match reader.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+                let room = CAP - buf.len();
+                buf.extend_from_slice(&chunk[..n.min(room)]);
+            }
+            Err(err) => {
+                if buf.len() > 1024 {
+                    break;
+                }
+                return Err(read_window_error(&err));
             }
         }
-        // A relay does not end. Do not fall back to downloading it.
-        Err(err) if !finite_caption_source(source_url) => Err(err),
-        Err(err) => match decode_to_whisper_wav(source_url, seek, duration) {
-            Ok(audio) => Ok(audio),
-            Err(decode_err) => Err(format!("{err} {decode_err}")),
-        },
     }
+    if buf.len() < 64 {
+        return Err(
+            "The relay did not send enough audio to caption. Audio was not uploaded.".into(),
+        );
+    }
+    Ok(buf)
+}
+
+fn read_window_error(err: &std::io::Error) -> String {
+    let timed_out = err.kind() == io::ErrorKind::TimedOut
+        || err.to_string().to_ascii_lowercase().contains("timed out");
+    if timed_out {
+        return "The relay did not send audio in time. Audio was not uploaded.".into();
+    }
+    let detail = redact_urls(&err.to_string());
+    let detail = detail.trim();
+    if detail.is_empty() {
+        "Couldn't read the relay. Audio was not uploaded.".into()
+    } else {
+        format!("Couldn't read the relay. Audio was not uploaded. {detail}")
+    }
+}
+
+fn strip_icy(bytes: &[u8], interval: usize) -> Vec<u8> {
+    if interval == 0 {
+        return bytes.to_vec();
+    }
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        let audio_end = (index + interval).min(bytes.len());
+        out.extend_from_slice(&bytes[index..audio_end]);
+        index = audio_end;
+        if index >= bytes.len() {
+            break;
+        }
+        let meta_len = bytes[index] as usize * 16;
+        index = index.saturating_add(1 + meta_len);
+    }
+    out
+}
+
+fn looks_like_page(bytes: &[u8]) -> bool {
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(64)]);
+    let trimmed = head.trim_start().to_ascii_lowercase();
+    trimmed.starts_with("<!doctype")
+        || trimmed.starts_with("<html")
+        || trimmed.starts_with("<head")
+        || trimmed.starts_with('{')
+        || trimmed.starts_with('[')
+}
+
+fn looks_like_playlist(bytes: &[u8]) -> bool {
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(32)]);
+    head.trim_start().starts_with("#EXTM3U")
+}
+
+fn sniff_audio_extension(bytes: &[u8], content_type: &str) -> String {
+    let kind = content_type.to_ascii_lowercase();
+    if kind.contains("mpeg") || kind.contains("mp3") {
+        return "mp3".into();
+    }
+    if kind.contains("aac") {
+        return "aac".into();
+    }
+    if kind.contains("wav") || kind.contains("wave") {
+        return "wav".into();
+    }
+    if kind.contains("ogg") {
+        return "ogg".into();
+    }
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" {
+        return "wav".into();
+    }
+    if bytes.len() >= 3 && &bytes[0..3] == b"ID3" {
+        return "mp3".into();
+    }
+    if bytes.len() >= 2 && bytes[0] == 0xff && (bytes[1] & 0xe0) == 0xe0 {
+        return "mp3".into();
+    }
+    String::new()
+}
+
+fn decode_audio_bytes(bytes: &[u8], extension: &str) -> Result<(u32, Vec<f32>), String> {
+    match decode_pcm(bytes, extension) {
+        Ok(decoded) => Ok(decoded),
+        Err(err) => {
+            let stripped = strip_id3(bytes);
+            if stripped.len() == bytes.len() {
+                return Err(err);
+            }
+            decode_pcm(stripped, extension)
+        }
+    }
+}
+
+fn samples_to_whisper_file(
+    samples: &[f32],
+    rate: u32,
+    seek: f64,
+    duration: f64,
+) -> Result<TempAudio, String> {
+    let sliced = slice_pcm(samples, rate, seek, duration);
+    if sliced.is_empty() {
+        return Err("That clip had no audio to caption.".into());
+    }
+    let pcm = resample_linear(&sliced, rate, 16_000);
+    let dir = std::env::temp_dir().join(format!("command-center-ai-{}", unique_stamp()));
+    fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    let wav = dir.join("clip.wav");
+    fs::write(&wav, write_pcm_wav(&pcm, 16_000)).map_err(|err| err.to_string())?;
+    Ok(TempAudio {
+        path: wav,
+        owned: true,
+    })
+}
+
+fn read_capped(stderr: Option<impl Read>, cap: usize) -> String {
+    let Some(mut pipe) = stderr else {
+        return String::new();
+    };
+    let mut kept = String::new();
+    let mut buf = [0u8; 4096];
+    loop {
+        match pipe.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                if kept.len() < cap {
+                    let room = cap - kept.len();
+                    let take = n.min(room);
+                    kept.push_str(&String::from_utf8_lossy(&buf[..take]));
+                }
+            }
+        }
+    }
+    kept
+}
+
+fn redact_urls(text: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    let mut out = String::new();
+    let mut index = 0;
+    while index < text.len() {
+        let rest = &lower[index..];
+        let http = rest.find("http://");
+        let https = rest.find("https://");
+        let at = match (http, https) {
+            (Some(left), Some(right)) => Some(left.min(right)),
+            (Some(left), None) => Some(left),
+            (None, Some(right)) => Some(right),
+            (None, None) => None,
+        };
+        let Some(at) = at else {
+            out.push_str(&text[index..]);
+            break;
+        };
+        out.push_str(&text[index..index + at]);
+        let start = index + at;
+        let tail = &text[start..];
+        let end = tail
+            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '<' || c == '>')
+            .unwrap_or(tail.len());
+        out.push_str("the relay");
+        index = start + end;
+    }
+    out
+}
+
+fn merge_caption_errors(first: &str, second: &str) -> String {
+    let primary = first.trim();
+    let extra = second.trim();
+    if primary.is_empty() || primary == "FFMPEG_MISSING" {
+        return extra.to_string();
+    }
+    if extra.is_empty() || primary.contains(extra) {
+        return primary.to_string();
+    }
+    format!("{primary} {extra}")
 }
 
 /// A finished file can be decoded here. A relay or playlist is not downloaded whole.
@@ -821,7 +1108,7 @@ fn ffmpeg_caption_args(input: &str, seek: f64, duration: f64, wav: &Path) -> Vec
         "-loglevel".into(),
         "error".into(),
         "-user_agent".into(),
-        "CommandCenter/0.1".into(),
+        RELAY_USER_AGENT.into(),
     ];
     if seek > 0.05 {
         args.push("-ss".into());
@@ -848,12 +1135,19 @@ fn ffmpeg_caption_args(input: &str, seek: f64, duration: f64, wav: &Path) -> Vec
 }
 
 fn caption_prep_error(detail: &str) -> String {
-    let trimmed = detail.trim();
-    if trimmed.is_empty() || trimmed.contains("://") {
-        return "couldn't prepare audio for captions. Audio was not uploaded.".into();
+    let redacted = redact_urls(detail);
+    let trimmed = redacted.trim();
+    if trimmed.is_empty() || trimmed == "the relay" {
+        return "Couldn't prepare audio for captions. Audio was not uploaded.".into();
     }
     let short: String = trimmed.chars().take(180).collect();
-    format!("couldn't prepare audio for captions. Audio was not uploaded. {short}")
+    if short
+        .to_ascii_lowercase()
+        .contains("audio was not uploaded")
+    {
+        return short;
+    }
+    format!("Couldn't prepare audio for captions. Audio was not uploaded. {short}")
 }
 
 fn ffmpeg_to_wav(source_url: &str, seek: f64, duration: f64) -> Result<TempAudio, String> {
@@ -924,29 +1218,8 @@ fn ffmpeg_to_wav(source_url: &str, seek: f64, duration: f64) -> Result<TempAudio
 
 fn decode_to_whisper_wav(source_url: &str, seek: f64, duration: f64) -> Result<TempAudio, String> {
     let bytes = load_audio_bytes(source_url)?;
-    let (rate, samples) = match decode_pcm(&bytes, &extension_of(source_url)) {
-        Ok(decoded) => decoded,
-        Err(err) => {
-            let stripped = strip_id3(&bytes);
-            if stripped.len() == bytes.len() {
-                return Err(err);
-            }
-            decode_pcm(stripped, &extension_of(source_url))?
-        }
-    };
-    let sliced = slice_pcm(&samples, rate, seek, duration);
-    if sliced.is_empty() {
-        return Err("That clip had no audio to caption.".into());
-    }
-    let pcm = resample_linear(&sliced, rate, 16_000);
-    let dir = std::env::temp_dir().join(format!("command-center-ai-{}", unique_stamp()));
-    fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
-    let wav = dir.join("clip.wav");
-    fs::write(&wav, write_pcm_wav(&pcm, 16_000)).map_err(|err| err.to_string())?;
-    Ok(TempAudio {
-        path: wav,
-        owned: true,
-    })
+    let (rate, samples) = decode_audio_bytes(&bytes, &extension_of(source_url))?;
+    samples_to_whisper_file(&samples, rate, seek, duration)
 }
 
 fn load_audio_bytes(source_url: &str) -> Result<Vec<u8>, String> {
@@ -1140,6 +1413,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
     use std::net::TcpListener;
     use std::sync::{Arc, Mutex};
     use std::thread;
@@ -1272,7 +1546,8 @@ mod tests {
 
     #[test]
     fn whisper_json_speaker_is_a_person_key_only_when_the_runtime_emits_one() {
-        let plain = r#"{"transcription":[{"offsets":{"from":0,"to":1000},"text":" Engine 12 on scene"}]}"#;
+        let plain =
+            r#"{"transcription":[{"offsets":{"from":0,"to":1000},"text":" Engine 12 on scene"}]}"#;
         let heard = parse_whisper_json(plain).unwrap();
         assert_eq!(heard[0].text, "Engine 12 on scene");
         assert_eq!(heard[0].speaker, None);
@@ -1379,5 +1654,176 @@ mod tests {
         assert!((segments[0].end_sec - 13.8).abs() < 0.01);
         assert!(note.contains("not uploaded"));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    fn install_chatty_model(root: &Path, text: &str) {
+        fs::create_dir_all(root.join("ai/runtime")).unwrap();
+        fs::create_dir_all(root.join("ai/models")).unwrap();
+        let script = root.join("ai/runtime/whisper-cli");
+        let body = format!(
+            "#!/bin/sh\ndd if=/dev/zero bs=1024 count=128 2>/dev/null | tr '\\0' 'm' >&2\nout=\nprev=\nfor arg in \"$@\"; do\n  if [ \"$prev\" = \"-of\" ]; then\n    out=$arg\n  fi\n  prev=$arg\ndone\nprintf '%s\\n' '{{\"transcription\":[{{\"offsets\":{{\"from\":0,\"to\":2200}},\"text\":\" {text}\"}}]}}' > \"$out.json\"\n"
+        );
+        fs::write(&script, body).unwrap();
+        make_executable(&script).unwrap();
+        fs::write(root.join("ai/models/ggml-tiny.en.bin"), b"model").unwrap();
+        let marker = Marker {
+            model_id: "tiny.en".into(),
+            model_label: "Tiny English".into(),
+            model_bytes: 5,
+            model_path: "ai/models/ggml-tiny.en.bin".into(),
+            runtime_path: "ai/runtime/whisper-cli".into(),
+        };
+        fs::write(
+            root.join("ai/install.json"),
+            serde_json::to_string(&marker).unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn serve_reply(status: u16, kind: &'static str, body: Vec<u8>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            for conn in listener.incoming() {
+                let Ok(mut stream) = conn else { continue };
+                let mut buf = [0u8; 4096];
+                let Ok(_n) = stream.read(&mut buf) else {
+                    continue;
+                };
+                let reason = if status == 200 { "OK" } else { "NO" };
+                let head = format!(
+                    "HTTP/1.1 {status} {reason}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(&body);
+            }
+        });
+        format!("http://127.0.0.1:{port}")
+    }
+
+    #[test]
+    fn missing_model_is_its_own_reason() {
+        let root = std::env::temp_dir().join(format!("cc-ai-missing-{}", unique_stamp()));
+        fs::create_dir_all(&root).unwrap();
+        let err = transcribe_media(
+            &root,
+            MediaTranscriptRequest {
+                source_url: "http://relay.example/penn_hills",
+                timeline_start: 0.0,
+                seek_sec: 0.0,
+                duration_sec: 12.0,
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(err, TranscribeError::NotInstalled));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn caption_errors_drop_relay_secrets() {
+        let message = caption_prep_error(
+            "Server returned 403 Forbidden\nhttp://owner:supersecret@relay.example/mount?p=supersecret",
+        );
+        assert!(message.contains("403"), "{message}");
+        assert!(!message.contains("supersecret"), "{message}");
+        assert!(!message.contains("://"), "{message}");
+        assert!(!message.contains("[object Object]"), "{message}");
+    }
+
+    #[test]
+    fn icy_metadata_is_not_left_in_the_audio() {
+        let mut bytes = b"aaaa".to_vec();
+        bytes.push(1);
+        bytes.extend(std::iter::repeat(b'm').take(16));
+        bytes.extend(b"bbbb");
+        assert_eq!(strip_icy(&bytes, 4), b"aaaabbbb");
+    }
+
+    #[test]
+    fn a_timed_out_relay_keeps_audio_already_read() {
+        struct ThenTimeout {
+            left: usize,
+        }
+        impl Read for ThenTimeout {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                if self.left == 0 {
+                    return Err(io::Error::new(io::ErrorKind::TimedOut, "timed out"));
+                }
+                let n = 200.min(self.left).min(buf.len());
+                buf[..n].fill(0x11);
+                self.left -= n;
+                Ok(n)
+            }
+        }
+        let got = read_window(ThenTimeout { left: 4_000 }, 1.0).unwrap();
+        assert!(got.len() > 1024);
+        let err = read_window(ThenTimeout { left: 0 }, 1.0).unwrap_err();
+        assert!(err.contains("did not send audio in time"), "{err}");
+        assert!(!err.contains("[object Object]"), "{err}");
+    }
+
+    #[test]
+    fn installed_model_captions_a_relay_without_printing_the_url() {
+        let root = std::env::temp_dir().join(format!("cc-ai-relay-{}", unique_stamp()));
+        install_chatty_model(&root, "Engine 12 responding");
+        let wav = write_pcm_wav(&[0.2, -0.2, 0.2, -0.2].repeat(4_000).as_slice(), 16_000);
+        let base = serve_reply(200, "audio/wav", wav);
+        let url = format!("{base}/penn_hills?p=supersecret");
+        let (segments, note) = transcribe_media(
+            &root,
+            MediaTranscriptRequest {
+                source_url: &url,
+                timeline_start: 24.0,
+                seek_sec: 0.0,
+                duration_sec: 2.0,
+            },
+        )
+        .unwrap();
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].text, "Engine 12 responding");
+        assert!((segments[0].start_sec - 24.0).abs() < 0.01);
+        assert!(note.contains("Tiny English"), "{note}");
+        assert!(note.contains("not uploaded"), "{note}");
+        assert!(!note.contains("supersecret"), "{note}");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn relay_refusal_names_the_http_status() {
+        let root = std::env::temp_dir().join(format!("cc-ai-deny-{}", unique_stamp()));
+        install_chatty_model(&root, "unused");
+        let base = serve_reply(403, "text/plain", b"no".to_vec());
+        let url = format!("{base}/penn_hills?p=supersecret");
+        let err = transcribe_media(
+            &root,
+            MediaTranscriptRequest {
+                source_url: &url,
+                timeline_start: 0.0,
+                seek_sec: 0.0,
+                duration_sec: 2.0,
+            },
+        )
+        .unwrap_err();
+        let TranscribeError::Message(message) = err else {
+            panic!("expected a message");
+        };
+        assert!(message.contains("403"), "{message}");
+        assert!(!message.contains("supersecret"), "{message}");
+        assert!(!message.contains("[object Object]"), "{message}");
+        assert!(
+            !message.contains("Couldn't create captions on this device"),
+            "{message}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn relay_audio_decodes_without_ffmpeg() {
+        let wav = write_pcm_wav(&[0.1, -0.1].repeat(8_000).as_slice(), 16_000);
+        let base = serve_reply(200, "audio/wav", wav);
+        let audio = prepare_caption_audio(&format!("{base}/penn_hills"), 0.0, 2.0, false).unwrap();
+        let bytes = fs::read(&audio.path).unwrap();
+        assert!(is_whisper_wav(&bytes));
     }
 }

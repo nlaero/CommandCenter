@@ -9,6 +9,48 @@ import os from "node:os";
 import path from "node:path";
 
 const NOTE = "Transcribed on this computer with Tiny English. Audio was not uploaded.";
+const RELAY_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 CommandCenter/0.1";
+
+/** Same rules as src/lib/captionFailure.ts. A thrown object must not become "[object Object]". */
+export function captionFailureText(err) {
+  const text = describeCaptionFailure(err, new Set());
+  if (!text || text === "[object Object]") return "Couldn't create captions on this device.";
+  return text;
+}
+
+function describeCaptionFailure(err, seen) {
+  if (typeof err === "string") {
+    const trimmed = err.trim();
+    if (!trimmed || trimmed === "[object Object]") return "";
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        const inner = describeCaptionFailure(JSON.parse(trimmed), seen);
+        if (inner) return inner;
+      } catch {
+        // A sentence that starts with a brace is already plain text.
+      }
+    }
+    return trimmed;
+  }
+  if (typeof err === "number" || typeof err === "boolean") return String(err);
+  if (!err || typeof err !== "object") return "";
+  if (seen.has(err)) return "";
+  seen.add(err);
+  if (err instanceof Error) {
+    const fromMessage = describeCaptionFailure(err.message, seen);
+    if (fromMessage) return fromMessage;
+  }
+  if ("message" in err) {
+    const inner = describeCaptionFailure(err.message, seen);
+    if (inner) return inner;
+  }
+  if ("error" in err) {
+    const inner = describeCaptionFailure(err.error, seen);
+    if (inner) return inner;
+  }
+  return "";
+}
 
 export function blocksCaptionDownload(url) {
   let host;
@@ -79,9 +121,10 @@ function run(command, args, options = {}) {
 
 async function ffmpegToWav(sourceUrl, seekSec, durationSec, wavPath) {
   const duration = Math.min(30, Math.max(1, Number(durationSec) || 30));
-  const args = ["-nostdin", "-hide_banner", "-loglevel", "error", "-user_agent", "CommandCenter/0.1"];
-  if (seekSec > 0.05) args.push("-ss", seekSec.toFixed(3));
-  args.push("-t", duration.toFixed(3), "-i", sourceUrl, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-y", wavPath);
+  const args = ["-nostdin", "-hide_banner", "-loglevel", "error", "-user_agent", RELAY_USER_AGENT];
+  if (seekSec > 0.05) args.push("-ss", Number(seekSec).toFixed(3));
+  // `-t` after `-i` stops a live relay. Before `-i` it does not.
+  args.push("-i", sourceUrl, "-t", duration.toFixed(3), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-y", wavPath);
   await run("ffmpeg", args, { timeout: 45_000 });
 }
 
@@ -160,7 +203,7 @@ export async function transcribeClip(body) {
     if (err && err.code === "ENOENT") {
       throw new Error("Couldn't prepare audio for captions. ffmpeg is not installed. Audio was not uploaded.");
     }
-    const message = err instanceof Error ? err.message : "Couldn't create captions on this device.";
+    const message = captionFailureText(err);
     throw new Error(
       message.includes("not uploaded") ? message : `${message} Audio was not uploaded.`.trim(),
     );
