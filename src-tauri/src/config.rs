@@ -36,7 +36,7 @@ pub struct ConfigPaths {
     pub override_source: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LayoutSettings {
     pub cols: u32,

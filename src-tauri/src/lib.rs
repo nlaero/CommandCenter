@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod secrets;
 mod sources;
+mod sync;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -28,6 +29,7 @@ pub fn run() {
             commands::auth_register,
             commands::auth_login,
             commands::auth_logout,
+            commands::sync_board,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Command Center");

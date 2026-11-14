@@ -106,6 +106,13 @@ export type LoadResult = {
   created: boolean;
 };
 
+export type SyncResult = {
+  state: AppState;
+  restored: boolean;
+  published: boolean;
+  message?: string | null;
+};
+
 export type FieldKind = "string" | "number" | "url" | "secret" | "boolean" | "select";
 
 export type AdapterField = {

@@ -6,6 +6,7 @@ import { SettingsView } from "./components/SettingsView";
 import { AuthScreen } from "./components/AuthScreen";
 import { AlertsProvider } from "./lib/alerts";
 import { authLogout, loadAuthSession } from "./lib/auth";
+import { syncBoard } from "./lib/sync";
 import {
   createBoard,
   loadAppState,
@@ -30,6 +31,8 @@ function AppShell() {
   const [paths, setPaths] = useState<ConfigPaths | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+  const syncedFor = useRef<string | null>(null);
   const [width, setWidth] = useState(1200);
   const stageRef = useRef<HTMLDivElement>(null);
   const boardMainRef = useRef<HTMLDivElement>(null);
@@ -55,6 +58,38 @@ function AppShell() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!session?.signedIn || !session.user) {
+      syncedFor.current = null;
+      return;
+    }
+    const userId = session.user.id;
+    if (syncedFor.current === userId) return;
+    let cancelled = false;
+    void syncBoard()
+      .then((result) => {
+        if (cancelled) return;
+        syncedFor.current = userId;
+        if (result.restored) {
+          setState(result.state);
+          setSyncNote(
+            result.message ??
+              "Restored your boards and sources from this account. API keys stay on this computer.",
+          );
+        } else if (result.message) {
+          setError(result.message);
+        } else {
+          setSyncNote(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) syncedFor.current = null;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.signedIn, session?.user?.id]);
 
   useEffect(() => {
     const el = boardMainRef.current ?? stageRef.current;
@@ -226,6 +261,14 @@ function AppShell() {
           {error ? (
             <div className="alert error" role="alert" style={{ margin: 12 }}>
               {error}
+            </div>
+          ) : null}
+          {syncNote ? (
+            <div className="alert ok" role="status" style={{ margin: 12 }}>
+              {syncNote}{" "}
+              <button type="button" className="btn btn-ghost" onClick={() => setSyncNote(null)}>
+                Dismiss
+              </button>
             </div>
           ) : null}
           <div className="board-with-alerts">

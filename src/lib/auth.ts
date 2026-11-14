@@ -505,6 +505,54 @@ export function authLogin(username: string, password: string): Promise<AuthSessi
   return serialized(() => submit("/auth/login", username, password));
 }
 
+/** Signed-in JSON call for the browser mock. `null` when this computer is signed out. */
+export function authorizedAuth(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ status: number; body: unknown; userId: string } | null> {
+  return serialized(async () => {
+    const { loadAppState } = await import("./api");
+    const { state } = await loadAppState();
+    const settings = normalizeAuthSettings(withAuth(state).auth);
+    if (!settings.enabled) return null;
+    let tokens = readTokens();
+    if ((!tokens.accessToken || !accessFresh(tokens)) && tokens.refreshToken) {
+      const response = await authFetch(settings, "/auth/refresh", {
+        method: "POST",
+        body: { refreshToken: tokens.refreshToken },
+      });
+      const next = asTokens(response.status, response.body);
+      persist(next);
+      tokens = readTokens();
+    }
+    if (!tokens.accessToken || !tokens.userId) return null;
+    const response = await authFetch(settings, path, {
+      method,
+      body,
+      bearer: tokens.accessToken,
+    });
+    return { status: response.status, body: response.body, userId: tokens.userId };
+  });
+}
+
+export function storedUserId(): string | null {
+  return readTokens().userId ?? null;
+}
+
+/** Access and refresh tokens, so a board upload can redact them. */
+export function sessionSecretValues(): Record<string, string> {
+  const tokens = readTokens();
+  const values: Record<string, string> = {};
+  if (tokens.accessToken && tokens.accessToken.length >= 8) {
+    values["auth.access_token"] = tokens.accessToken;
+  }
+  if (tokens.refreshToken && tokens.refreshToken.length >= 8) {
+    values["auth.refresh_token"] = tokens.refreshToken;
+  }
+  return values;
+}
+
 export function authLogout(): Promise<AuthSession> {
   if (isTauri()) {
     return invoke<AuthSession>("auth_logout").catch((err) => {
