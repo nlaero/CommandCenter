@@ -5,6 +5,7 @@ import {
   type CaptionResult,
   type CaptionSegment,
 } from "../lib/captions";
+import { CaptionCorrection, withCorrections } from "./LocalAiPanel";
 import { useAlerts } from "../lib/alerts";
 import { incidentsToBoardAlerts } from "../lib/boardAlerts";
 import { isPennHillsPreset, PENN_HILLS_FEED } from "../lib/broadcastifyPreset";
@@ -354,6 +355,9 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
                 onPickDay={pickDayFromItem}
                 captionsEnabled={captionsOn && showCaptions}
                 caption={captionCache[selected.id] ?? null}
+                onCaption={(next) =>
+                  setCaptionCache((cache) => ({ ...cache, [selected.id]: next }))
+                }
                 onTranscribe={() => void runCaptions(selected)}
               />
             ) : (
@@ -382,6 +386,7 @@ function ArchiveDetail({
   onPickDay,
   captionsEnabled,
   caption,
+  onCaption,
   onTranscribe,
 }: {
   item: Incident;
@@ -389,6 +394,7 @@ function ArchiveDetail({
   onPickDay: (item: Incident) => void;
   captionsEnabled: boolean;
   caption: CaptionResult | null;
+  onCaption: (caption: CaptionResult) => void;
   onTranscribe: () => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -514,6 +520,7 @@ function ArchiveDetail({
           caption={caption}
           active={active}
           busy={caption?.status === "running"}
+          onCaption={onCaption}
           onTranscribe={onTranscribe}
         />
       ) : null}
@@ -538,11 +545,13 @@ function CaptionsPane({
   caption,
   active,
   busy,
+  onCaption,
   onTranscribe,
 }: {
   caption: CaptionResult | null;
   active: CaptionSegment | null;
   busy: boolean;
+  onCaption: (caption: CaptionResult) => void;
   onTranscribe: () => void;
 }) {
   return (
@@ -562,7 +571,7 @@ function CaptionsPane({
       </div>
       <p className="bcfy-captions-note">
         {caption?.note ??
-          "Local/on-device preferred for personal use. Whisper sidecar not bundled yet — offline stub first (no cloud upload)."}
+          "Audio stays on this computer. Install Tiny English from Settings → Local AI to transcribe here."}
       </p>
       {active ? (
         <div className="bcfy-caption-live" aria-live="polite">
@@ -589,6 +598,17 @@ function CaptionsPane({
             </li>
           ))}
         </ol>
+      ) : null}
+      {caption?.segments.length ? (
+        <CaptionCorrection
+          suggestion={active?.text ?? caption.segments[0]?.text ?? ""}
+          onSaved={(memory) =>
+            onCaption({
+              ...caption,
+              segments: withCorrections(caption.segments, memory),
+            })
+          }
+        />
       ) : null}
     </div>
   );

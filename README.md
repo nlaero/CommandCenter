@@ -11,7 +11,7 @@ Anything that plays audio:
 1. Starts **muted** (user unmutes).
 2. Supports closed captions (on-device transcription preferred for personal archives).
 
-Broadcastify Feed Owner already follows this (muted players + Settings captions / panel CC; local ASR is still a stub). Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Do not ship new audio playback without both mute-default and CC.
+Broadcastify Feed Owner already follows this (muted players + Settings captions / panel CC). Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Do not ship new audio playback without both mute-default and CC.
 
 ## Requirements
 
@@ -166,7 +166,7 @@ The form opens on **Penn Hills / Plum Police Dispatch** (feed `47291`, account `
 
 Players start muted. Keep personal archive audio on-device — no cloud ASR upload.
 
-With captions enabled, the panel shows CC and a captions pane. Today `transcribe_audio_local` returns stub segments so the UI can ship; next step is whisper.cpp (or similar) behind the same toggle.
+With captions enabled, the panel shows CC and a captions pane. Transcribe local uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Audio stays on this computer.
 
 **In the app:** Settings → Source catalog → Broadcastify (Feed Owner) → Configure. Confirm the feed, enter the password, optional archive day. Save & add to board. The window is titled Penn Hills / Plum Police Dispatch. It shows online/offline, listeners, and archives. Change day in the toolbar; use CC + Transcribe local on a clip when captions are on.
 
@@ -211,6 +211,12 @@ The Windows setup, and Settings → Server, can install auth-server on this comp
 
 Boards, layout, and source setup (including the names of secrets, not their values) are stored on auth-server for the signed-in account. Signing in on another computer replaces the local board with that copy. The auth-server URL stays on this computer. If auth-server is unreachable, the board you already have stays put. `GET /settings` and `PUT /settings` are the account document; a missing route leaves the local board alone.
 
+## Local AI
+
+Settings → Local AI downloads Tiny English onto this computer (about 75 MB, plus the speech runtime). Audio is transcribed here and is not uploaded. Caption fixes — what was heard, and what it should say — sync through the server you are signed into. That is the same account whether the server is the one installed on this computer or a remote one. `GET /ai/memory` and `PUT /ai/memory` are that list. A server that does not have the route yet keeps the fixes on this computer and says so.
+
+Removing the model deletes it from this computer. The caption fixes stay with the account.
+
 Sign out from the toolbar. The username stays filled in on the sign-in screen.
 
 ## Build installers
@@ -242,7 +248,7 @@ npm run build
 
 ## auth-server
 
-The account API lives in [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth): register, login, refresh, logout, `/auth/me`, and the board document at `/settings`. A device-only server can also keep source passwords and API keys at `/vault`. The server settings page at `/admin` uses a separate server admin created during setup. That sign-in is not a board account. The desktop app is a client of the board API. A server that does not have `/settings` yet still signs in; it just cannot restore a board until that route is deployed.
+The account API lives in [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth): register, login, refresh, logout, `/auth/me`, the board document at `/settings`, and caption fixes at `/ai/memory`. A device-only server can also keep source passwords and API keys at `/vault`. The server settings page at `/admin` uses a separate server admin created during setup. That sign-in is not a board account. The desktop app is a client of the board API. A server that does not have `/settings` yet still signs in; it just cannot restore a board until that route is deployed.
 
 `npm run test:rust` does not contact that server. It uses an in-process fake on `127.0.0.1`. To run the same client against a local auth-server you started yourself:
 

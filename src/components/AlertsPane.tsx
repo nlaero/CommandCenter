@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CaptionCorrection, withCorrections } from "./LocalAiPanel";
 import {
   activeCaptionAt,
   transcribeArchiveLocal,
@@ -412,6 +413,17 @@ function AlertDetailModal({
                     </li>
                   ))}
                 </ol>
+              ) : null}
+              {caption?.segments.length ? (
+                <CaptionCorrection
+                  suggestion={active?.text ?? caption.segments[0]?.text ?? ""}
+                  onSaved={(memory) =>
+                    setCaption({
+                      ...caption,
+                      segments: withCorrections(caption.segments, memory),
+                    })
+                  }
+                />
               ) : null}
             </section>
           ) : null}

@@ -7,6 +7,7 @@ import { AuthScreen } from "./components/AuthScreen";
 import { AlertsProvider } from "./lib/alerts";
 import { authLogout, loadAuthSession } from "./lib/auth";
 import { applyDisplayPrefs, readDisplayPrefs } from "./lib/display";
+import { syncAiMemory } from "./lib/aiMemory";
 import { syncBoard } from "./lib/sync";
 import {
   createBoard,
@@ -75,6 +76,7 @@ function AppShell() {
     const userId = session.user.id;
     if (syncedFor.current === userId) return;
     let cancelled = false;
+    void syncAiMemory().catch(() => undefined);
     void syncBoard()
       .then((result) => {
         if (cancelled) return;
