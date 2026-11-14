@@ -127,11 +127,84 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     ],
   },
   {
+    typeId: "camera.public",
+    category: "product",
+    name: "Public cameras",
+    description:
+      "Published traffic cameras from New York City, Caltrans, and Maryland. Search the list, or confirm a place and the nearest ones come first. Picking a camera fills in the link, the label, and how often a still refreshes. A still has no captions. Video plays in the same panel as a pasted stream and starts muted.",
+    defaultWidget: "camera",
+    defaultRefresh: "30s",
+    fields: [
+      {
+        key: "location",
+        label: "Recommendations near",
+        kind: "location",
+        required: false,
+        latKey: "nearLat",
+        lonKey: "nearLon",
+        help: "Optional. GPS, network location, or another source on this device, or an address. Recommendations start near that place and move outward. Search works without it.",
+      },
+      {
+        key: "cameraId",
+        label: "Camera",
+        kind: "publicCameras",
+        required: true,
+        help: "Select one. The link and the still-image refresh are filled in from that camera.",
+      },
+      {
+        key: "label",
+        label: "Camera label",
+        kind: "string",
+        required: true,
+        placeholder: "Bay Bridge",
+      },
+      {
+        key: "recordLocal",
+        label: "Optional local recording",
+        kind: "boolean",
+        required: false,
+        help: "Saved with the camera. The panel does not record yet.",
+      },
+    ],
+  },
+  {
+    typeId: "camera.private",
+    category: "product",
+    name: "Private camera",
+    description:
+      "A camera or recorder you control. Pick the brand or system for the steps, then paste the stream link it gives you. The same panel plays an HLS playlist, a video file, a still image, or a YouTube link. A still has no captions. Sound starts muted.",
+    defaultWidget: "camera",
+    defaultRefresh: "30s",
+    fields: [
+      {
+        key: "url",
+        label: "Camera system",
+        kind: "privateCamera",
+        required: true,
+        help: "The link is saved with the board on this computer. Leave a password out of it when the camera system can give you a link without one.",
+      },
+      {
+        key: "label",
+        label: "Camera label",
+        kind: "string",
+        required: true,
+        placeholder: "Driveway",
+      },
+      {
+        key: "recordLocal",
+        label: "Optional local recording",
+        kind: "boolean",
+        required: false,
+        help: "Saved with the camera. The panel does not record yet.",
+      },
+    ],
+  },
+  {
     typeId: "camera.http_image",
     category: "product",
-    name: "Public / HTTP camera",
+    name: "Camera link",
     description:
-      "A still image, an MP4/WebM file, or an HLS playlist (.m3u8) you are allowed to view. A still refreshes on its interval and has no caption line. Video plays muted until you turn sound on. If that video has no captions, Command Center writes them on this computer and shows them while the sound is muted. The line stays empty when there is no speech.",
+      "Paste a still image, an MP4/WebM file, or an HLS playlist (.m3u8) you are allowed to view. Public cameras is the searchable list. Private camera is the guided link for a camera you own. A still refreshes on its interval and has no caption line. Video plays muted until you turn sound on. If that video has no captions, Command Center writes them on this computer and shows them while the sound is muted. The line stays empty when there is no speech.",
     defaultWidget: "camera",
     defaultRefresh: "30s",
     fields: [

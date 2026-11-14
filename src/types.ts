@@ -121,7 +121,9 @@ export type FieldKind =
   | "boolean"
   | "select"
   | "location"
-  | "feeds";
+  | "feeds"
+  | "publicCameras"
+  | "privateCamera";
 
 export type AdapterField = {
   key: string;

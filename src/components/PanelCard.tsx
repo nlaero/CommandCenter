@@ -17,7 +17,10 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
       ? panel.rotation
       : null;
   const cameraTitle =
-    (source?.type === "camera.http_image" || source?.type === "video.youtube") &&
+    (source?.type === "camera.http_image" ||
+      source?.type === "camera.public" ||
+      source?.type === "camera.private" ||
+      source?.type === "video.youtube") &&
     typeof source.params.label === "string"
       ? source.params.label.trim()
       : "";
@@ -30,6 +33,8 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     source?.type === "usgs.earthquake" ||
     source?.type === "safety.nearby" ||
     source?.type === "camera.http_image" ||
+    source?.type === "camera.public" ||
+    source?.type === "camera.private" ||
     source?.type === "video.youtube" ||
     panel.widget === "incident" ||
     panel.widget === "broadcastify" ||

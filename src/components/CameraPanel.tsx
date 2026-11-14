@@ -12,6 +12,7 @@ import { useStreamCaptions } from "../lib/useStreamCaptions";
 import {
   classifyPlayback,
   fetchMedia,
+  mediaByteRange,
   playbackHasAudio,
   isYoutubeUrl,
   looksLikeImage,
@@ -104,10 +105,7 @@ class MediaProxyLoader {
       callbacks.onTimeout(this.stats, context, null);
     }, budget);
 
-    const range =
-      typeof context.rangeEnd === "number"
-        ? `bytes=${context.rangeStart ?? 0}-${context.rangeEnd - 1}`
-        : undefined;
+    const range = mediaByteRange(context.rangeStart, context.rangeEnd);
 
     void fetchMedia(context.url, { range, signal: controller.signal })
       .then((result) => {
@@ -128,7 +126,7 @@ class MediaProxyLoader {
               ? result.data
               : text;
         callbacks.onSuccess(
-          { url: result.finalUrl || context.url, data, code: 200 },
+          { url: result.finalUrl || context.url, data, code: result.status || 200 },
           this.stats,
           context,
           null,
@@ -225,6 +223,7 @@ export function CameraPanel({ source }: Props) {
   const rawUrl = textParam(source.params.url);
   const label =
     textParam(source.params.label) || (source.type === "video.youtube" ? "YouTube" : "Camera");
+  const attribution = textParam(source.params.attribution);
   const [phase, setPhase] = useState<Phase>("loading");
   const [status, setStatus] = useState("Opening stream…");
   const [kind, setKind] = useState<PlaybackKind | null>(null);
@@ -255,7 +254,9 @@ export function CameraPanel({ source }: Props) {
       setStatus(
         source.type === "video.youtube"
           ? "Add a YouTube link in Settings."
-          : "Add a stream link in Settings.",
+          : source.type === "camera.public"
+            ? "Pick a public camera in Settings."
+            : "Add a stream link in Settings.",
       );
       return () => controller.abort();
     }
@@ -439,6 +440,7 @@ export function CameraPanel({ source }: Props) {
             {badge}
           </span>
           <span className="camera-label">{label}</span>
+          {attribution ? <span className="camera-credit">{attribution}</span> : null}
           {showMediaControls ? (
             <span className="camera-actions">
               <button type="button" className="btn camera-btn" onClick={toggleMute}>
