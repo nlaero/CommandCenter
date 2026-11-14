@@ -1,4 +1,5 @@
-# Windows NSIS installer for Command Center and, when the build can see it, auth-server.
+# Windows NSIS installer for Command Center. The setup must include auth-server.exe.
+# A missing server binary fails the build instead of publishing a setup whose server option cannot install.
 # Pull requests upload the installer as a build artifact. A v* tag publishes a GitHub release.
 # Do not publish from a pull request. Installers stay unpublished until asked.
 
@@ -72,6 +73,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force src-tauri/resources | Out-Null
           Copy-Item auth-server-src/target/release/auth-server.exe src-tauri/resources/auth-server.exe
+          $src = (Resolve-Path src-tauri/resources/auth-server.exe).Path
+          $item = Get-Item $src
+          if ($item.Length -lt 500000) {
+            throw "auth-server.exe is only $($item.Length) bytes"
+          }
+          "CC_AUTH_SERVER_SRC=$src" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8NoBOM
+          Write-Host "STAGED $src $($item.Length) bytes"
 
       - name: Build the NSIS installer
         run: npm run tauri:build -- --bundles nsis
@@ -88,7 +96,16 @@ jobs:
           if ($installers.Count -lt 1) {
             throw "No NSIS setup .exe was produced"
           }
-          $installers | ForEach-Object { Write-Host ("INSTALLER " + $_.Name) }
+          $server = Get-Item src-tauri\resources\auth-server.exe
+          $installers | ForEach-Object {
+            Write-Host ("INSTALLER " + $_.Name + " " + $_.Length + " bytes; auth-server " + $server.Length + " bytes")
+            # The 0.1.1 setup omitted auth-server and was about 2.7 MB.
+            # Require the packed setup to grow by at least 15% of that binary.
+            $minimum = 2500000 + [int]($server.Length * 0.15)
+            if ($_.Length -lt $minimum) {
+              throw "Setup is $($_.Length) bytes, smaller than $minimum. auth-server.exe was not packed."
+            }
+          }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4

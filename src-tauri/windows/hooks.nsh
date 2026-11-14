@@ -38,12 +38,31 @@ Var CcAdminFile
   ExecWait 'sc stop CommandCenterAuth'
 !macroend
 
-!macro NSIS_HOOK_EXTRAFILES
-  StrCpy $CcBundledServer 0
+; Find auth-server.exe before any macro runs. A !if inside a macro is decided
+; when that macro is inserted, and ${__FILEDIR__} is then the generated script
+; under src-tauri/target, not this file. That check missed the staged binary
+; and shipped a setup whose server option could not install.
+!if /FileExists "$%CC_AUTH_SERVER_SRC%"
+  !define CC_AUTH_SERVER_EXE "$%CC_AUTH_SERVER_SRC%"
+!endif
+!ifndef CC_AUTH_SERVER_EXE
   !if /FileExists "${__FILEDIR__}\..\resources\auth-server.exe"
-    File "/oname=auth-server.exe" "${__FILEDIR__}\..\resources\auth-server.exe"
-    StrCpy $CcBundledServer 1
+    !define CC_AUTH_SERVER_EXE "${__FILEDIR__}\..\resources\auth-server.exe"
   !endif
+!endif
+!ifndef CC_AUTH_SERVER_EXE
+  !if /FileExists "${__FILEDIR__}\..\..\..\..\resources\auth-server.exe"
+    !define CC_AUTH_SERVER_EXE "${__FILEDIR__}\..\..\..\..\resources\auth-server.exe"
+  !endif
+!endif
+!ifndef CC_AUTH_SERVER_EXE
+  !error "auth-server.exe was not staged. Refusing to build a Windows installer whose server option cannot install. Set CC_AUTH_SERVER_SRC or place the file at src-tauri/resources/auth-server.exe."
+!endif
+!echo "Bundling auth-server from ${CC_AUTH_SERVER_EXE}"
+
+!macro NSIS_HOOK_EXTRAFILES
+  File "/oname=auth-server.exe" "${CC_AUTH_SERVER_EXE}"
+  StrCpy $CcBundledServer 1
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
