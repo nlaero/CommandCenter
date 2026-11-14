@@ -1,7 +1,7 @@
-# auth-server moved
+# Future multi-user server
 
-This scaffold lives in [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth).
+The server lives in [`nlaero/command-center-auth`](https://github.com/nlaero/command-center-auth).
 
-Clone and run it there. Binary/service name is `auth-server`. A Fedora Pi (or any LAN Linux box) is only a test host.
+`main` in this repo is the single-user app. The [`multi-user`](https://github.com/nlaero/CommandCenter/tree/multi-user) branch is the future server version. The server can run on this computer or on another machine. It is not part of `main`. Shared caption memory belongs on `multi-user`. This app has no login. Settings and AI caption data stay on this computer.
 
-A server installed for this computer only can store source passwords and API keys. A server for other devices does not. The server admin created during setup opens the server settings page. That account is not a Command Center board login.
+The program name there is `auth-server`. A Fedora Pi (or any LAN Linux box) is only a test host.

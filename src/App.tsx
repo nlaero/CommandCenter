@@ -6,6 +6,7 @@ import { SettingsView } from "./components/SettingsView";
 import { AuthScreen } from "./components/AuthScreen";
 import { AlertsProvider } from "./lib/alerts";
 import { authLogout, loadAuthSession } from "./lib/auth";
+import { AUTH_IN_APP } from "./lib/authFeature";
 import { applyDisplayPrefs, readDisplayPrefs } from "./lib/display";
 import { syncAiMemory } from "./lib/aiMemory";
 import { syncBoard } from "./lib/sync";
@@ -52,7 +53,7 @@ function AppShell() {
     void (async () => {
       try {
         const result = await loadAppState();
-        const auth = await loadAuthSession();
+        const auth = AUTH_IN_APP ? await loadAuthSession() : null;
         if (cancelled) return;
         setState(result.state);
         setPaths(result.paths);
@@ -69,7 +70,7 @@ function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (!session?.signedIn || !session.user) {
+    if (!AUTH_IN_APP || !session?.signedIn || !session.user) {
       syncedFor.current = null;
       return;
     }
@@ -113,7 +114,7 @@ function AppShell() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (state?.auth.enabled && session && !session.signedIn) return;
+      if (AUTH_IN_APP && state?.auth.enabled && session && !session.signedIn) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "e") {
         e.preventDefault();
         void toggleEdit();
@@ -182,7 +183,7 @@ function AppShell() {
     );
   }
 
-  if (!state || !paths || !session || !activeBoard) {
+  if (!state || !paths || !activeBoard || (AUTH_IN_APP && !session)) {
     return (
       <div className="app-shell">
         <div className="empty-board">
@@ -195,7 +196,7 @@ function AppShell() {
     );
   }
 
-  if (state.auth.enabled && !session.signedIn) {
+  if (AUTH_IN_APP && session && state.auth.enabled && !session.signedIn) {
     return (
       <AuthScreen
         settings={state.auth}
@@ -226,7 +227,7 @@ function AppShell() {
             }}
           />
           <div className="chrome-spacer" />
-          {session.signedIn && session.user ? (
+          {AUTH_IN_APP && session?.signedIn && session.user ? (
             <div className="chrome-user" title={session.offline ? "Signed in offline" : "Signed in"}>
               {session.user.username}
               {session.offline ? <span className="badge">offline</span> : null}
@@ -253,7 +254,7 @@ function AppShell() {
           >
             Settings
           </button>
-          {session.signedIn ? (
+          {AUTH_IN_APP && session?.signedIn ? (
             <button
               type="button"
               className="btn"

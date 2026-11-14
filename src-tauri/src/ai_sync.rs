@@ -73,7 +73,8 @@ pub fn load(root: &Path) -> AiMemory {
 pub fn store(root: &Path, memory: &AiMemory) -> Result<(), String> {
     let memory = normalize(memory)?;
     let raw = serde_json::to_string_pretty(&memory).map_err(|err| err.to_string())?;
-    fs::write(root.join(MEMORY_FILE), raw).map_err(|err| format!("could not save caption fixes: {err}"))
+    fs::write(root.join(MEMORY_FILE), raw)
+        .map_err(|err| format!("could not save caption fixes: {err}"))
 }
 
 pub fn apply_corrections(text: &str, memory: &AiMemory) -> String {
@@ -89,7 +90,8 @@ pub fn apply_corrections(text: &str, memory: &AiMemory) -> String {
         while start < text.len() {
             if let Some(end) = matches_at(text, start, needle) {
                 let before_ok = start == 0 || !is_word(prev_char(text, start));
-                let after_ok = end >= text.len() || !is_word(text[end..].chars().next().unwrap_or(' '));
+                let after_ok =
+                    end >= text.len() || !is_word(text[end..].chars().next().unwrap_or(' '));
                 let overlaps = spans.iter().any(|(from, to, _)| start < *to && end > *from);
                 if before_ok && after_ok && !overlaps {
                     spans.push((start, end, item.says.as_str()));
@@ -142,12 +144,8 @@ pub fn reconcile<S: TokenStore>(
     };
     drop_other_user(root, &user_id);
     let local = load(root);
-    let (status, body) = service.authorized(
-        &state.auth,
-        reqwest::Method::GET,
-        "/ai/memory",
-        None,
-    )?;
+    let (status, body) =
+        service.authorized(&state.auth, reqwest::Method::GET, "/ai/memory", None)?;
     match status {
         404 => {
             if local.corrections.is_empty() {
@@ -173,9 +171,19 @@ pub fn save<S: TokenStore>(
     memory: &AiMemory,
 ) -> Result<AiSyncOutcome, AuthError> {
     let memory = normalize(memory).map_err(AuthError::Message)?;
-    let user_id = service.stored_user_id().ok_or_else(|| {
-        AuthError::Message("Sign in before syncing caption fixes.".into())
-    })?;
+    if !state.auth.enabled {
+        store(root, &memory).map_err(AuthError::Message)?;
+        return Ok(local_outcome(
+            root,
+            &state.auth.base_url,
+            false,
+            false,
+            None,
+        ));
+    }
+    let user_id = service
+        .stored_user_id()
+        .ok_or_else(|| AuthError::Message("Sign in before syncing caption fixes.".into()))?;
     if read_cursor(root).is_some_and(|cursor| cursor.user_id != user_id) {
         clear_cursor(root);
     }
@@ -238,7 +246,15 @@ fn finish_remote<S: TokenStore>(
             message: Some("Restored caption fixes from this account.".into()),
         });
     }
-    put(service, state, root, user_id, &next, Some(stored.revision), true)
+    put(
+        service,
+        state,
+        root,
+        user_id,
+        &next,
+        Some(stored.revision),
+        true,
+    )
 }
 
 fn put<S: TokenStore>(
@@ -305,8 +321,7 @@ fn put<S: TokenStore>(
             published: false,
             restored: false,
             message: Some(
-                "This server does not keep caption fixes yet. Update it, then try again."
-                    .into(),
+                "This server does not keep caption fixes yet. Update it, then try again.".into(),
             ),
         }),
         401 => Err(AuthError::Message("Session expired. Sign in again.".into())),
@@ -341,7 +356,13 @@ fn parse_stored(body: Option<Value>) -> Result<Stored, AuthError> {
     Ok(Stored { revision, memory })
 }
 
-fn local_outcome(root: &Path, server: &str, published: bool, restored: bool, message: Option<String>) -> AiSyncOutcome {
+fn local_outcome(
+    root: &Path,
+    server: &str,
+    published: bool,
+    restored: bool,
+    message: Option<String>,
+) -> AiSyncOutcome {
     AiSyncOutcome {
         memory: load(root),
         revision: read_cursor(root).map(|cursor| cursor.revision),
@@ -357,7 +378,9 @@ pub fn merge(local: &AiMemory, remote: &AiMemory) -> AiMemory {
     for item in &local.corrections {
         let key = fold(&item.heard);
         if let Some(existing) = by_heard.iter_mut().find(|row| fold(&row.heard) == key) {
-            if item.count > existing.count || (item.count == existing.count && item.says != existing.says) {
+            if item.count > existing.count
+                || (item.count == existing.count && item.says != existing.says)
+            {
                 *existing = item.clone();
             }
         } else {
@@ -579,7 +602,10 @@ mod tests {
             Ok(self.values.lock().unwrap().get(key).cloned())
         }
         fn set(&self, key: &str, value: &str) -> Result<(), AuthError> {
-            self.values.lock().unwrap().insert(key.to_string(), value.to_string());
+            self.values
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), value.to_string());
             Ok(())
         }
         fn delete(&self, key: &str) -> Result<(), AuthError> {
@@ -636,10 +662,7 @@ mod tests {
         let mut docs = fake.docs.lock().unwrap();
         match method {
             "GET" => match docs.get(&user) {
-                Some((revision, document)) => (
-                    200,
-                    Some(doc_body(*revision, document, false)),
-                ),
+                Some((revision, document)) => (200, Some(doc_body(*revision, document, false))),
                 None => (404, Some(br#"{"error":"not_found"}"#.to_vec())),
             },
             "PUT" => {
@@ -680,7 +703,11 @@ mod tests {
     }
 
     fn bearer_user(headers: &[(String, String)]) -> Option<String> {
-        let header = headers.iter().find(|(key, _)| key == "authorization")?.1.as_str();
+        let header = headers
+            .iter()
+            .find(|(key, _)| key == "authorization")?
+            .1
+            .as_str();
         let token = header.strip_prefix("Bearer ")?;
         token.split('.').next().map(str::to_string)
     }
@@ -693,7 +720,10 @@ mod tests {
         let header_end = loop {
             let n = stream.read(&mut tmp)?;
             if n == 0 {
-                return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "closed"));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "closed",
+                ));
             }
             buf.extend_from_slice(&tmp[..n]);
             if let Some(pos) = buf.windows(4).position(|window| window == b"\r\n\r\n") {
@@ -773,7 +803,13 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         let auth = service();
         let app = state(&base);
-        let saved = save(&auth, &app, &root, &sample("c1", "engine twelve", "Engine 12", 1)).unwrap();
+        let saved = save(
+            &auth,
+            &app,
+            &root,
+            &sample("c1", "engine twelve", "Engine 12", 1),
+        )
+        .unwrap();
         assert!(saved.published);
         assert_eq!(saved.revision, Some(1));
         assert!(saved.server.starts_with("http://127.0.0.1:"));

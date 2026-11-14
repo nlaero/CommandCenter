@@ -14,6 +14,10 @@ pub const BACKUP_SUFFIX: &str = ".bak";
 /// Tailscale lab address. Plain HTTP is allowed for it. A new install does not assume this host.
 pub const TAILNET_AUTH_BASE_URL: &str = "http://100.101.141.93:8080";
 
+/// Sign-in, installing auth-server, and syncing boards or caption fixes are out of this build.
+/// The client modules stay so this can be turned back on.
+pub const AUTH_IN_APP: bool = false;
+
 /// Shared with config and local-server tests so they do not clobber `COMMAND_CENTER_HOME`.
 #[cfg(test)]
 pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -134,12 +138,11 @@ fn default_auth_base_url() -> String {
 
 /// Username/password session against auth-server. Source API secrets are not part of this.
 ///
-/// Sign-in is required. A missing `auth` block and an older `enabled: false` are both
-/// turned on when the config is loaded.
+/// Stored with the board. This build leaves `enabled` false at runtime.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthSettings {
-    /// Always true after load. Kept so older files that stored `enabled: false` still parse.
+    /// Parsed from the file. `load_or_create` clears it while `AUTH_IN_APP` is false.
     #[serde(default = "default_auth_enabled")]
     pub enabled: bool,
     /// Auth-server origin. Empty until this computer is pointed at a server or installs one.
@@ -158,13 +161,13 @@ pub struct AuthSettings {
 }
 
 fn default_auth_enabled() -> bool {
-    true
+    AUTH_IN_APP
 }
 
 impl Default for AuthSettings {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: default_auth_enabled(),
             base_url: default_auth_base_url(),
             allow_insecure_http: false,
             ca_file: None,
@@ -185,7 +188,7 @@ pub struct AppState {
     pub sources: BTreeMap<String, SourceConfig>,
     #[serde(default)]
     pub edit_mode: bool,
-    /// Account gate. Missing on older files; load turns sign-in on.
+    /// Account settings. This build does not sign in.
     #[serde(default)]
     pub auth: AuthSettings,
 }
@@ -203,10 +206,7 @@ impl Default for AppState {
             }],
             sources: BTreeMap::new(),
             edit_mode: false,
-            auth: AuthSettings {
-                enabled: true,
-                ..AuthSettings::default()
-            },
+            auth: AuthSettings::default(),
         }
     }
 }
@@ -233,9 +233,8 @@ pub fn resolve_paths() -> Result<ConfigPaths, ConfigError> {
             Some(ENV_HOME_OVERRIDE.to_string()),
         )
     } else {
-        let base = dirs::config_dir().ok_or_else(|| {
-            ConfigError::Message("could not resolve OS config directory".into())
-        })?;
+        let base = dirs::config_dir()
+            .ok_or_else(|| ConfigError::Message("could not resolve OS config directory".into()))?;
         (base.join(APP_DIR_NAME), false, None)
     };
 
@@ -259,36 +258,36 @@ pub fn load_or_create() -> Result<LoadResult, ConfigError> {
     ensure_dirs(&paths)?;
     let config_path = PathBuf::from(&paths.config_file);
 
-    if config_path.exists() {
+    let (mut state, created) = if config_path.exists() {
         let raw = fs::read_to_string(&config_path)?;
         let mut state: AppState = serde_yaml::from_str(&raw)?;
+        hydrate_layouts(&paths, &mut state)?;
+        (state, false)
+    } else {
+        let state = AppState::default();
+        save_state(&paths, &state)?;
+        (state, true)
+    };
+
+    if AUTH_IN_APP {
         let require_account = !state.auth.enabled;
         state.auth.enabled = true;
-        hydrate_layouts(&paths, &mut state)?;
-        if require_account {
+        if require_account || created {
             save_state(&paths, &state)?;
         }
-        let mut result = LoadResult {
-            state,
-            paths,
-            created: false,
-        };
-        if crate::local_server::adopt_server(&result.paths, &mut result.state)? {
-            save_state(&result.paths, &result.state)?;
-        }
-        Ok(result)
-    } else {
-        let mut state = AppState::default();
-        save_state(&paths, &state)?;
         if crate::local_server::adopt_server(&paths, &mut state)? {
             save_state(&paths, &state)?;
         }
-        Ok(LoadResult {
-            state,
-            paths,
-            created: true,
-        })
+    } else {
+        // A saved `enabled: true` is left in the file. This process does not sign in or sync.
+        state.auth.enabled = false;
     }
+
+    Ok(LoadResult {
+        state,
+        paths,
+        created,
+    })
 }
 
 fn hydrate_layouts(paths: &ConfigPaths, state: &mut AppState) -> Result<(), ConfigError> {
@@ -355,13 +354,13 @@ mod tests {
         assert!(state.boards[0].panels.is_empty());
         assert!(state.sources.is_empty());
         assert_eq!(state.layout.cols, 48);
-        assert!(state.auth.enabled);
+        assert_eq!(state.auth.enabled, AUTH_IN_APP);
         assert_eq!(state.auth.base_url, "");
         assert!(!state.auth.allow_insecure_http);
     }
 
     #[test]
-    fn missing_auth_requires_sign_in() {
+    fn missing_auth_stays_off() {
         let yaml = r#"
 version: 1
 activeBoardId: home
@@ -371,12 +370,12 @@ boards:
     panels: []
 "#;
         let state: AppState = serde_yaml::from_str(yaml).unwrap();
-        assert!(state.auth.enabled);
+        assert_eq!(state.auth.enabled, AUTH_IN_APP);
         assert_eq!(state.auth.base_url, "");
     }
 
     #[test]
-    fn load_turns_off_local_only_mode() {
+    fn load_keeps_the_board_on_this_computer() {
         let _guard = super::TEST_ENV_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("cc-auth-required-{}", uuid::Uuid::new_v4()));
         env::set_var(ENV_HOME_OVERRIDE, &dir);
@@ -392,17 +391,17 @@ boards:
     title: Home
     panels: []
 auth:
-  enabled: false
+  enabled: true
   baseUrl: http://100.101.141.93:8080
 "#,
         )
         .unwrap();
         let loaded = load_or_create().unwrap();
-        assert!(loaded.state.auth.enabled);
+        assert!(!loaded.state.auth.enabled);
         assert_eq!(loaded.state.auth.base_url, TAILNET_AUTH_BASE_URL);
         let raw = fs::read_to_string(&loaded.paths.config_file).unwrap();
         assert!(raw.contains("enabled: true"));
-        assert!(!raw.contains("enabled: false"));
+        assert!(!dir.join("server-setup.json").exists());
         env::remove_var(ENV_HOME_OVERRIDE);
         let _ = fs::remove_dir_all(dir);
     }
@@ -414,7 +413,7 @@ auth:
         state.auth.ca_file = Some("/tmp/ca.pem".into());
         let yaml = serde_yaml::to_string(&state).unwrap();
         let back: AppState = serde_yaml::from_str(&yaml).unwrap();
-        assert!(back.auth.enabled);
+        assert_eq!(back.auth.enabled, AUTH_IN_APP);
         assert_eq!(back.auth.base_url, "");
         assert!(back.auth.allow_insecure_http);
         assert_eq!(back.auth.ca_file.as_deref(), Some("/tmp/ca.pem"));

@@ -157,7 +157,8 @@ pub fn install_local(
 }
 
 pub fn open_admin(root: &Path) -> Result<(), String> {
-    let marker = read_marker(root).ok_or_else(|| "No server is installed on this computer.".to_string())?;
+    let marker =
+        read_marker(root).ok_or_else(|| "No server is installed on this computer.".to_string())?;
     let url = format!("{}/admin", marker.base_url.trim_end_matches('/'));
     open_url(&url)
 }
@@ -190,18 +191,25 @@ fn open_url(url: &str) -> Result<(), String> {
 }
 
 pub fn start_installed(root: &Path) -> Result<(), String> {
-    let marker = read_marker(root).ok_or_else(|| "No server is installed on this computer.".to_string())?;
+    let marker =
+        read_marker(root).ok_or_else(|| "No server is installed on this computer.".to_string())?;
     if health_ok(marker.port) {
         return Ok(());
     }
     let bin = find_binary().ok_or_else(missing_binary)?;
-    ensure_running(&bin, root, marker.port, marker.startup.as_deref().unwrap_or("login"))?;
+    ensure_running(
+        &bin,
+        root,
+        marker.port,
+        marker.startup.as_deref().unwrap_or("login"),
+    )?;
     clear_error(root);
     Ok(())
 }
 
 pub fn stop_installed(root: &Path) -> Result<(), String> {
-    let marker = read_marker(root).ok_or_else(|| "No server is installed on this computer.".to_string())?;
+    let marker =
+        read_marker(root).ok_or_else(|| "No server is installed on this computer.".to_string())?;
     if let Some(bin) = find_binary() {
         let _ = Command::new(&bin).arg("--service-stop").output();
     }
@@ -213,13 +221,17 @@ pub fn stop_installed(root: &Path) -> Result<(), String> {
         thread::sleep(Duration::from_millis(100));
     }
     if health_ok(marker.port) {
-        return Err("auth-server is still running. Stop it from the task that started it, then try again.".into());
+        return Err(
+            "auth-server is still running. Stop it from the task that started it, then try again."
+                .into(),
+        );
     }
     Ok(())
 }
 
 pub fn set_store_secrets(root: &Path, store_secrets: bool) -> Result<(), String> {
-    let marker = read_marker(root).ok_or_else(|| "No server is installed on this computer.".to_string())?;
+    let marker =
+        read_marker(root).ok_or_else(|| "No server is installed on this computer.".to_string())?;
     if store_secrets && marker.role != "device" {
         return Err(
             "A server for other devices does not store passwords or API keys. Those stay on each computer."
@@ -232,7 +244,15 @@ pub fn set_store_secrets(root: &Path, store_secrets: bool) -> Result<(), String>
     if was_running {
         stop_installed(root)?;
     }
-    run_install(&bin, root, &marker.role, store_secrets, marker.port, &startup, None)?;
+    run_install(
+        &bin,
+        root,
+        &marker.role,
+        store_secrets,
+        marker.port,
+        &startup,
+        None,
+    )?;
     if was_running || store_secrets {
         ensure_running(&bin, root, marker.port, &startup)?;
     }
@@ -241,7 +261,9 @@ pub fn set_store_secrets(root: &Path, store_secrets: bool) -> Result<(), String>
 }
 
 pub fn export_backup(root: &Path) -> Result<BackupDocument, String> {
-    let _marker = read_marker(root).ok_or_else(|| "Install the server on this computer before exporting a backup.".to_string())?;
+    let _marker = read_marker(root).ok_or_else(|| {
+        "Install the server on this computer before exporting a backup.".to_string()
+    })?;
     let bin = find_binary().ok_or_else(missing_binary)?;
     let dir = root.join("server").join("backups");
     fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
@@ -409,9 +431,7 @@ fn points_at_local(base_url: &str, port: u16) -> bool {
         return false;
     };
     let host = url.host_str().unwrap_or("");
-    let loopback = host.eq_ignore_ascii_case("localhost")
-        || host == "127.0.0.1"
-        || host == "::1";
+    let loopback = host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" || host == "::1";
     loopback && url.port().unwrap_or(80) == port
 }
 
@@ -423,9 +443,7 @@ fn normalize_startup(startup: &str) -> Result<&'static str, String> {
     match startup.trim().to_ascii_lowercase().as_str() {
         "service" | "windows-service" => Ok("service"),
         "login" | "tray" | "taskbar" => Ok("login"),
-        _ => Err(
-            "Choose a Windows service, or start at login with a taskbar icon.".into(),
-        ),
+        _ => Err("Choose a Windows service, or start at login with a taskbar icon.".into()),
     }
 }
 
@@ -499,7 +517,9 @@ fn run_install(
     if admin.is_some() {
         cmd.arg("--admin-file").arg(&admin_file);
     }
-    let output = cmd.output().map_err(|err| format!("could not run auth-server: {err}"))?;
+    let output = cmd
+        .output()
+        .map_err(|err| format!("could not run auth-server: {err}"))?;
     if admin.is_some() {
         let _ = fs::write(&admin_file, "");
         let _ = fs::remove_file(&admin_file);
@@ -524,11 +544,10 @@ fn run_backup(bin: &Path, root: &Path, file: &Path, import: bool) -> Result<(), 
     } else {
         cmd.arg("--backup-export");
     }
-    cmd.arg("--file")
-        .arg(file)
-        .arg("--home")
-        .arg(root);
-    let output = cmd.output().map_err(|err| format!("could not run auth-server: {err}"))?;
+    cmd.arg("--file").arg(file).arg("--home").arg(root);
+    let output = cmd
+        .output()
+        .map_err(|err| format!("could not run auth-server: {err}"))?;
     if output.status.success() {
         Ok(())
     } else {
@@ -624,7 +643,9 @@ fn stop_pid(root: &Path) {
     }
     #[cfg(unix)]
     {
-        let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).status();
+        let _ = Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
     }
     #[cfg(windows)]
     {
@@ -725,7 +746,12 @@ mod tests {
         )
         .unwrap();
         let loaded = config::load_or_create().unwrap();
-        assert_eq!(loaded.state.auth.base_url, "http://10.1.2.3:8080");
+        assert!(loaded.state.auth.base_url.is_empty());
+        assert!(dir.join("server-setup.json").exists());
+        let paths = config::resolve_paths().unwrap();
+        let mut state = loaded.state;
+        assert!(adopt_server(&paths, &mut state).unwrap());
+        assert_eq!(state.auth.base_url, "http://10.1.2.3:8080");
         assert!(!dir.join("server-setup.json").exists());
 
         fs::write(
@@ -735,12 +761,14 @@ mod tests {
         .unwrap();
         // The URL is already set, but pending install still runs and should fail closed
         // without a binary. Clear the URL first so a success would be visible.
-        let mut state = loaded.state;
         state.auth.base_url.clear();
-        let paths = config::resolve_paths().unwrap();
         config::save_state(&paths, &state).unwrap();
         let loaded = config::load_or_create().unwrap();
         assert!(loaded.state.auth.base_url.is_empty());
+        assert!(dir.join("server-setup.json").exists());
+        let mut state = loaded.state;
+        let _ = adopt_server(&paths, &mut state).unwrap();
+        assert!(state.auth.base_url.is_empty());
         let err = fs::read_to_string(dir.join("server").join("last-error.txt")).unwrap();
         assert!(err.contains("not in this install"), "{err}");
         std::env::remove_var(ENV_HOME_OVERRIDE);

@@ -1,4 +1,5 @@
 import { withAuth } from "./auth";
+import { AUTH_IN_APP } from "./authFeature";
 import { PENN_HILLS_FEED, isPennHillsPreset } from "./broadcastifyPreset";
 import { isMissingParam, readCoords } from "./location";
 import { fetchUsgsInBrowser } from "./usgs";
@@ -41,7 +42,7 @@ function defaultState(): AppState {
     sources: {},
     editMode: false,
     auth: {
-      enabled: true,
+      enabled: AUTH_IN_APP,
       baseUrl: "",
       allowInsecureHttp: false,
       caFile: null,
