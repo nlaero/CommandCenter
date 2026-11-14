@@ -1,4 +1,5 @@
 import { authorizedAuth, errorMessage, storedUserId } from "./auth";
+import { AUTH_IN_APP } from "./authFeature";
 
 const KEY = "command-center.ai-memory.v1";
 const MAX_CORRECTIONS = 400;
@@ -126,12 +127,21 @@ export function readLocalMemory(): AiMemory {
 }
 
 export async function syncAiMemory(): Promise<AiSyncResult> {
+  if (!AUTH_IN_APP) {
+    if (isTauri()) return invokeSync("sync_ai_memory");
+    return result(readLocalMemory(), null, null, false, false, null);
+  }
   if (isTauri()) return invokeSync("sync_ai_memory");
   return browserSync(null);
 }
 
 export async function saveAiMemory(memory: AiMemory): Promise<AiSyncResult> {
   const next = normalize(memory);
+  if (!AUTH_IN_APP) {
+    if (isTauri()) return invokeSync("save_ai_memory", { memory: next });
+    writeCursor({ ...readCursor(), document: next });
+    return result(next, null, null, false, false, null);
+  }
   if (isTauri()) return invokeSync("save_ai_memory", { memory: next });
   writeCursor({ ...readCursor(), document: next });
   return browserSync(next);

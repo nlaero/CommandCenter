@@ -1,10 +1,10 @@
 use crate::ai_sync::{self, AiMemory, AiSyncOutcome};
 use crate::auth::{self, AuthError, AuthProbe, AuthService, AuthSession};
-use crate::local_ai::{self, LocalAiStatus};
-use crate::local_server::{self, BackupDocument, LocalServerChange, LocalServerStatus};
 use crate::config::{
     self, AppState, AuthSettings, ConfigPaths, GridItem, LoadResult, SourceConfig,
 };
+use crate::local_ai::{self, LocalAiStatus};
+use crate::local_server::{self, BackupDocument, LocalServerChange, LocalServerStatus};
 use crate::secrets;
 use crate::sources::{self, SourcePayload};
 use crate::sync;
@@ -434,7 +434,11 @@ pub fn sync_ai_memory() -> Result<AiSyncOutcome, CommandError> {
 pub fn save_ai_memory(memory: AiMemory) -> Result<AiSyncOutcome, CommandError> {
     let loaded = config::load_or_create()?;
     let paths = config::resolve_paths()?;
-    ai_memory_call(&loaded.state, std::path::Path::new(&paths.root), Some(memory))
+    ai_memory_call(
+        &loaded.state,
+        std::path::Path::new(&paths.root),
+        Some(memory),
+    )
 }
 
 fn ai_memory_call(
@@ -530,6 +534,16 @@ fn auth_service() -> AuthService<auth::KeyringStore> {
     AuthService::keyring()
 }
 
+fn require_auth_feature() -> Result<(), CommandError> {
+    if config::AUTH_IN_APP {
+        Ok(())
+    } else {
+        Err(CommandError {
+            message: "Sign-in and the auth server are not part of this build.".into(),
+        })
+    }
+}
+
 /// Best-effort upload after a local board or source save. A down server leaves
 /// the saved file in place. Edit mode and auth settings are not published.
 ///
@@ -615,9 +629,9 @@ pub fn sync_board() -> Result<sync::SyncOutcome, CommandError> {
             if let Some(cursor) = &work.cursor {
                 let _ = sync::write_cursor(&paths.root, cursor);
             }
-            let message = work.restored.then(|| {
-                "Restored your boards and sources from this account.".to_string()
-            });
+            let message = work
+                .restored
+                .then(|| "Restored your boards and sources from this account.".to_string());
             Ok(sync::SyncOutcome {
                 state: work.state,
                 restored: work.restored,
@@ -642,18 +656,21 @@ pub fn sync_board() -> Result<sync::SyncOutcome, CommandError> {
 
 #[tauri::command]
 pub fn auth_session() -> Result<AuthSession, CommandError> {
+    require_auth_feature()?;
     let loaded = config::load_or_create()?;
     Ok(auth_service().session(&loaded.state.auth))
 }
 
 #[tauri::command]
 pub fn auth_probe() -> Result<AuthProbe, CommandError> {
+    require_auth_feature()?;
     let loaded = config::load_or_create()?;
     Ok(auth_service().probe(&loaded.state.auth))
 }
 
 #[tauri::command]
 pub fn auth_save_settings(settings: AuthSettings) -> Result<AppState, CommandError> {
+    require_auth_feature()?;
     let mut loaded = config::load_or_create()?;
     let normalized = auth_service().prepare_settings(&loaded.state.auth, settings)?;
     loaded.state.auth = normalized;
@@ -664,6 +681,7 @@ pub fn auth_save_settings(settings: AuthSettings) -> Result<AppState, CommandErr
 
 #[tauri::command]
 pub fn auth_register(username: String, password: String) -> Result<AuthSession, CommandError> {
+    require_auth_feature()?;
     let loaded = config::load_or_create()?;
     let session = auth_service().register(&loaded.state.auth, &username, &password)?;
     if session.signed_in {
@@ -674,6 +692,7 @@ pub fn auth_register(username: String, password: String) -> Result<AuthSession, 
 
 #[tauri::command]
 pub fn auth_login(username: String, password: String) -> Result<AuthSession, CommandError> {
+    require_auth_feature()?;
     let loaded = config::load_or_create()?;
     let session = auth_service().login(&loaded.state.auth, &username, &password)?;
     if session.signed_in {
@@ -697,6 +716,7 @@ pub fn local_server_install(
     admin_username: String,
     admin_password: String,
 ) -> Result<LocalServerChange, CommandError> {
+    require_auth_feature()?;
     let paths = config::resolve_paths()?;
     let root = std::path::PathBuf::from(&paths.root);
     let url = local_server::install_local(
@@ -724,6 +744,7 @@ pub fn local_server_install(
 
 #[tauri::command]
 pub fn local_server_open_admin() -> Result<(), CommandError> {
+    require_auth_feature()?;
     let paths = config::resolve_paths()?;
     local_server::open_admin(std::path::Path::new(&paths.root))?;
     Ok(())
@@ -731,6 +752,7 @@ pub fn local_server_open_admin() -> Result<(), CommandError> {
 
 #[tauri::command]
 pub fn local_server_start() -> Result<LocalServerStatus, CommandError> {
+    require_auth_feature()?;
     let paths = config::resolve_paths()?;
     let root = std::path::PathBuf::from(&paths.root);
     local_server::start_installed(&root)?;
@@ -739,6 +761,7 @@ pub fn local_server_start() -> Result<LocalServerStatus, CommandError> {
 
 #[tauri::command]
 pub fn local_server_stop() -> Result<LocalServerStatus, CommandError> {
+    require_auth_feature()?;
     let paths = config::resolve_paths()?;
     let root = std::path::PathBuf::from(&paths.root);
     local_server::stop_installed(&root)?;
@@ -747,6 +770,7 @@ pub fn local_server_stop() -> Result<LocalServerStatus, CommandError> {
 
 #[tauri::command]
 pub fn local_server_set_secrets(store_secrets: bool) -> Result<LocalServerChange, CommandError> {
+    require_auth_feature()?;
     let paths = config::resolve_paths()?;
     let root = std::path::PathBuf::from(&paths.root);
     local_server::set_store_secrets(&root, store_secrets)?;
@@ -762,12 +786,16 @@ pub fn local_server_set_secrets(store_secrets: bool) -> Result<LocalServerChange
 
 #[tauri::command]
 pub fn local_server_export_backup() -> Result<BackupDocument, CommandError> {
+    require_auth_feature()?;
     let paths = config::resolve_paths()?;
-    Ok(local_server::export_backup(std::path::Path::new(&paths.root))?)
+    Ok(local_server::export_backup(std::path::Path::new(
+        &paths.root,
+    ))?)
 }
 
 #[tauri::command]
 pub fn local_server_import_backup(document: String) -> Result<LocalServerStatus, CommandError> {
+    require_auth_feature()?;
     let paths = config::resolve_paths()?;
     let root = std::path::PathBuf::from(&paths.root);
     local_server::import_backup(&root, &document)?;
@@ -794,6 +822,7 @@ pub fn apply_update(product: String) -> Result<ApplyResult, CommandError> {
 
 #[tauri::command]
 pub fn auth_logout() -> Result<AuthSession, CommandError> {
+    require_auth_feature()?;
     let loaded = config::load_or_create()?;
     Ok(auth_service().logout(&loaded.state.auth)?)
 }

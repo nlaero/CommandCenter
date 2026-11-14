@@ -147,8 +147,16 @@ pub fn check(root: &Path, base_url: &str, force: bool) -> Result<UpdateReport, S
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
     let app_releases = fetch_releases(APP_REPO);
-    let auth_releases = fetch_releases(AUTH_REPO);
-    let (place, version, detail) = auth_place(root, base_url);
+    let auth_releases = if crate::config::AUTH_IN_APP {
+        Some(fetch_releases(AUTH_REPO))
+    } else {
+        None
+    };
+    let (place, version, detail) = if crate::config::AUTH_IN_APP {
+        auth_place(root, base_url)
+    } else {
+        (AuthPlace::Absent, None, String::new())
+    };
 
     let current_text = current.to_string();
     let auth_text = version.as_ref().map(Version::to_string);
@@ -171,8 +179,9 @@ pub fn check(root: &Path, base_url: &str, force: bool) -> Result<UpdateReport, S
             err,
         ),
     };
-    let auth = match &auth_releases {
-        Ok(releases) => product(
+    let auth = match auth_releases.as_ref() {
+        None => None,
+        Some(Ok(releases)) => Some(product(
             "auth-server",
             "auth-server",
             AUTH_REPO,
@@ -180,21 +189,25 @@ pub fn check(root: &Path, base_url: &str, force: bool) -> Result<UpdateReport, S
             detail.clone(),
             auth_selection(version.as_ref(), releases, os, arch, place),
             None,
-        ),
-        Err(err) => error_product(
+        )),
+        Some(Err(err)) => Some(error_product(
             "auth-server",
             "auth-server",
             AUTH_REPO,
             auth_text.as_deref(),
             &detail,
             err,
-        ),
+        )),
     };
 
+    let mut products = vec![app];
+    if let Some(auth) = auth {
+        products.push(auth);
+    }
     let report = UpdateReport {
         app_version: current.to_string(),
         checked_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-        products: vec![app, auth],
+        products,
     };
     if report.products.iter().all(|item| item.error.is_none()) {
         let mut guard = cache().lock().unwrap_or_else(|err| err.into_inner());
@@ -209,7 +222,8 @@ pub fn check(root: &Path, base_url: &str, force: bool) -> Result<UpdateReport, S
 pub fn apply(root: &Path, base_url: &str, product_id: &str) -> Result<ApplyResult, String> {
     match product_id {
         "command-center" => apply_app(root),
-        "auth-server" => apply_auth(root, base_url),
+        "auth-server" if crate::config::AUTH_IN_APP => apply_auth(root, base_url),
+        "auth-server" => Err("This build does not update auth-server.".into()),
         _ => Err("Unknown update.".into()),
     }
 }

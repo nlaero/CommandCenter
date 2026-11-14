@@ -1,3 +1,5 @@
+import { AUTH_IN_APP } from "./authFeature";
+
 const APP_VERSION = "0.1.0";
 
 export type UpdateProduct = {
@@ -137,9 +139,17 @@ function availableReport(): UpdateReport {
   };
 }
 
+function visibleReport(report: UpdateReport): UpdateReport {
+  if (AUTH_IN_APP) return report;
+  return {
+    ...report,
+    products: report.products.filter((product) => product.id !== "auth-server"),
+  };
+}
+
 export function updateSummary(report: UpdateReport | null): string | null {
   if (!report) return null;
-  const due = report.products.filter((product) => product.updateAvailable);
+  const due = visibleReport(report).products.filter((product) => product.updateAvailable);
   if (due.length === 0) return null;
   if (due.length >= 2) return "Updates are available for Command Center and auth-server.";
   const one = due[0];
@@ -149,10 +159,10 @@ export function updateSummary(report: UpdateReport | null): string | null {
 
 export async function checkForUpdates(force: boolean): Promise<UpdateReport> {
   if (!isTauri()) {
-    return previewRequested() ? availableReport() : currentReport();
+    return visibleReport(previewRequested() ? availableReport() : currentReport());
   }
   const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<UpdateReport>("check_updates", { force });
+  return visibleReport(await invoke<UpdateReport>("check_updates", { force }));
 }
 
 export async function applyUpdate(product: string): Promise<ApplyResult> {

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { errorMessage } from "../lib/auth";
+import { AUTH_IN_APP } from "../lib/authFeature";
 import {
   applyUpdate,
   checkForUpdates,
@@ -174,8 +175,9 @@ export function UpdatesBody() {
     <>
       <p className="section-label">GitHub releases</p>
       <p className="update-lead">
-        Command Center checks GitHub for a newer release of this app and of auth-server. Nothing
-        is downloaded until you choose it here.
+        {AUTH_IN_APP
+          ? "Command Center checks GitHub for a newer release of this app and of auth-server. Nothing is downloaded until you choose it here."
+          : "Command Center checks GitHub for a newer release of this app. Nothing is downloaded until you choose it here."}
       </p>
       <div className="form-actions" style={{ marginTop: 0 }}>
         <button

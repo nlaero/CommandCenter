@@ -1,4 +1,5 @@
 import type { AppState, AuthProbe, AuthSession, AuthSettings, AuthUser } from "../types";
+import { AUTH_IN_APP } from "./authFeature";
 
 const TOKEN_KEY = "command-center.auth-tokens.v1";
 
@@ -36,12 +37,12 @@ export function defaultAuthSettings(enabled: boolean): AuthSettings {
 export function withAuth(state: AppState): AppState {
   const auth = state.auth;
   if (!auth) {
-    return { ...state, auth: defaultAuthSettings(true) };
+    return { ...state, auth: defaultAuthSettings(AUTH_IN_APP) };
   }
   return {
     ...state,
     auth: {
-      enabled: true,
+      enabled: AUTH_IN_APP,
       baseUrl: auth.baseUrl?.trim() ?? "",
       allowInsecureHttp: Boolean(auth.allowInsecureHttp),
       caFile: auth.caFile?.trim() || null,

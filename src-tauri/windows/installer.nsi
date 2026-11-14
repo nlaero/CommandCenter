@@ -178,11 +178,6 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
   !insertmacro MUI_PAGE_LICENSE "${LICENSE}"
 !endif
 
-Page custom CcProductCreate CcProductLeave
-Page custom CcRoleCreate CcRoleLeave
-Page custom CcStartupCreate CcStartupLeave
-Page custom CcAdminCreate CcAdminLeave
-
 ; 3. Install mode (if it is set to `both`)
 !if "${INSTALLMODE}" == "both"
   !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
@@ -767,10 +762,6 @@ Section Install
   ; Registry information for add/remove programs
   WriteRegStr SHCTX "${UNINSTKEY}" "DisplayName" "${PRODUCTNAME}"
   WriteRegStr SHCTX "${UNINSTKEY}" "DisplayIcon" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\""
-  ${If} $CcInstallApp <> 1
-    WriteRegStr SHCTX "${UNINSTKEY}" "DisplayName" "Command Center auth-server"
-    WriteRegStr SHCTX "${UNINSTKEY}" "DisplayIcon" "$\"$INSTDIR\auth-server.exe$\""
-  ${EndIf}
   WriteRegStr SHCTX "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr SHCTX "${UNINSTKEY}" "Publisher" "${MANUFACTURER}"
   WriteRegStr SHCTX "${UNINSTKEY}" "InstallLocation" "$\"$INSTDIR$\""

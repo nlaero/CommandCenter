@@ -5,6 +5,7 @@ import {
   applyBroadcastifyPreset,
   isPennHillsPreset,
 } from "../lib/broadcastifyPreset";
+import { AUTH_IN_APP } from "../lib/authFeature";
 import { AccountSettings } from "./AuthScreen";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { ServerSetup } from "./ServerSetup";
@@ -56,7 +57,7 @@ const ALERT_HIDE_PRESETS = [
 type Props = {
   state: AppState;
   paths: ConfigPaths;
-  session: AuthSession;
+  session: AuthSession | null;
   onClose: () => void;
   onState: (state: AppState) => void;
   onSession: (session: AuthSession) => void;
@@ -608,20 +609,24 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
             >
               Display
             </button>
-            <button
-              type="button"
-              className={tab === "account" ? "active" : ""}
-              onClick={() => setTab("account")}
-            >
-              Account
-            </button>
-            <button
-              type="button"
-              className={tab === "server" ? "active" : ""}
-              onClick={() => setTab("server")}
-            >
-              Server
-            </button>
+            {AUTH_IN_APP ? (
+              <button
+                type="button"
+                className={tab === "account" ? "active" : ""}
+                onClick={() => setTab("account")}
+              >
+                Account
+              </button>
+            ) : null}
+            {AUTH_IN_APP ? (
+              <button
+                type="button"
+                className={tab === "server" ? "active" : ""}
+                onClick={() => setTab("server")}
+              >
+                Server
+              </button>
+            ) : null}
             <button
               type="button"
               className={tab === "ai" ? "active" : ""}
@@ -960,7 +965,7 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
               />
             ) : null}
 
-            {tab === "account" ? (
+            {AUTH_IN_APP && tab === "account" && session ? (
               <AccountSettings
                 state={state}
                 session={session}
@@ -969,7 +974,7 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
               />
             ) : null}
 
-            {tab === "server" ? <ServerSetup onState={onState} /> : null}
+            {AUTH_IN_APP && tab === "server" ? <ServerSetup onState={onState} /> : null}
 
             {tab === "ai" ? <LocalAiPanel session={session} /> : null}
 

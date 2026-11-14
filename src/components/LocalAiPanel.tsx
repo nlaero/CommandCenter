@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import type { AuthSession } from "../types";
 import { errorMessage } from "../lib/auth";
+import { AUTH_IN_APP } from "../lib/authFeature";
 import {
   applyCorrections,
   emptyMemory,
@@ -14,7 +15,7 @@ import { formatBytes, installLocalAi, localAiStatus, removeLocalAi, type LocalAi
 
 type Note = { kind: "ok" | "error"; text: string };
 
-export function LocalAiPanel({ session }: { session: AuthSession }) {
+export function LocalAiPanel({ session }: { session?: AuthSession | null }) {
   const [status, setStatus] = useState<LocalAiStatus | null>(null);
   const [memory, setMemory] = useState<AiMemory>(emptyMemory());
   const [revision, setRevision] = useState<number | null>(null);
@@ -40,7 +41,7 @@ export function LocalAiPanel({ session }: { session: AuthSession }) {
     return () => {
       cancel = true;
     };
-  }, [session.baseUrl, session.user?.id]);
+  }, [session?.baseUrl, session?.user?.id]);
 
   async function install() {
     setBusy(true);
@@ -64,7 +65,9 @@ export function LocalAiPanel({ session }: { session: AuthSession }) {
       setStatus(next);
       setNote({
         kind: "ok",
-        text: "Removed the model from this computer. Caption fixes stay on the server you are signed into.",
+        text: AUTH_IN_APP
+          ? "Removed the model from this computer. Caption fixes stay on the server you are signed into."
+          : "Removed the model from this computer. Caption fixes stay on this computer.",
       });
     } catch (err) {
       setNote({ kind: "error", text: errorMessage(err) });
@@ -97,21 +100,27 @@ export function LocalAiPanel({ session }: { session: AuthSession }) {
       const next = upsertCorrection(memory, heard, says);
       setHeard("");
       setSays("");
-      void persist(next, "Saved. That fix syncs through the server you are signed into.");
+      void persist(
+        next,
+        AUTH_IN_APP
+          ? "Saved. That fix syncs through the server you are signed into."
+          : "Saved on this computer.",
+      );
     } catch (err) {
       setNote({ kind: "error", text: errorMessage(err) });
     }
   }
 
-  const server = session.baseUrl?.trim() || "the server you are signed into";
+  const server = session?.baseUrl?.trim() || "the server you are signed into";
   const installed = Boolean(status?.installed);
 
   return (
     <div className="server-setup">
       <p className="section-label">Local AI</p>
       <p className="auth-copy">
-        Tiny English runs on this computer. Audio is not uploaded. Caption fixes sync through the
-        server you are signed into, whether that server is on this computer or somewhere else.
+        {AUTH_IN_APP
+          ? "Tiny English runs on this computer. Audio is not uploaded. Caption fixes sync through the server you are signed into, whether that server is on this computer or somewhere else."
+          : "Tiny English runs on this computer. Audio is not uploaded. Caption fixes stay on this computer."}
       </p>
 
       {note ? (
@@ -150,8 +159,9 @@ export function LocalAiPanel({ session }: { session: AuthSession }) {
                   {status?.path ? ` · ${status.path}` : ""}. Audio is transcribed here.
                 </p>
                 <p className="update-meta">
-                  Caption fixes sync through {server}
-                  {revision != null ? ` · revision ${revision}` : ""}
+                  {AUTH_IN_APP
+                    ? `Caption fixes sync through ${server}${revision != null ? ` · revision ${revision}` : ""}`
+                    : "Caption fixes stay on this computer."}
                 </p>
               </div>
             </div>
@@ -168,7 +178,9 @@ export function LocalAiPanel({ session }: { session: AuthSession }) {
         <p className="section-label">Caption fixes</p>
         <p className="auth-copy">
           When a caption is wrong, say what was heard and what it should have been. Later clips
-          pick that up, and the same list follows this account onto other computers.
+          pick that up. {AUTH_IN_APP
+            ? "The same list follows this account onto other computers."
+            : "The list stays on this computer."}
         </p>
         <div className="field">
           <label htmlFor="ai-heard">Heard</label>
