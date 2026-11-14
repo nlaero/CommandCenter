@@ -224,14 +224,19 @@ export function AuthScreen({ settings, session, onSession, onState }: Props) {
               name="auth-base-url"
               spellCheck={false}
               value={baseUrl}
-              onChange={(event) => setBaseUrl(event.target.value)}
+              onChange={(event) => {
+                setBaseUrl(event.target.value);
+                setError(null);
+                setStatus("");
+                setReachable(null);
+              }}
               autoCapitalize="off"
               autoCorrect="off"
             />
             <div className="help">
               Starts at <code>http://100.101.141.93:8080</code>. Change it if your auth-server is
-              somewhere else. Plain HTTP is allowed for that tailnet address (100.64.0.0/10). Other
-              addresses should use HTTPS.
+              somewhere else. Plain HTTP is allowed for private LAN addresses (10.x, 172.16–31.x,
+              192.168.x), loopback, and Tailscale (100.64.0.0/10). Public hosts need HTTPS.
             </div>
           </div>
           <label className="check-row">
@@ -241,8 +246,8 @@ export function AuthScreen({ settings, session, onSession, onState }: Props) {
               onChange={(event) => setAllowInsecureHttp(event.target.checked)}
             />
             <span>
-              Allow HTTP for a lab host (localhost or private LAN). Release builds still refuse
-              that except for the tailnet address.
+              Also allow HTTP for a named lab host (.local or .lan). Public hosts still need
+              HTTPS.
             </span>
           </label>
           <div className="form-actions">
@@ -344,8 +349,9 @@ export function AccountSettings({ state, session, onState, onSession }: AccountP
             onChange={(event) => setBaseUrl(event.target.value)}
           />
           <div className="help">
-            Default <code>http://100.101.141.93:8080</code>. Plain HTTP is allowed for that
-            tailnet address. Use HTTPS for any other host.
+            Default <code>http://100.101.141.93:8080</code>. Plain HTTP is allowed for private LAN
+            addresses (10.x, 172.16–31.x, 192.168.x), loopback, and Tailscale (100.64.0.0/10).
+            Public hosts need HTTPS.
           </div>
         </div>
         <label className="check-row">
@@ -354,7 +360,7 @@ export function AccountSettings({ state, session, onState, onSession }: AccountP
             checked={allowInsecureHttp}
             onChange={(event) => setAllowInsecureHttp(event.target.checked)}
           />
-          <span>Allow HTTP for a lab host (localhost or private LAN)</span>
+          <span>Also allow HTTP for a named lab host (.local or .lan)</span>
         </label>
         <div className="field">
           <label htmlFor="account-ca">CA file (optional)</label>

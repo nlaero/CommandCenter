@@ -54,7 +54,7 @@ export type AuthSettings = {
   enabled: boolean;
   /** Origin only, no path. Default is the tailnet auth-server. */
   baseUrl: string;
-  /** Lab HTTP for localhost / private LAN. The tailnet address is allowed without this. */
+  /** Extra HTTP for a named lab host (.local / .lan). Private LAN, loopback, and Tailscale do not need this. */
   allowInsecureHttp: boolean;
   caFile?: string | null;
   tlsPinSha256?: string | null;

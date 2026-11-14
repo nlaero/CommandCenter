@@ -87,26 +87,54 @@ function isTailnetHost(hostname: string): boolean {
   return host.toLowerCase().startsWith("fd7a:115c:a1e0:");
 }
 
-function isLabHost(hostname: string): boolean {
-  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".lan")) {
-    return true;
-  }
-  if (isTailnetHost(host)) return true;
+function bareHost(hostname: string): string {
+  return hostname.replace(/^\[|\]$/g, "");
+}
+
+function ipv4Parts(hostname: string): number[] | null {
+  const host = bareHost(hostname);
   const parts = host.split(".");
-  if (parts.length !== 4 || parts.some((part) => !/^\d+$/.test(part))) {
-    return host === "::1";
-  }
-  const n = parts.map(Number);
-  if (n.some((part) => part > 255)) return false;
-  if (n[0] === 10 || n[0] === 127) return true;
-  if (n[0] === 192 && n[1] === 168) return true;
-  if (n[0] === 172 && n[1] >= 16 && n[1] <= 31) return true;
-  if (n[0] === 169 && n[1] === 254) return true;
+  if (parts.length !== 4 || parts.some((part) => !/^\d+$/.test(part))) return null;
+  const nums = parts.map(Number);
+  if (nums.some((part) => part > 255)) return null;
+  return nums;
+}
+
+/** 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16. Not Tailscale and not loopback. */
+function isPrivateLanHost(hostname: string): boolean {
+  const nums = ipv4Parts(hostname);
+  if (!nums) return false;
+  if (nums[0] === 10) return true;
+  if (nums[0] === 192 && nums[1] === 168) return true;
+  if (nums[0] === 172 && nums[1] >= 16 && nums[1] <= 31) return true;
   return false;
 }
 
-/** Same origin rules as the desktop client. Browser mock treats itself as a debug build. */
+function isLoopbackHost(hostname: string): boolean {
+  const host = bareHost(hostname).toLowerCase();
+  if (host === "localhost" || host === "::1") return true;
+  const nums = ipv4Parts(host);
+  return nums?.[0] === 127;
+}
+
+function isLabHost(hostname: string): boolean {
+  const host = bareHost(hostname).toLowerCase();
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local") ||
+    host.endsWith(".lan")
+  ) {
+    return true;
+  }
+  if (isTailnetHost(host) || isPrivateLanHost(host) || isLoopbackHost(host)) return true;
+  if (host === "::1") return true;
+  const nums = ipv4Parts(host);
+  if (!nums) return false;
+  return nums[0] === 169 && nums[1] === 254;
+}
+
+/** Same origin rules as the desktop client, including installed builds. */
 export function normalizeAuthSettings(settings: AuthSettings): AuthSettings {
   const raw = settings.baseUrl.trim() || DEFAULT_AUTH_BASE_URL;
   let url: URL;
@@ -127,15 +155,19 @@ export function normalizeAuthSettings(settings: AuthSettings): AuthSettings {
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new Error("Auth-server URL must start with https:// or http://.");
   }
-  if (url.protocol === "http:" && !isTailnetHost(url.hostname)) {
+  const plainHttpAllowed =
+    isTailnetHost(url.hostname) ||
+    isPrivateLanHost(url.hostname) ||
+    isLoopbackHost(url.hostname);
+  if (url.protocol === "http:" && !plainHttpAllowed) {
     if (!settings.allowInsecureHttp) {
       throw new Error(
-        "Auth-server URL must be https://. Plain HTTP is allowed for the tailnet address, or for a lab host when Allow HTTP is on.",
+        "Auth-server URL must be https:// for a public host. Plain HTTP is allowed for private LAN addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), loopback, and Tailscale (100.64.0.0/10). Allow HTTP also covers a named lab host (.local or .lan).",
       );
     }
     if (!isLabHost(url.hostname)) {
       throw new Error(
-        "Plain HTTP is only allowed for localhost, a private LAN address, or a tailnet address.",
+        "Plain HTTP is only allowed for private LAN addresses, loopback, Tailscale, or a named lab host (.local or .lan) when Allow HTTP is on.",
       );
     }
   }

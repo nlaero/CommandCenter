@@ -250,7 +250,9 @@ pub fn add_panel_to_board(args: AddPanelArgs) -> Result<AppState, CommandError> 
         let source = &loaded.state.sources[source_id];
         if source.draft {
             return Err(CommandError {
-                message: format!("source {source_id} is still a draft; finish required fields first"),
+                message: format!(
+                    "source {source_id} is still a draft; finish required fields first"
+                ),
             });
         }
         if !source.enabled {
@@ -378,7 +380,11 @@ pub fn validate_source_fields(
     for key in &required {
         if key.starts_with("secret:") {
             let name = key.trim_start_matches("secret:");
-            if secrets.get(name).map(|s| s.trim().is_empty()).unwrap_or(true) {
+            if secrets
+                .get(name)
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(true)
+            {
                 missing.push(key.clone());
             }
         } else {
@@ -563,6 +569,59 @@ pub fn auth_login(username: String, password: String) -> Result<AuthSession, Com
 pub fn auth_logout() -> Result<AuthSession, CommandError> {
     let loaded = config::load_or_create()?;
     Ok(auth_service().logout(&loaded.state.auth)?)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisplayWorkArea {
+    pub width: u32,
+    pub height: u32,
+}
+
+fn clamp_display(value: u32, min: u32, max: u32) -> u32 {
+    value.clamp(min, max)
+}
+
+/// Resize the main window. Used by Settings → Display. Logical pixels.
+#[tauri::command]
+pub fn set_display_size(
+    window: tauri::WebviewWindow,
+    width: u32,
+    height: u32,
+) -> Result<(), CommandError> {
+    let width = clamp_display(width, 960, 7680);
+    let height = clamp_display(height, 640, 4320);
+    if window.is_maximized().unwrap_or(false) {
+        window.unmaximize().map_err(|err| CommandError {
+            message: err.to_string(),
+        })?;
+    }
+    window
+        .set_size(tauri::LogicalSize::new(f64::from(width), f64::from(height)))
+        .map_err(|err| CommandError {
+            message: err.to_string(),
+        })?;
+    let _ = window.center();
+    Ok(())
+}
+
+/// Work area of the monitor the window is on, in logical pixels.
+#[tauri::command]
+pub fn display_work_area(window: tauri::WebviewWindow) -> Result<DisplayWorkArea, CommandError> {
+    let monitor = window
+        .current_monitor()
+        .map_err(|err| CommandError {
+            message: err.to_string(),
+        })?
+        .ok_or_else(|| CommandError {
+            message: "No display found for this window.".into(),
+        })?;
+    let scale = monitor.scale_factor().max(0.5);
+    let size = monitor.work_area().size;
+    Ok(DisplayWorkArea {
+        width: clamp_display((f64::from(size.width) / scale).floor() as u32, 960, 7680),
+        height: clamp_display((f64::from(size.height) / scale).floor() as u32, 640, 4320),
+    })
 }
 
 fn slugify(input: &str) -> String {

@@ -1,7 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ADAPTER_CATALOG, getAdapter } from "../adapters/catalog";
 import { AccountSettings } from "./AuthScreen";
-import { useAlerts } from "../lib/alerts";
+import { clampAutoHideSec, useAlerts } from "../lib/alerts";
+import {
+  DISPLAY_PRESETS,
+  applyDisplayPrefs,
+  readDisplayPrefs,
+  readWorkArea,
+  type DisplayPrefs,
+} from "../lib/display";
 import {
   addPanelToBoard,
   newId,
@@ -19,9 +26,17 @@ import type {
   SourceConfig,
 } from "../types";
 
-type Tab = "sources" | "configured" | "rotation" | "alerts" | "account" | "paths";
+type Tab = "sources" | "configured" | "rotation" | "alerts" | "display" | "account" | "paths";
 
 const ROTATION_PRESETS = [
+  { label: "15s", value: 15 },
+  { label: "30s", value: 30 },
+  { label: "1m", value: 60 },
+  { label: "5m", value: 300 },
+] as const;
+
+const ALERT_HIDE_PRESETS = [
+  { label: "Off", value: 0 },
   { label: "15s", value: 15 },
   { label: "30s", value: 30 },
   { label: "1m", value: 60 },
@@ -75,11 +90,16 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
   const [rotateTitle, setRotateTitle] = useState("Rotating panel");
   const [rotateIntervalSec, setRotateIntervalSec] = useState(30);
   const [rotateSourceIds, setRotateSourceIds] = useState<string[]>([]);
+  const [hideDraft, setHideDraft] = useState("60");
   const {
     prefs: alertsPrefs,
     updatePrefs: updateAlertsPrefs,
     clearPersistentIgnores,
   } = useAlerts();
+
+  useEffect(() => {
+    setHideDraft(String(alertsPrefs.autoHideSec));
+  }, [alertsPrefs.autoHideSec]);
 
   const adapter = selectedType ? getAdapter(selectedType) : undefined;
   const readySources = useMemo(
@@ -512,6 +532,13 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
             </button>
             <button
               type="button"
+              className={tab === "display" ? "active" : ""}
+              onClick={() => setTab("display")}
+            >
+              Display
+            </button>
+            <button
+              type="button"
               className={tab === "account" ? "active" : ""}
               onClick={() => setTab("account")}
             >
@@ -616,9 +643,9 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
               <>
                 <p className="section-label">Timed multi-source rotation</p>
                 <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
-                  Opt in to cycle weather and other configured sources inside{" "}
+                  Pick any combination of configured sources and cycle them inside{" "}
                   <strong style={{ color: "var(--cc-text)", fontWeight: 500 }}>one</strong> board
-                  panel on a timer. Configure sources first, then enable rotation here.
+                  panel on a timer. Configure sources first, then turn rotation on here.
                 </p>
 
                 <label className="rotate-optin">
@@ -687,7 +714,8 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
                     <div className="source-list">
                       {readySources.map(([id, source]) => {
                         const def = getAdapter(source.type);
-                        const checked = rotateSourceIds.includes(id);
+                        const order = rotateSourceIds.indexOf(id);
+                        const checked = order >= 0;
                         return (
                           <label
                             key={id}
@@ -702,6 +730,7 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
                             <div>
                               <h3>
                                 {def?.name ?? source.type}
+                                {checked ? <span className="badge">{order + 1}</span> : null}
                                 <span className="badge">{source.type}</span>
                               </h3>
                               <p>{id}</p>
@@ -711,6 +740,9 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
                       })}
                     </div>
                   )}
+                  <p style={{ margin: "8px 0 0", color: "var(--cc-text-muted)", fontSize: "0.8rem" }}>
+                    Any mix of saved sources. At least two. They cycle in the order you check them.
+                  </p>
 
                   <div className="form-actions">
                     <button
@@ -747,7 +779,20 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
                     checked={alertsPrefs.pinned}
                     onChange={(e) => updateAlertsPrefs({ pinned: e.target.checked })}
                   />
-                  <span>Pin alerts pane open</span>
+                  <span>
+                    Pin alerts pane open
+                    <span
+                      style={{
+                        display: "block",
+                        marginTop: 4,
+                        color: "var(--cc-text-muted)",
+                        fontSize: "0.8rem",
+                      }}
+                    >
+                      Unpinned, a new alert covers the panels. Pinned, the panels shrink so they
+                      fit beside the pane.
+                    </span>
+                  </span>
                 </label>
 
                 <label className="rotate-optin">
@@ -758,6 +803,40 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
                   />
                   <span>Auto-open when new alerts arrive</span>
                 </label>
+
+                <div className="field" style={{ marginTop: 14 }}>
+                  <label htmlFor="alerts-hide-sec">Hide the pane after</label>
+                  <div className="rotate-interval-row">
+                    {ALERT_HIDE_PRESETS.map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        className={`btn${alertsPrefs.autoHideSec === preset.value ? " active" : ""}`}
+                        onClick={() => updateAlertsPrefs({ autoHideSec: preset.value })}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                    <input
+                      id="alerts-hide-sec"
+                      type="number"
+                      min={0}
+                      max={3600}
+                      value={hideDraft}
+                      onChange={(e) => setHideDraft(e.target.value)}
+                      onBlur={() => {
+                        const next = clampAutoHideSec(Number(hideDraft));
+                        updateAlertsPrefs({ autoHideSec: next });
+                        setHideDraft(String(next));
+                      }}
+                    />
+                  </div>
+                  <div className="help">
+                    Seconds before the pane closes itself. 0 is off. Otherwise 5 seconds to 1
+                    hour. Default is 1 minute. Pin keeps it open. Clear alerts on the pane
+                    dismisses the current list for this session; new alerts still show.
+                  </div>
+                </div>
 
                 <div className="form-actions" style={{ marginTop: 16 }}>
                   <button
@@ -779,6 +858,12 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
                   </button>
                 </div>
               </>
+            ) : null}
+
+            {tab === "display" ? (
+              <DisplaySettings
+                onMessage={(text, kind) => setMessage({ kind, text })}
+              />
             ) : null}
 
             {tab === "account" ? (
@@ -997,5 +1082,176 @@ function SourceForm({
         </button>
       </div>
     </div>
+  );
+}
+
+function DisplaySettings({
+  onMessage,
+}: {
+  onMessage: (text: string, kind: "ok" | "error") => void;
+}) {
+  const [prefs, setPrefs] = useState<DisplayPrefs>(() => readDisplayPrefs());
+  const [customW, setCustomW] = useState(() => String(readDisplayPrefs().width));
+  const [customH, setCustomH] = useState(() => String(readDisplayPrefs().height));
+  const [busy, setBusy] = useState(false);
+
+  async function apply(next: DisplayPrefs) {
+    setBusy(true);
+    try {
+      const saved = await applyDisplayPrefs(next);
+      setPrefs(saved);
+      setCustomW(String(saved.width));
+      setCustomH(String(saved.height));
+      onMessage(
+        saved.mode === "auto"
+          ? "Using the current window size."
+          : `Window size set to ${saved.width} × ${saved.height}.`,
+        "ok",
+      );
+    } catch (err) {
+      onMessage(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function matchScreen() {
+    setBusy(true);
+    try {
+      const area = await readWorkArea();
+      if (!area) {
+        onMessage("Could not read this screen's size.", "error");
+        return;
+      }
+      await apply({
+        mode: "fixed",
+        width: area.width,
+        height: area.height,
+        label: "This screen",
+      });
+    } catch (err) {
+      onMessage(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const summary =
+    prefs.mode === "auto"
+      ? "Following the window"
+      : `${prefs.label} · ${prefs.width} × ${prefs.height}`;
+
+  return (
+    <>
+      <p className="section-label">Program resolution</p>
+      <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
+        Set the window size for the screen you are using. Saved on this computer, not on the
+        account. You can still drag the window edges afterward.
+      </p>
+      <p className="display-current">{summary}</p>
+
+      <div className="source-list">
+        <button
+          type="button"
+          className={`source-row display-preset${prefs.mode === "auto" ? " is-checked" : ""}`}
+          disabled={busy}
+          onClick={() =>
+            void apply({
+              mode: "auto",
+              width: prefs.width,
+              height: prefs.height,
+              label: "Window",
+            })
+          }
+        >
+          <div>
+            <h3>
+              Use the window size
+              <span className="badge">default</span>
+            </h3>
+            <p>Leave the window wherever you put it. No fixed resolution.</p>
+          </div>
+        </button>
+        {DISPLAY_PRESETS.map((preset) => {
+          const active =
+            prefs.mode === "fixed" &&
+            prefs.width === preset.width &&
+            prefs.height === preset.height;
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              className={`source-row display-preset${active ? " is-checked" : ""}`}
+              disabled={busy}
+              onClick={() =>
+                void apply({
+                  mode: "fixed",
+                  width: preset.width,
+                  height: preset.height,
+                  label: preset.label,
+                })
+              }
+            >
+              <div>
+                <h3>
+                  {preset.label}
+                  <span className="badge">{preset.detail}</span>
+                </h3>
+                <p>Logical pixels. The desktop window resizes to this.</p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="form-grid" style={{ marginTop: 16 }}>
+        <div className="field">
+          <label htmlFor="display-width">Custom width</label>
+          <input
+            id="display-width"
+            type="number"
+            min={960}
+            max={7680}
+            value={customW}
+            onChange={(e) => setCustomW(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="display-height">Custom height</label>
+          <input
+            id="display-height"
+            type="number"
+            min={640}
+            max={4320}
+            value={customH}
+            onChange={(e) => setCustomH(e.target.value)}
+          />
+        </div>
+      </div>
+      <p style={{ margin: "8px 0 0", color: "var(--cc-text-muted)", fontSize: "0.8rem" }}>
+        Minimum 960 × 640. Maximum 7680 × 4320. Smaller or larger numbers are pulled into that
+        range.
+      </p>
+      <div className="form-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy}
+          onClick={() =>
+            void apply({
+              mode: "fixed",
+              width: Number(customW),
+              height: Number(customH),
+              label: "Custom",
+            })
+          }
+        >
+          Use this size
+        </button>
+        <button type="button" className="btn" disabled={busy} onClick={() => void matchScreen()}>
+          Match this screen
+        </button>
+      </div>
+    </>
   );
 }
