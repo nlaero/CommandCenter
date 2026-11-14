@@ -27,7 +27,8 @@ import {
   type OpenIncident,
   type SafetyFeed,
 } from "../lib/safety";
-import { isFeedOwnerAudio, subscribeFeedCaptions } from "../lib/feedCaptions";
+import { isFeedOwnerAudio, isProgramAudioFeed, parseCallsInputId, parseFeedOwnerInputId, subscribeFeedCaptions } from "../lib/feedCaptions";
+import { describeError } from "../lib/location";
 import { listenSafetyFeed, listensOnDevice, placeHeardAddress, type SafetyWindow } from "../lib/safetyListen";
 import type { Incident, SourceConfig } from "../types";
 import { CaptionCorrection, withCorrections } from "./LocalAiPanel";
@@ -300,11 +301,15 @@ export function SafetyPanel({ sourceId, source, configRevision = 0 }: Props) {
         for (let index = 0; index < feeds.length; index += 1) {
           const feed = feeds[index];
           if (!feed || cancelled) return;
-          if (!onDevice && index > 0 && !isFeedOwnerAudio(feed)) {
+          if (!onDevice && index > 0 && !isProgramAudioFeed(feed)) {
             setLines((prev) => ({
               ...prev,
               [feed.id]: "Browser preview plays the sample on the first feed so the same unit is not dispatched twice.",
             }));
+            continue;
+          }
+          if (feed.listen === false) {
+            setLines((prev) => ({ ...prev, [feed.id]: "Off." }));
             continue;
           }
           const problem = feedProblem(feed);
@@ -313,19 +318,21 @@ export function SafetyPanel({ sourceId, source, configRevision = 0 }: Props) {
             continue;
           }
           setListeningId(feed.id);
-          if (!isFeedOwnerAudio(feed)) {
+          if (!isProgramAudioFeed(feed)) {
             setLines((prev) => ({ ...prev, [feed.id]: "Listening…" }));
           }
           try {
             const windows = await listenSafetyFeed(feed);
-            if (!windows.length && isFeedOwnerAudio(feed)) {
+            if (!windows.length && isProgramAudioFeed(feed)) {
               if (!cancelled) {
                 setLines((prev) => ({
                   ...prev,
                   [feed.id]:
                     prev[feed.id] && prev[feed.id] !== "Listening…"
                       ? prev[feed.id]
-                      : "Waiting for live captions from the Feed Owner panel.",
+                      : isFeedOwnerAudio(feed)
+                        ? "Waiting for live captions from the Feed Owner panel."
+                        : "Waiting for the next call clip.",
                 }));
               }
               continue;
@@ -344,7 +351,7 @@ export function SafetyPanel({ sourceId, source, configRevision = 0 }: Props) {
             if (!cancelled) {
               setLines((prev) => ({
                 ...prev,
-                [feed.id]: err instanceof Error ? err.message : String(err),
+                [feed.id]: describeError(err, "Could not read that feed."),
               }));
             }
           } finally {
@@ -371,6 +378,7 @@ export function SafetyPanel({ sourceId, source, configRevision = 0 }: Props) {
       try {
         for (const feed of feeds) {
           if (!feed || cancelled || !isFeedOwnerAudio(feed)) continue;
+          if (feed.listen === false) continue;
           const problem = feedProblem(feed);
           if (problem) {
             setLines((prev) => ({ ...prev, [feed.id]: problem }));
@@ -386,7 +394,7 @@ export function SafetyPanel({ sourceId, source, configRevision = 0 }: Props) {
             if (!cancelled) {
               setLines((prev) => ({
                 ...prev,
-                [feed.id]: err instanceof Error ? err.message : String(err),
+                [feed.id]: describeError(err, "Could not read that feed."),
               }));
             }
           }
@@ -546,7 +554,7 @@ export function SafetyPanel({ sourceId, source, configRevision = 0 }: Props) {
                   <div className="safety-status-name">
                     {feed.name || "Untitled feed"}
                     <span className={`bcfy-pill${listeningId === feed.id ? " on" : ""}`}>
-                      {feed.kind === "audio-in" ? "AUDIO IN" : "ONLINE"}
+                      {feedTag(feed)}
                     </span>
                   </div>
                   <div className="bcfy-status-meta">
@@ -745,6 +753,14 @@ function TransmissionBlock({
       ) : null}
     </section>
   );
+}
+
+function feedTag(feed: SafetyFeed): string {
+  if (feed.listen === false) return "OFF";
+  if (parseFeedOwnerInputId(feed.deviceId)) return "FEED";
+  if (parseCallsInputId(feed.deviceId)) return "CALLS";
+  if (feed.kind === "online") return "STREAM";
+  return "AUDIO IN";
 }
 
 function voiceKeyOf(segments: CaptionSegment[]): string | null {

@@ -2840,6 +2840,14 @@ label.btn {
   flex: 1;
 }
 
+.safety-listen {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--cc-text-muted);
+}
+
 .safety-kind {
   display: grid;
   grid-template-columns: 1fr 1fr;

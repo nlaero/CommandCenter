@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAlerts } from "../lib/alerts";
 import { incidentsToBoardAlerts } from "../lib/boardAlerts";
 import { fetchSourcePayload } from "../lib/api";
+import { closeCallClips, publishCallClips } from "../lib/safetyListen";
 import type { Incident, SourceConfig, SourcePayload } from "../types";
 
 type Props = {
@@ -86,6 +87,7 @@ export function CallsPanel({ sourceId, source, configRevision = 0 }: Props) {
         knownIds.current = new Set(next.incidents.map((item) => item.id));
         setPayload(next);
         setError(null);
+        publishCallClips(sourceId, next.incidents);
         publishCalls(next);
         setSelectedId((current) => {
           if (current && next.incidents.some((item) => item.id === current)) return current;
@@ -107,6 +109,7 @@ export function CallsPanel({ sourceId, source, configRevision = 0 }: Props) {
     const timer = window.setInterval(() => void load(true), parseRefreshMs(source.refresh));
     return () => {
       cancelled = true;
+      closeCallClips(sourceId);
       window.clearInterval(timer);
       if (flashTimer) window.clearTimeout(flashTimer);
       clearSourceAlerts(sourceId);
@@ -135,6 +138,7 @@ export function CallsPanel({ sourceId, source, configRevision = 0 }: Props) {
               .then((next) => {
                 setPayload(next);
                 setError(null);
+                publishCallClips(sourceId, next.incidents);
                 publishCalls(next);
               })
               .catch((err) => setError(err instanceof Error ? err.message : String(err)));

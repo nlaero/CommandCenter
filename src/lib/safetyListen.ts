@@ -1,6 +1,7 @@
 import type { CaptionSegment } from "./captions";
-import { parseFeedOwnerInputId, takeFeedCaptionWindows } from "./feedCaptions";
-import { findLocations } from "./location";
+import { fetchSourcePayload } from "./api";
+import { parseCallsInputId, parseFeedOwnerInputId, takeFeedCaptionWindows } from "./feedCaptions";
+import { describeError, findLocations } from "./location";
 import {
   choosePlacement,
   placeQuery,
@@ -84,14 +85,141 @@ export function listensOnDevice(): boolean {
 export async function listenSafetyFeed(feed: SafetyFeed): Promise<SafetyWindow[]> {
   const ownerId = feed.kind === "audio-in" ? parseFeedOwnerInputId(feed.deviceId) : null;
   if (ownerId) return feedOwnerWindows(feed.id, ownerId);
+  const callsId = feed.kind === "audio-in" ? parseCallsInputId(feed.deviceId) : null;
+  if (callsId) return callsWindows(feed.id, callsId);
   if (!isTauri()) return browserPreview(feed);
+  return [await transcribeInput(feed.kind, feed.url.trim() || null, feed.deviceId.trim() || null)];
+}
+
+type CallClip = { id: string; audioUrl: string; transcript: string };
+
+const callSessions = new Map<string, CallClip[]>();
+const callSeen = new Map<string, Set<string>>();
+const HEARD_CALLS_KEY = "command-center.calls-heard.v1";
+
+/** Clips the Calls panel already loaded. Nearby alerts read these before asking the API again. */
+export function publishCallClips(
+  sourceId: string,
+  incidents: { id: string; audioUrl?: string; transcript?: string }[],
+): void {
+  const clips: CallClip[] = [];
+  for (const item of incidents) {
+    const audioUrl = item.audioUrl?.trim() ?? "";
+    if (!item.id || !audioUrl) continue;
+    clips.push({ id: item.id, audioUrl, transcript: item.transcript?.trim() ?? "" });
+  }
+  callSessions.set(sourceId, clips);
+}
+
+export function closeCallClips(sourceId: string): void {
+  callSessions.delete(sourceId);
+}
+
+export function resetCallClipsForTests(): void {
+  callSessions.clear();
+  callSeen.clear();
+}
+
+function heardCallKeys(): Set<string> {
+  try {
+    if (typeof sessionStorage === "undefined") return new Set();
+    const raw = sessionStorage.getItem(HEARD_CALLS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((item): item is string => typeof item === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberHeardCall(key: string): void {
+  try {
+    if (typeof sessionStorage === "undefined") return;
+    const keys = heardCallKeys();
+    keys.add(key);
+    const list = [...keys].slice(-200);
+    sessionStorage.setItem(HEARD_CALLS_KEY, JSON.stringify(list));
+  } catch {
+    /* The clip can be read again next time the app opens. */
+  }
+}
+
+function wasHeard(key: string): boolean {
+  return heardCallKeys().has(key);
+}
+
+async function callsWindows(consumerId: string, sourceId: string): Promise<SafetyWindow[]> {
+  const published = callSessions.get(sourceId);
+  const clips = published ?? (await fetchCallClips(sourceId));
+  if (!clips) return [];
+  const seen = callSeen.get(`${consumerId}:${sourceId}`) ?? new Set<string>();
+  const pending = clips.filter((clip) => !seen.has(clip.id) && !wasHeard(`${sourceId}:${clip.id}`));
+  const clip = pending[pending.length - 1];
+  if (!clip) return [];
+  seen.add(clip.id);
+  callSeen.set(`${consumerId}:${sourceId}`, seen);
+  let heard: SafetyWindow;
+  try {
+    if (clip.transcript) {
+      heard = {
+        engine: "local-whisper",
+        status: "ready",
+        note: "Call clip from the Calls source. Audio stays on this computer.",
+        segments: [
+          {
+            id: `${clip.id}-words`,
+            startSec: 0,
+            endSec: 0,
+            text: clip.transcript,
+          },
+        ],
+        audioUrl: clip.audioUrl,
+      };
+    } else if (!isTauri()) {
+      heard = {
+        engine: "local-whisper",
+        status: "empty",
+        note: "This Calls source has audio. The desktop app captions the clip on this computer.",
+        segments: [],
+        audioUrl: clip.audioUrl,
+      };
+    } else {
+      heard = await transcribeInput("online", clip.audioUrl, null);
+    }
+  } catch (err) {
+    throw new Error(describeError(err, "Could not caption that call clip."));
+  }
+  if (heard.segments.length || clip.transcript) rememberHeardCall(`${sourceId}:${clip.id}`);
+  return [heard];
+}
+
+async function fetchCallClips(sourceId: string): Promise<CallClip[] | null> {
+  try {
+    const payload = await fetchSourcePayload(sourceId);
+    const clips: CallClip[] = [];
+    for (const item of payload.incidents) {
+      const audioUrl = item.audioUrl?.trim() ?? "";
+      if (!audioUrl) continue;
+      clips.push({
+        id: item.id,
+        audioUrl,
+        transcript: item.transcript?.trim() ?? "",
+      });
+    }
+    return clips;
+  } catch (err) {
+    throw new Error(describeError(err, "Could not read that Calls source."));
+  }
+}
+
+async function transcribeInput(
+  kind: string,
+  url: string | null,
+  deviceId: string | null,
+): Promise<SafetyWindow> {
   const { invoke } = await import("@tauri-apps/api/core");
   const raw = await invoke<RawWindow>("listen_safety_feed", {
-    args: {
-      kind: feed.kind,
-      url: feed.url.trim() || null,
-      deviceId: feed.deviceId.trim() || null,
-    },
+    args: { kind, url, deviceId },
   });
   const segments = (raw.segments ?? []).map((segment) => ({
     id: segment.id,
@@ -101,7 +229,7 @@ export async function listenSafetyFeed(feed: SafetyFeed): Promise<SafetyWindow[]
     speaker: segment.speaker?.trim() || null,
   }));
   let audioUrl: string | null = null;
-  if (raw.clipId && segments.length) {
+  if (raw.clipId && (segments.length || raw.status === "needs-model")) {
     const clip = await invoke<{ base64: string }>("safety_clip", {
       args: { clipId: raw.clipId },
     });
@@ -114,15 +242,7 @@ export async function listenSafetyFeed(feed: SafetyFeed): Promise<SafetyWindow[]
       : segments.length
         ? "ready"
         : "empty";
-  return [
-    {
-      engine,
-      status,
-      note: raw.note,
-      segments,
-      audioUrl,
-    },
-  ];
+  return { engine, status, note: raw.note, segments, audioUrl };
 }
 
 /** Empty when the panel is open and no new caption window has arrived. */

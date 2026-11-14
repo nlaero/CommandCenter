@@ -322,6 +322,56 @@ export function formatAccuracy(meters: number | null): string | null {
   return `about ${Math.round(meters)} m`;
 }
 
+const OBJECT_TEXT = "[object Object]";
+
+function usefulText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text || text === OBJECT_TEXT) return null;
+  return text;
+}
+
+/**
+ * Text from a thrown value. Tauri command errors arrive as `{ message }`
+ * objects, and `String(that)` is `[object Object]`.
+ */
+export function describeError(err: unknown, fallback: string): string {
+  return readFailure(err, new Set()) ?? fallback;
+}
+
+export function locationFailure(err: unknown): string {
+  return describeError(err, "Command Center could not confirm a location.");
+}
+
+function readFailure(err: unknown, seen: Set<unknown>): string | null {
+  const direct = usefulText(err);
+  if (direct) {
+    if (direct.startsWith("{") || direct.startsWith("[")) {
+      try {
+        const nested = readFailure(JSON.parse(direct) as unknown, seen);
+        if (nested) return nested;
+      } catch {
+        /* The string itself is the message. */
+      }
+    }
+    return direct;
+  }
+  if (!err || typeof err !== "object") return null;
+  if (seen.has(err)) return null;
+  seen.add(err);
+  const record = err as Record<string, unknown>;
+  if (err instanceof Error) {
+    const fromMessage = readFailure(err.message, seen);
+    if (fromMessage) return fromMessage;
+  }
+  for (const key of ["message", "error", "reason", "detail", "description"]) {
+    if (!(key in record)) continue;
+    const nested = readFailure(record[key], seen);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 export async function findLocations(input: {
   provider: LocationProvider;
   address?: string;
@@ -369,9 +419,14 @@ export async function findLocations(input: {
 }
 
 async function tauriLookup(provider: LocationProvider, address?: string): Promise<ResolvedLocation[]> {
-  const result = await invoke<{ matches?: ResolvedLocation[] }>("resolve_location", {
-    request: { provider, address: address ?? null },
-  });
+  let result: { matches?: ResolvedLocation[] };
+  try {
+    result = await invoke<{ matches?: ResolvedLocation[] }>("resolve_location", {
+      request: { provider, address: address ?? null },
+    });
+  } catch (err) {
+    throw new Error(locationFailure(err));
+  }
   const matches = (result.matches ?? [])
     .map(normalizeResolved)
     .filter((item): item is ResolvedLocation => item != null);
@@ -516,7 +571,8 @@ async function lookupAddress(address: string): Promise<ResolvedLocation[]> {
       if (matches.length) return matches;
       sawEmpty = true;
     } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
+      const text = describeError(err, "");
+      lastError = text || null;
     }
   }
   if (sawEmpty || !lastError) {
