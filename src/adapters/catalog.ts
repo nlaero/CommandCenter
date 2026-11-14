@@ -239,6 +239,40 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     ],
   },
   {
+    typeId: "scanner.web",
+    category: "product",
+    name: "Web scanner",
+    description:
+      "A direct audio stream in its own window. Icecast, Shoutcast, an audio file, or an HLS playlist. Playback starts muted, with a mute toggle. While the sound is muted, captions are written on this computer. This is not the Broadcastify Feed Owner panel and it does not feed nearby alerts.",
+    defaultWidget: "scanner",
+    fields: [
+      {
+        key: "label",
+        label: "Name",
+        kind: "string",
+        required: true,
+        placeholder: "North scanner",
+        help: "Name on the panel.",
+      },
+      {
+        key: "url",
+        label: "Stream",
+        kind: "url",
+        required: true,
+        placeholder: "https://host/stream",
+        help: "A direct http or https audio stream you are allowed to play. Not a Broadcastify listen page, relay, or Calls link, and not a web page. A password in the link would be saved in the board file, so leave it out.",
+      },
+      {
+        key: "enableCaptions",
+        label: "Captions",
+        kind: "boolean",
+        required: false,
+        defaultChecked: true,
+        help: "On by default. Captions are written on this computer and show while the sound is muted. CC keeps them up after you turn the sound on. Nearby alerts do not read this window.",
+      },
+    ],
+  },
+  {
     typeId: "broadcastify.owner",
     category: "product",
     name: "Broadcastify (Feed Owner)",
