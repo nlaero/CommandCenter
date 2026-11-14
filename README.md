@@ -201,11 +201,28 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 - Settings → Panel rotation for any mix of configured sources in one panel
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
 - Settings → Display sets the window size (1280×720 through 4K, this screen, or a custom size). Saved on this computer.
+- Settings → Television sends the board to a TV with AirPlay or screen mirroring. The TV is display-only. The picture has to be 3840×2160 or higher so a 58-inch or larger set stays sharp.
 - Edit layout (toolbar or `Ctrl/Cmd+E`): 48-column fine grid; persists on drag/resize stop
 - Board switcher in the chrome (+ for another empty board)
 - Help → Check for updates… (also the toolbar button, and Settings → Updates) asks GitHub if this copy is behind a published release. Nothing is downloaded until you choose it.
 
 Other catalog entries stay stubs until their adapters land.
+
+## Television
+
+The board can go on a television. Setup stays on the computer. The television shows the board and nothing else: no settings, no layout editing.
+
+Settings → Television.
+
+**Screen mirroring.** The television has to already be a display on this computer (HDMI, or a wireless display the system is using). Pick that screen and show the board. Command Center opens a borderless window on it, at that screen's own resolution, and does not stretch a smaller picture up.
+
+**AirPlay.** Command Center looks for AirPlay receivers on the local network. Pick one and show the board. When that receiver is already connected as a display — its name shows up as a screen — the board opens there. If it is not a display yet, connect it from this computer (HDMI, or the system's own AirPlay display) and try again. Nothing is configured on the television.
+
+A 58-inch or larger television stays sharp at 3840×2160 or higher. A 1080p output is refused until that display is set to 4K. Apple TV HD and earlier top out at 1080p, so they are listed and refused. Apple TV 4K (1st, 2nd, and 3rd generation) is 3840×2160. The board fills that screen. Text stays vector-sharp. It is not a scaled-up screenshot.
+
+Check the picture opens a preview on this computer. That preview is not the television.
+
+The desktop app does the AirPlay search and places the window. A browser preview can list screens the browser is allowed to see, and it can open the picture check.
 
 ## On this computer
 

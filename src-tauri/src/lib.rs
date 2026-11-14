@@ -1,5 +1,6 @@
 mod ai_sync;
 mod auth;
+mod cast;
 mod commands;
 mod config;
 mod local_ai;
@@ -55,6 +56,13 @@ pub fn run() {
             commands::sync_board,
             commands::set_display_size,
             commands::display_work_area,
+            cast::list_cast_screens,
+            cast::scan_airplay,
+            cast::cast_start,
+            cast::cast_stop,
+            cast::cast_status,
+            cast::cast_preview,
+            cast::cast_close_preview,
             commands::local_server_status,
             commands::local_server_install,
             commands::local_server_open_admin,
