@@ -18,6 +18,8 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
       : null;
   const namedTitle =
     (source?.type === "camera.http_image" ||
+      source?.type === "camera.public" ||
+      source?.type === "camera.private" ||
       source?.type === "video.youtube" ||
       source?.type === "scanner.web") &&
     typeof source.params.label === "string"
@@ -36,6 +38,8 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     source?.type === "safety.nearby" ||
     source?.type === "audio.local" ||
     source?.type === "camera.http_image" ||
+    source?.type === "camera.public" ||
+    source?.type === "camera.private" ||
     source?.type === "video.youtube" ||
     source?.type === "scanner.web" ||
     source?.type === "x.follow" ||

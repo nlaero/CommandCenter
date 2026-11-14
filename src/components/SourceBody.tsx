@@ -95,7 +95,12 @@ export function SourceBody({ sourceId, source, sources = {} }: Props) {
     );
   }
 
-  if (source.type === "camera.http_image" || source.type === "video.youtube") {
+  if (
+    source.type === "camera.http_image" ||
+    source.type === "camera.public" ||
+    source.type === "camera.private" ||
+    source.type === "video.youtube"
+  ) {
     return <CameraPanel source={source} />;
   }
 

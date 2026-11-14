@@ -123,7 +123,9 @@ export type FieldKind =
   | "checklist"
   | "location"
   | "feeds"
-  | "audio";
+  | "audio"
+  | "publicCameras"
+  | "privateCamera";
 
 export type AdapterField = {
   key: string;
