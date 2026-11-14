@@ -8,6 +8,7 @@ import {
   probeAuth,
   saveAuthSettings,
 } from "../lib/auth";
+import { ServerSetup } from "./ServerSetup";
 import type { AppState, AuthSession, AuthSettings } from "../types";
 
 type Mode = "signin" | "register";
@@ -119,7 +120,8 @@ export function AuthScreen({ settings, session, onSession, onState }: Props) {
         <h1 id="auth-title">{mode === "register" ? "Create account" : "Sign in"}</h1>
         <p className="auth-lead">
           Create an account or sign in. Boards and source setup for this account are saved on
-          auth-server. Passwords and API keys stay in the OS keyring and are not sent there.
+          auth-server. Source passwords and API keys stay on this computer unless you store them
+          on a server that only this computer uses.
         </p>
 
         <div className={`auth-reach ${reachClass}`} role="status">
@@ -234,9 +236,9 @@ export function AuthScreen({ settings, session, onSession, onState }: Props) {
               autoCorrect="off"
             />
             <div className="help">
-              Starts at <code>http://100.101.141.93:8080</code>. Change it if your auth-server is
-              somewhere else. Plain HTTP is allowed for private LAN addresses (10.x, 172.16–31.x,
-              192.168.x), loopback, and Tailscale (100.64.0.0/10). Public hosts need HTTPS.
+              Enter the server you use, or install one on this computer. Plain HTTP is allowed for
+              private LAN addresses (10.x, 172.16–31.x, 192.168.x), loopback, and Tailscale
+              (100.64.0.0/10). Public hosts need HTTPS.
             </div>
           </div>
           <label className="check-row">
@@ -260,6 +262,7 @@ export function AuthScreen({ settings, session, onSession, onState }: Props) {
               Check server
             </button>
           </div>
+          <ServerSetup onState={onState} />
         </div>
       </form>
     </div>
@@ -335,9 +338,9 @@ export function AccountSettings({ state, session, onState, onSession }: AccountP
           ? `Signed in as ${session.user.username}${session.offline ? " (offline)" : ""}.`
           : "Not signed in."}{" "}
         Username and password are checked by auth-server. Boards and source setup for this
-        account are saved there, so signing in on another computer brings them back. Passwords
-        and API keys stay in the keyring on this computer and are not uploaded. Sign-in is
-        required on this computer.
+        account are saved there, so signing in on another computer brings them back. Source
+        passwords and API keys stay on this computer unless you store them on a server that only
+        this computer uses. Sign-in is required.
       </p>
       <div className="form-grid">
         <div className="field">
@@ -349,9 +352,8 @@ export function AccountSettings({ state, session, onState, onSession }: AccountP
             onChange={(event) => setBaseUrl(event.target.value)}
           />
           <div className="help">
-            Default <code>http://100.101.141.93:8080</code>. Plain HTTP is allowed for private LAN
-            addresses (10.x, 172.16–31.x, 192.168.x), loopback, and Tailscale (100.64.0.0/10).
-            Public hosts need HTTPS.
+            The server this computer uses. Plain HTTP is allowed for private LAN addresses, loopback,
+            and Tailscale (100.64.0.0/10). Public hosts need HTTPS.
           </div>
         </div>
         <label className="check-row">

@@ -1,6 +1,7 @@
 mod auth;
 mod commands;
 mod config;
+mod local_server;
 mod secrets;
 mod sources;
 mod sync;
@@ -32,6 +33,14 @@ pub fn run() {
             commands::sync_board,
             commands::set_display_size,
             commands::display_work_area,
+            commands::local_server_status,
+            commands::local_server_install,
+            commands::local_server_open_admin,
+            commands::local_server_start,
+            commands::local_server_stop,
+            commands::local_server_set_secrets,
+            commands::local_server_export_backup,
+            commands::local_server_import_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Command Center");

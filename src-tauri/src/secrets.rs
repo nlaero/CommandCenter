@@ -88,6 +88,10 @@ pub fn delete_secret(name: &str) -> Result<(), ConfigError> {
     Ok(())
 }
 
+pub fn fallback_names() -> Result<Vec<String>, ConfigError> {
+    Ok(read_fallback()?.secrets.keys().cloned().collect())
+}
+
 pub fn set_secrets(secrets: &BTreeMap<String, String>) -> Result<(), ConfigError> {
     for (name, value) in secrets {
         set_secret(name, value)?;

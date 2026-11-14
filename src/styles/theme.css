@@ -2279,6 +2279,57 @@ body.cc-display-framed #root {
   margin-top: 3px;
 }
 
+.server-setup {
+  margin-top: 4px;
+}
+
+.server-wizard {
+  margin-top: 8px;
+}
+
+.choice-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.choice-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  background: var(--cc-bg);
+  color: var(--cc-text);
+  text-align: left;
+}
+
+.choice-card strong {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.choice-card span {
+  color: var(--cc-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.choice-card.active {
+  border-color: var(--cc-accent);
+  background: var(--cc-accent-dim);
+}
+
+label.btn {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.auth-card {
+  width: min(520px, 100%);
+}
+
 .chrome-user {
   font-size: 0.82rem;
   color: var(--cc-text);
