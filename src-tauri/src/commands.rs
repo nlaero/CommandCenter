@@ -992,6 +992,27 @@ pub fn display_work_area(window: tauri::WebviewWindow) -> Result<DisplayWorkArea
     })
 }
 
+#[tauri::command]
+pub fn list_audio_inputs() -> Vec<crate::safety::AudioInput> {
+    crate::safety::list_inputs()
+}
+
+#[tauri::command]
+pub fn listen_safety_feed(
+    args: crate::safety::ListenRequest,
+) -> Result<crate::safety::ListenResult, CommandError> {
+    let paths = config::resolve_paths()?;
+    crate::safety::listen(std::path::Path::new(&paths.root), args)
+        .map_err(|message| CommandError { message })
+}
+
+#[tauri::command]
+pub fn safety_clip(args: crate::safety::ClipRequest) -> Result<crate::safety::SafetyClip, CommandError> {
+    let paths = config::resolve_paths()?;
+    crate::safety::read_clip(std::path::Path::new(&paths.root), &args.clip_id)
+        .map_err(|message| CommandError { message })
+}
+
 fn slugify(input: &str) -> String {
     let mut out = String::new();
     for ch in input.chars() {

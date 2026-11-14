@@ -7,6 +7,7 @@ mod local_ai;
 mod local_server;
 mod location;
 mod media;
+mod safety;
 mod secrets;
 mod sources;
 mod sync;
@@ -47,6 +48,9 @@ pub fn run() {
             commands::resolve_location,
             commands::transcribe_audio_local,
             commands::transcribe_media_local,
+            commands::list_audio_inputs,
+            commands::listen_safety_feed,
+            commands::safety_clip,
             commands::auth_session,
             commands::auth_probe,
             commands::auth_save_settings,

@@ -174,9 +174,9 @@ export function LocationField({ field, params, disabled, onChange }: Props) {
       {candidates.length > 1 ? (
         <div className="location-candidates">
           <p className="location-status">Several places matched that address. Pick one.</p>
-          {candidates.map((match) => (
+          {candidates.map((match, index) => (
             <button
-              key={`${match.lat},${match.lon},${match.label}`}
+              key={`${index}:${match.lat},${match.lon},${match.label}`}
               type="button"
               className="location-candidate"
               disabled={disabled}

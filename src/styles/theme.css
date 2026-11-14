@@ -1140,6 +1140,11 @@ a {
   color: var(--cc-text-muted);
 }
 
+.bcfy-caption-list li > :only-child,
+.bcfy-caption-line {
+  grid-column: 1 / -1;
+}
+
 .bcfy-caption-list li.is-active {
   background: var(--cc-accent-dim);
   color: var(--cc-text);
@@ -2739,6 +2744,111 @@ label.btn {
   padding: 16px;
 }
 
+.safety-feeds {
+  display: grid;
+  gap: 8px;
+}
+
+.safety-feed-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius);
+  background: var(--cc-bg);
+}
+
+.safety-feed-head,
+.safety-feed-actions,
+.safety-device-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.safety-feed-head .section-label {
+  margin: 0;
+  flex: 1;
+}
+
+.safety-kind {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.safety-feed-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.safety-device-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.safety-panel .incident-side {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.safety-panel .incident-alert-sub {
+  flex-wrap: wrap;
+}
+
+.safety-status {
+  min-height: 0;
+  max-height: 11rem;
+  overflow: auto;
+  border-bottom: 1px solid var(--cc-border);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.safety-status-row {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--cc-border);
+}
+
+.safety-status-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.safety-status-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.safety-tx {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cc-border);
+}
+
+.safety-tx-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  color: var(--cc-text-muted);
+}
+
+.incident-alert.is-outside {
+  opacity: 0.72;
+}
+
+.safety-panel .incident-detail {
+  overflow: auto;
+}
+
 @media (max-width: 800px) {
   .settings-body {
     grid-template-columns: 1fr;
@@ -2753,5 +2863,9 @@ label.btn {
 
   .chrome-meta {
     display: none;
+  }
+
+  .safety-feed-grid {
+    grid-template-columns: 1fr;
   }
 }

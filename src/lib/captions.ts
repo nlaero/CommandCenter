@@ -14,6 +14,11 @@ export type CaptionSegment = {
   startSec: number;
   endSec: number;
   text: string;
+  /**
+   * Opaque voice key from a local diarizer, when one exists.
+   * Tiny English does not set this. It is not a unit ID.
+   */
+  speaker?: string | null;
 };
 
 export type CaptionJobStatus = "idle" | "running" | "ready" | "error" | "stub" | "needs-model";

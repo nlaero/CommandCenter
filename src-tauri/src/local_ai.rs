@@ -42,6 +42,9 @@ pub struct TranscriptSegment {
     pub start_sec: f64,
     pub end_sec: f64,
     pub text: String,
+    /// Stable person key from a local diarizer. Not a unit ID.
+    /// The pinned Tiny English runtime leaves this empty.
+    pub speaker: Option<String>,
 }
 
 #[derive(Debug)]
@@ -570,6 +573,22 @@ fn run_whisper(
     Ok(segments)
 }
 
+/// Person key from the local transcript, when the runtime provides one.
+///
+/// ggml-tiny.en via whisper.cpp b5454 does not. `whisper-cli -oj` writes
+/// `transcription[].text` and `transcription[].offsets` only. There is no
+/// speaker token in that model and this command does not run a diarizer.
+/// Returning a unit ID here would treat the radio as one voice, which it is not.
+/// What is missing is a local diarizer that emits a stable per-person key.
+/// That key can later be heard on a different unit. Audio is not uploaded.
+fn speaker_key(item: &serde_json::Value) -> Option<String> {
+    let raw = item.get("speaker")?.as_str()?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    Some(raw.to_string())
+}
+
 fn out_json(base: &Path) -> PathBuf {
     let mut path = base.as_os_str().to_os_string();
     path.push(".json");
@@ -606,6 +625,9 @@ fn parse_whisper_json(raw: &str) -> Result<Vec<TranscriptSegment>, String> {
             start_sec: from / 1000.0,
             end_sec: (to / 1000.0).max(from / 1000.0),
             text,
+            // whisper-cli JSON has text and offsets only. A future local
+            // diarizer may add `speaker` as a person key. Never a unit ID.
+            speaker: speaker_key(item),
         });
     }
     Ok(segments)
@@ -1149,7 +1171,20 @@ mod tests {
         assert_eq!(segments[0].text, "Engine 12 responding");
         assert!(note.contains("not uploaded"));
         assert!((segments[0].end_sec - 1.8).abs() < 0.01);
+        assert_eq!(segments[0].speaker, None);
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn whisper_json_speaker_is_a_person_key_only_when_the_runtime_emits_one() {
+        let plain = r#"{"transcription":[{"offsets":{"from":0,"to":1000},"text":" Engine 12 on scene"}]}"#;
+        let heard = parse_whisper_json(plain).unwrap();
+        assert_eq!(heard[0].text, "Engine 12 on scene");
+        assert_eq!(heard[0].speaker, None);
+
+        let keyed = r#"{"transcription":[{"offsets":{"from":0,"to":1000},"text":" Engine 12 on scene","speaker":" voice-a "}]}"#;
+        let with_key = parse_whisper_json(keyed).unwrap();
+        assert_eq!(with_key[0].speaker.as_deref(), Some("voice-a"));
     }
 
     #[test]

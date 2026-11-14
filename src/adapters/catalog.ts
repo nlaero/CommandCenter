@@ -306,6 +306,46 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     ],
   },
   {
+    typeId: "safety.nearby",
+    category: "product",
+    name: "Nearby public safety",
+    description:
+      "Listens to online streams and audio inputs. Tiny English transcribes each window on this computer. The dispatch type and street are read from that caption and placed in the feed's county and state. Later traffic stays on the incident while a unit is dispatched, responding, or on scene, and a cleared unit's next call is a new incident. A unit ID is not a person. Calls inside your radius open with the transcript and the audio.",
+    defaultWidget: "safety",
+    defaultRefresh: "1m",
+    fields: [
+      {
+        key: "location",
+        label: "Your location",
+        kind: "location",
+        required: true,
+        help: "GPS, network location, or another source on this device, or an address. Command Center confirms the place before you can save.",
+      },
+      {
+        key: "radiusMi",
+        label: "Radius (miles)",
+        kind: "number",
+        required: true,
+        placeholder: "10",
+        help: "How far from that place a call can be and still alert. 1 to 100 miles.",
+      },
+      {
+        key: "feeds",
+        label: "Feeds",
+        kind: "feeds",
+        required: true,
+        help: "Each feed is an online stream or an audio input. County and state are how a street heard on that feed gets placed. Not a zip code list.",
+      },
+      {
+        key: "enableCaptions",
+        label: "Captions",
+        kind: "boolean",
+        required: false,
+        help: "On by default. Audio starts muted. Captions follow the clip with Tiny English from Settings → Local AI when it is installed on this computer.",
+      },
+    ],
+  },
+  {
     typeId: "incident.opendata",
     category: "product",
     name: "Crime / incident (open data)",

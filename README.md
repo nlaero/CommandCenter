@@ -4,7 +4,7 @@
 
 [`multi-user`](https://github.com/nlaero/CommandCenter/tree/multi-user) is the future server version, branched from `main`. A server there can run on this computer or on another machine. Shared caption memory belongs on that branch. `main` keeps caption fixes on this computer.
 
-Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), and YouTube Live. Mounted source windows publish into the right-side alerts pane.
+Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane.
 
 ## Audio rule
 
@@ -13,7 +13,7 @@ Anything that plays audio:
 1. Starts **muted** (user unmutes).
 2. Supports closed captions. They show on their own while the sound is muted. CC is a separate control that keeps them up after you turn the sound on.
 
-Broadcastify Feed Owner already follows this (muted players + Settings captions / panel CC). Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
+Broadcastify Feed Owner already follows this (muted players + Settings captions / panel CC). Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
 
 ## Requirements
 
@@ -174,6 +174,25 @@ With captions enabled, the panel shows CC and a captions pane. Transcribe local 
 
 Live Owner API calls need the Tauri app. The browser Vite mock previews this feed without calling the API (CORS, and the password never leaves the desktop keyring).
 
+## Nearby public safety
+
+Online streams and audio inputs (a jack, Bluetooth, or the sound card). Each feed stores the county and state it covers. There is no zip code list. A short window is recorded on this computer and transcribed with Tiny English when that model is installed. Those captions are the input. The reader takes a dispatch type and a street from the words, then looks the street up in that county and state. If the point sits inside the radius around your confirmed location, it shows on this panel and in the alerts pane.
+
+A unit ID (Engine 12, Medic 4) is not a person. While that unit is dispatched, responding, or on scene, a later caption that names it stays on the same incident. Cleared, available, or left the scene releases the unit, and its next dispatch or response starts a new incident. The same person may keep one unit every day or move to another; a different person may use that unit ID tomorrow. This Tiny English build cannot learn a voice: whisper.cpp b5454 (`whisper-cli`, `ggml-tiny.en`) writes words and timestamps only, with no speaker key and no voice embedding. Command Center does not run a separate local diarizer and does not upload audio to identify a speaker. The hook is the optional `speaker` field on a transcript segment. It is stored as a person key, never as a unit ID. What is missing is a local diarizer that fills that key per person on this computer.
+
+Click a call for the transcript and the audio. Each transmission shows the unit that was on the air, and the person only when a local voice key is known. Playback starts muted. Captions are on unless you turn them off. The browser preview does not record. It runs the reader on a sample: Engine 12 responding and on scene are one incident, Engine 12 clears, and the next response is a second incident. The person stays "not learned."
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Your location | yes | Same choices as weather: GPS, network, another device source, or an address. Confirmed before save. |
+| Radius | yes | Miles from that place, 1–100. Farther calls stay on the panel and off the alerts pane. |
+| Feeds | yes | Online URL or an audio input. Name, county, and state on each. Up to 8. |
+| Captions | no | Default on. Uses Tiny English from Settings → Local AI. |
+
+ffmpeg has to be on PATH for a real recording. The desktop app records the feed. Audio is not uploaded.
+
+**In the app:** Settings → Source catalog → Nearby public safety → Configure. Find your location, set the radius, add each feed with its county and state. Save & add to board.
+
 ## Cameras and YouTube
 
 Public / HTTP camera plays the link in the panel. A still image refreshes on the source interval. It has no audio, so the panel does not generate captions and does not show a caption line. An MP4 or WebM file plays in the video element. An HLS playlist (`.m3u8`), including a master playlist, is decoded in the panel. The window shows the picture and the camera label. It does not print the saved fields.
@@ -196,7 +215,7 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 ## Shell behavior
 
 - Empty board on first launch
-- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, plus file / HTTP / SQLite / system-metrics stubs
+- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
 - Configure → Save or Save & add to board
 - Settings → Panel rotation for any mix of configured sources in one panel
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
@@ -256,6 +275,7 @@ Checking does not publish a release. Installers stay unpublished until asked.
 
 ```bash
 npm run test:rust
+node --experimental-strip-types src/lib/safety.test.ts
 npm run build
 ```
 

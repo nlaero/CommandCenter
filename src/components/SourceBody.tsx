@@ -4,6 +4,7 @@ import { useSourceRevision } from "../lib/sourceRefresh";
 import type { SourceConfig } from "../types";
 import { BroadcastifyPanel } from "./BroadcastifyPanel";
 import { CameraPanel } from "./CameraPanel";
+import { SafetyPanel } from "./SafetyPanel";
 import { IncidentPanel } from "./IncidentPanel";
 import { QuakePanel } from "./QuakePanel";
 import { WeatherPanel } from "./WeatherPanel";
@@ -28,6 +29,12 @@ export function SourceBody({ sourceId, source }: Props) {
   if (source.type === "broadcastify.owner") {
     return (
       <BroadcastifyPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
+  }
+
+  if (source.type === "safety.nearby") {
+    return (
+      <SafetyPanel sourceId={sourceId} source={source} configRevision={revision} />
     );
   }
 
