@@ -3,6 +3,7 @@ pub mod calls;
 pub mod incident;
 pub mod quake;
 pub mod space;
+pub mod traffic;
 pub mod weather;
 pub mod x;
 
@@ -35,6 +36,9 @@ pub struct SourcePayload {
     /// Present for `x.follow`. Posts from accounts the signed-in user follows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub x_feed: Option<x::FollowFeed>,
+    /// Present for `traffic.roads`. Regional map plus road incidents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traffic: Option<traffic::TrafficPayload>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -74,6 +78,7 @@ pub fn fetch_source(
                 quake: None,
                 space: None,
                 x_feed: None,
+                traffic: None,
             })
         }
         "broadcastify.calls" => {
@@ -91,6 +96,7 @@ pub fn fetch_source(
                 quake: None,
                 space: None,
                 x_feed: None,
+                traffic: None,
             })
         }
         "broadcastify.owner" => {
@@ -108,6 +114,7 @@ pub fn fetch_source(
                 quake: None,
                 space: None,
                 x_feed: None,
+                traffic: None,
             })
         }
         "weather.openmeteo" => {
@@ -125,6 +132,7 @@ pub fn fetch_source(
                 quake: None,
                 space: None,
                 x_feed: None,
+                traffic: None,
             })
         }
         "usgs.earthquake" => {
@@ -141,6 +149,7 @@ pub fn fetch_source(
                 quake: Some(result.quake),
                 space: None,
                 x_feed: None,
+                traffic: None,
             })
         }
         "noaa.space" => {
@@ -157,6 +166,7 @@ pub fn fetch_source(
                 quake: None,
                 space: Some(result.space),
                 x_feed: None,
+                traffic: None,
             })
         }
         "x.follow" => {
@@ -173,6 +183,25 @@ pub fn fetch_source(
                 quake: None,
                 space: None,
                 x_feed: Some(result.feed),
+                traffic: None,
+            })
+        }
+        "traffic.roads" => {
+            let secrets = resolve_secrets(&source.secrets)?;
+            let result = traffic::fetch(source, &secrets)?;
+            Ok(SourcePayload {
+                source_id: source_id.to_string(),
+                type_id: source.type_id.clone(),
+                fetched_at: result.fetched_at,
+                attribution: Some(result.attribution),
+                note: result.note,
+                incidents: vec![],
+                feed: None,
+                weather: None,
+                quake: None,
+                space: None,
+                x_feed: None,
+                traffic: Some(result.traffic),
             })
         }
         other => Err(SourceError::Message(format!(

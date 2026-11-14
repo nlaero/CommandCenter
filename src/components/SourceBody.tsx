@@ -11,6 +11,7 @@ import { SafetyPanel } from "./SafetyPanel";
 import { IncidentPanel } from "./IncidentPanel";
 import { QuakePanel } from "./QuakePanel";
 import { SpacePanel } from "./SpacePanel";
+import { TrafficPanel } from "./TrafficPanel";
 import { WeatherPanel } from "./WeatherPanel";
 import { XPanel } from "./XPanel";
 
@@ -79,6 +80,12 @@ export function SourceBody({ sourceId, source, sources = {} }: Props) {
 
   if (source.type === "x.follow") {
     return <XPanel sourceId={sourceId} source={source} configRevision={revision} />;
+  }
+
+  if (source.type === "traffic.roads") {
+    return (
+      <TrafficPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
   }
 
   if (source.type === "camera.http_image" || source.type === "video.youtube") {
