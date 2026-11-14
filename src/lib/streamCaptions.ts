@@ -1,9 +1,11 @@
 /**
  * Caption timing for camera and file panels.
  *
- * Streams that already include captions (HLS WebVTT or CEA-708, YouTube) use those.
- * Everything else is transcribed on this computer. YouTube media is never fetched
- * for that — the embed supplies its own captions.
+ * A still image has no audio, so it is not transcribed and has no caption line.
+ * HLS WebVTT and CEA-708 are used when the playlist has them. A video file or an
+ * HLS stream with no caption track is transcribed on this computer. YouTube media
+ * is never fetched for that — the embed supplies its own captions. If the audio
+ * has no speech, the line stays empty.
  */
 
 export type HlsCaptionPlan =
@@ -43,11 +45,22 @@ export function blocksCaptionDownload(url: string): boolean {
   );
 }
 
+const MUSIC_MARK = /[\u2669\u266A\u266B\u266C\u266D\u266E\u266F]/g;
+
 export function cleanCaptionText(text: string): string {
   const trimmed = text.replace(/\s+/g, " ").trim();
   if (!trimmed) return "";
-  if (/^\[?\s*(blank[_\s-]?audio|silence|inaudible)\s*\]?$/i.test(trimmed)) return "";
-  return trimmed;
+  if (/^\[?\s*(blank[_\s-]?audio|silence|inaudible|music|applause|laughter)\s*\]?$/i.test(trimmed)) return "";
+  const words = trimmed
+    .replace(MUSIC_MARK, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return "";
+  if (words.length > 1 && words.every((word) => word === words[0])) return "";
+  return trimmed.replace(MUSIC_MARK, " ").replace(/\s+/g, " ").trim();
 }
 
 export function hlsHasEmbeddedCaptions(playlist: string): boolean {

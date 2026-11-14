@@ -92,7 +92,11 @@ assert.equal(blocksCaptionDownload("https://cdn.example/hls/playlist.m3u8"), fal
 
 assert.equal(cleanCaptionText("  hello   there "), "hello there");
 assert.equal(cleanCaptionText("[BLANK_AUDIO]"), "");
-assert.equal(cleanCaptionText("♪ ♪"), "♪ ♪");
+assert.equal(cleanCaptionText("♪ ♪"), "");
+assert.equal(cleanCaptionText("♪ Mama Mama Mama ♪"), "");
+assert.equal(cleanCaptionText("[Music]"), "");
+assert.equal(cleanCaptionText("Copy"), "Copy");
+assert.equal(cleanCaptionText("engine twelve responding"), "engine twelve responding");
 
 assert.deepEqual(fileCaptionWindow(15.2, 12), { startSec: 12, durationSec: 12 });
 assert.deepEqual(fileCaptionWindow(0, 12), { startSec: 0, durationSec: 12 });

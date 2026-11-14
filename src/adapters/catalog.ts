@@ -128,7 +128,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     category: "product",
     name: "Public / HTTP camera",
     description:
-      "An image, MP4/WebM file, or HLS playlist (.m3u8) you are allowed to view. Plays in the panel, muted until you turn sound on. If the stream has no captions, Command Center writes them on this computer and shows them while the sound is muted.",
+      "A still image, an MP4/WebM file, or an HLS playlist (.m3u8) you are allowed to view. A still refreshes on its interval and has no caption line. Video plays muted until you turn sound on. If that video has no captions, Command Center writes them on this computer and shows them while the sound is muted. The line stays empty when there is no speech.",
     defaultWidget: "camera",
     defaultRefresh: "30s",
     fields: [
@@ -138,7 +138,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         kind: "url",
         required: true,
         placeholder: "https://…/playlist.m3u8",
-        help: "Still image, video file, or HLS playlist. Captions in the stream are used when they exist. Otherwise Tiny English transcribes the audio here. A YouTube link plays here too, or use YouTube Live.",
+        help: "A JPEG or other still refreshes in the panel. It has no audio, so nothing is transcribed and no caption line is shown. An HLS playlist or video file plays muted. Captions in the stream are used when they exist. Otherwise Tiny English transcribes the audio here, and the line stays blank when nobody is speaking.",
       },
       {
         key: "label",

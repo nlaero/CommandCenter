@@ -12,6 +12,7 @@ import { useStreamCaptions } from "../lib/useStreamCaptions";
 import {
   classifyPlayback,
   fetchMedia,
+  playbackHasAudio,
   isYoutubeUrl,
   looksLikeImage,
   looksLikePlaylist,
@@ -233,8 +234,14 @@ export function CameraPanel({ source }: Props) {
   const [imageToken, setImageToken] = useState(() => Date.now());
   const videoRef = useRef<HTMLVideoElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const showCaptions = captionsVisible(muted, captionsOn);
-  const generated = useStreamCaptions({ show: showCaptions, kind, url: rawUrl, videoRef });
+  const audible = playbackHasAudio(kind);
+  const showCaptions = audible && captionsVisible(muted, captionsOn);
+  const generated = useStreamCaptions({
+    show: showCaptions,
+    kind: kind === "hls" || kind === "file" ? kind : null,
+    url: audible ? rawUrl : "",
+    videoRef,
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -368,7 +375,7 @@ export function CameraPanel({ source }: Props) {
     setCaptionsOn((current) => !current);
   }
 
-  const showMediaControls = kind === "hls" || kind === "file" || kind === "youtube";
+  const showMediaControls = audible;
   const badge =
     phase === "error" ? "Offline" : kind === "image" ? "Still" : kind === "file" ? "Video" : "Live";
   const iframeSrc = embed;
@@ -454,12 +461,12 @@ export function CameraPanel({ source }: Props) {
             {status}
           </div>
         ) : null}
-        {showCaptions && generated.text ? (
+        {audible && showCaptions && generated.text ? (
           <div className="camera-captions" aria-live="polite">
             <span>{generated.text}</span>
           </div>
         ) : null}
-        {showCaptions && !generated.text && generated.status ? (
+        {audible && showCaptions && !generated.text && generated.status ? (
           <div className="camera-caption-note" role="status">
             {generated.status}
           </div>
