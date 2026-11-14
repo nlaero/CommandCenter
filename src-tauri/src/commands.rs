@@ -210,6 +210,22 @@ pub fn fetch_source_payload(args: FetchSourceArgs) -> Result<SourcePayload, Comm
 }
 
 #[tauri::command]
+pub async fn fetch_media_url(
+    url: String,
+    range: Option<String>,
+) -> Result<tauri::ipc::Response, CommandError> {
+    let body = tauri::async_runtime::spawn_blocking(move || {
+        crate::media::fetch_media(&url, range.as_deref())
+    })
+    .await
+    .map_err(|_| CommandError {
+        message: "Couldn't reach that stream.".into(),
+    })?
+    .map_err(|message| CommandError { message })?;
+    Ok(tauri::ipc::Response::new(body))
+}
+
+#[tauri::command]
 pub fn add_panel_to_board(args: AddPanelArgs) -> Result<AppState, CommandError> {
     let mut loaded = config::load_or_create()?;
     let board = loaded

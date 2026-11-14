@@ -396,10 +396,7 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
 
         const panel: Panel = {
           id: panelId,
-          title:
-            adapter.typeId === "broadcastify.owner" && isPennHillsPreset(cleanedParams)
-              ? PENN_HILLS_FEED.name
-              : adapter.name,
+          title: panelTitleFor(adapter, cleanedParams),
           widget: adapter.defaultWidget,
           source: sourceId,
           options: { typeId: adapter.typeId },
@@ -481,7 +478,11 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
       const hasQuake = memberTypes.includes("usgs.earthquake");
       const hasWeather = memberTypes.includes("weather.openmeteo");
       const hasRichPanel = memberTypes.some(
-        (type) => type === "incident.opendata" || type === "broadcastify.owner",
+        (type) =>
+          type === "incident.opendata" ||
+          type === "broadcastify.owner" ||
+          type === "camera.http_image" ||
+          type === "video.youtube",
       );
       // Match the single-source panel size so a weather or quake slot is not crushed.
       const layoutSize = hasQuake
@@ -544,7 +545,7 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
           ?.panels.reduce((max, p) => Math.max(max, p.layout.y + p.layout.h), 0) ?? 0;
       const panel: Panel = {
         id: panelId,
-        title: def?.name ?? source.type,
+        title: def ? panelTitleFor(def, source.params) : source.type,
         widget: def?.defaultWidget ?? "kpi",
         source: sourceId,
         options: { typeId: source.type },
@@ -1007,6 +1008,20 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
   );
 }
 
+function panelTitleFor(
+  adapter: AdapterDefinition,
+  params: Record<string, unknown>,
+): string {
+  if (adapter.typeId === "broadcastify.owner" && isPennHillsPreset(params)) {
+    return PENN_HILLS_FEED.name;
+  }
+  if (adapter.typeId === "camera.http_image" || adapter.typeId === "video.youtube") {
+    const label = typeof params.label === "string" ? params.label.trim() : "";
+    if (label) return label;
+  }
+  return adapter.name;
+}
+
 function panelLayoutFor(
   typeId: string,
   panelId: string,
@@ -1054,6 +1069,17 @@ function panelLayoutFor(
       h: 22,
       minW: 12,
       minH: 12,
+    };
+  }
+  if (typeId === "camera.http_image" || typeId === "video.youtube") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 24,
+      h: 18,
+      minW: 12,
+      minH: 10,
     };
   }
   return {

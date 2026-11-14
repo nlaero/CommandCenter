@@ -5,6 +5,7 @@ mod config;
 mod local_ai;
 mod local_server;
 mod location;
+mod media;
 mod secrets;
 mod sources;
 mod sync;
@@ -36,6 +37,7 @@ pub fn run() {
             commands::upsert_source,
             commands::store_secrets,
             commands::fetch_source_payload,
+            commands::fetch_media_url,
             commands::add_panel_to_board,
             commands::create_board,
             commands::set_active_board,
