@@ -98,7 +98,10 @@ function sameBoardAlerts(prev: BoardAlert[], next: BoardAlert[]): boolean {
       item.severity === other.severity &&
       item.category === other.category &&
       item.occurredAt === other.occurredAt &&
-      item.detailUrl === other.detailUrl
+      item.detailUrl === other.detailUrl &&
+      item.audioUrl === other.audioUrl &&
+      item.transcript === other.transcript &&
+      item.endsAt === other.endsAt
     );
   });
 }

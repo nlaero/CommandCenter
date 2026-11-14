@@ -155,7 +155,12 @@ fn owner_get(
         .get(OWNER_API)
         .query(params)
         .send()
-        .map_err(|e| super::SourceError::Message(format!("Broadcastify request failed: {e}")))?;
+        .map_err(|e| {
+            super::SourceError::Message(format!(
+                "Broadcastify request failed: {}",
+                e.without_url()
+            ))
+        })?;
 
     let status = response.status();
     let text = response

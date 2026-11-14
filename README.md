@@ -81,7 +81,7 @@ Files there:
 | Conditions + hourly | [Open-Meteo](https://open-meteo.com/) | None for non-commercial | Attribution required. Commercial / high volume needs a plan + API key. |
 | Radar tiles | [RainViewer](https://www.rainviewer.com/api.html) | None | Personal/educational; credit RainViewer. Max zoom 7 on the 2026 public API. |
 | Satellite | [NOAA NESDIS GOES](https://www.star.nesdis.noaa.gov/goes/) GeoColor | None | CONUS / full-disk stills (RainViewer IR satellite ended 2026-01-01). |
-| Basemap | CARTO Dark Matter | None | Attribution in the panel footer. |
+| Basemap | Esri Dark Gray | None | Same keyless canvas as the quake map. CARTO's public raster tiles now ask for an API key. |
 
 Optional Open-Meteo commercial key goes in the keyring / `secrets.local.json` as `weather.optional_key` — never in `config.yaml`.
 
@@ -183,7 +183,7 @@ Other catalog entries stay stubs until their adapters land.
 
 ## Sign in
 
-New installs ask for an account before the board opens. Configs saved before sign-in existed stay open until you turn on **Require sign-in** under Settings → Account.
+The board asks for an account before it opens. Older configs that had sign-in turned off are switched on the next time the app loads. There is no local-only mode.
 
 Create the account on that same screen (Sign in / Create account). There is no separate admin signup. After it succeeds you land on the board; restarting the app uses the refresh token until you sign out or it expires.
 
@@ -191,7 +191,7 @@ The auth-server URL is a setting. It starts at `http://100.101.141.93:8080`. Cha
 
 Access and refresh tokens go in the OS keyring (`auth.access_token`, `auth.refresh_token`). The password is not stored. Broadcastify and other source secrets stay in the keyring too and are not sent to auth-server.
 
-Boards, layout, and source setup (including the names of secrets, not their values) are stored on auth-server for the signed-in account. Signing in on another computer replaces the local board with that copy. The auth-server URL and **Require sign-in** stay on this computer. If auth-server is unreachable, the board you already have stays put. `GET /settings` and `PUT /settings` are the account document; a missing route leaves the local board alone.
+Boards, layout, and source setup (including the names of secrets, not their values) are stored on auth-server for the signed-in account. Signing in on another computer replaces the local board with that copy. The auth-server URL stays on this computer. If auth-server is unreachable, the board you already have stays put. `GET /settings` and `PUT /settings` are the account document; a missing route leaves the local board alone.
 
 Sign out from the toolbar. The username stays filled in on the sign-in screen.
 

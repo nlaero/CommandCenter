@@ -11,7 +11,6 @@ function browserProxy(): Plugin {
     "/proxy/open-meteo": "https://api.open-meteo.com",
     "/proxy/rainviewer-api": "https://api.rainviewer.com",
     "/proxy/rainviewer-tiles": "https://tilecache.rainviewer.com",
-    "/proxy/carto": "https://basemaps.cartocdn.com",
     "/proxy/goes": "https://cdn.star.nesdis.noaa.gov",
     "/proxy/nws": "https://api.weather.gov",
     "/proxy/usgs": "https://earthquake.usgs.gov",

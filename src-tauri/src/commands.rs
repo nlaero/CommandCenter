@@ -7,6 +7,7 @@ use crate::sources::{self, SourcePayload};
 use crate::sync;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::sync::{mpsc, OnceLock};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -415,7 +416,35 @@ fn auth_service() -> AuthService<auth::KeyringStore> {
 
 /// Best-effort upload after a local board or source save. A down server leaves
 /// the saved file in place. Edit mode and auth settings are not published.
+///
+/// The upload runs after the command returns. Layout drags and Settings saves
+/// should not sit on the auth-server connect timeout (the default host is a
+/// tailnet address). Queued saves collapse to the newest board.
 fn publish_settings(state: &AppState) {
+    if !state.auth.enabled {
+        return;
+    }
+    let _ = publish_sender().send(state.clone());
+}
+
+fn publish_sender() -> mpsc::Sender<AppState> {
+    static TX: OnceLock<mpsc::Sender<AppState>> = OnceLock::new();
+    TX.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<AppState>();
+        std::thread::spawn(move || {
+            while let Ok(mut latest) = rx.recv() {
+                while let Ok(newer) = rx.try_recv() {
+                    latest = newer;
+                }
+                publish_settings_now(&latest);
+            }
+        });
+        tx
+    })
+    .clone()
+}
+
+fn publish_settings_now(state: &AppState) {
     if !state.auth.enabled {
         return;
     }

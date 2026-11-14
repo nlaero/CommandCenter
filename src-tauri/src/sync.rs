@@ -188,12 +188,14 @@ pub fn apply_document(state: &mut AppState, document: BoardDocument) {
 }
 
 /// Login / online restore. A stored account board replaces this computer's
-/// boards and sources. Auth settings and edit mode stay local.
+/// boards and sources. If this computer's cursor is still on that revision
+/// and the local board has edits that never uploaded, those edits are published
+/// instead of discarded. Auth settings and edit mode stay local.
 pub fn reconcile<S: TokenStore>(
     service: &AuthService<S>,
     state: &AppState,
     secret_values: &BTreeMap<String, String>,
-    _cursor: Option<SyncCursor>,
+    cursor: Option<SyncCursor>,
 ) -> Result<SyncWork, AuthError> {
     if !state.auth.enabled {
         return Ok(unchanged(state, None));
@@ -233,6 +235,24 @@ pub fn reconcile<S: TokenStore>(
                         revision: remote.revision,
                     }),
                 })
+            } else if cursor.as_ref().is_some_and(|item| {
+                item.user_id == user_id && item.revision == remote.revision
+            }) {
+                // This computer already had this revision and then edited.
+                // A failed upload must not be thrown away on the next launch.
+                match put_settings(service, state, &local, Some(remote.revision))? {
+                    PutResult::Saved(saved) => Ok(SyncWork {
+                        state: state.clone(),
+                        restored: false,
+                        published: true,
+                        cursor: Some(SyncCursor {
+                            user_id,
+                            revision: saved.revision,
+                        }),
+                    }),
+                    PutResult::Conflict(newer) => Ok(applied(state, newer, &user_id)),
+                    PutResult::Missing => Ok(unchanged(state, cursor)),
+                }
             } else {
                 Ok(applied(state, remote, &user_id))
             }
@@ -963,6 +983,55 @@ mod tests {
         assert!(restored.restored);
         assert_eq!(restored.state.boards[0].title, "Ops");
         assert_eq!(restored.state.boards[0].panels[0].id, "p1");
+    }
+
+    #[test]
+    fn same_revision_publishes_unpublished_local_edits() {
+        let (base, fake) = spawn_fake();
+        let (state, secrets) = with_ops(&base);
+        let client = service("user-1", "user-1.a");
+        let published = publish(&client, &state, &secrets, None).unwrap();
+        let cursor = published.cursor.clone();
+        let mut edited = state.clone();
+        edited.boards[0].title = "Desk edit".into();
+        let result = reconcile(&client, &edited, &secrets, cursor).unwrap();
+        assert!(result.published);
+        assert!(!result.restored);
+        assert_eq!(result.state.boards[0].title, "Desk edit");
+        let stored = fake.docs.lock().unwrap().get("user-1").unwrap().clone();
+        assert_eq!(stored.document["boards"][0]["title"], "Desk edit");
+        assert_eq!(stored.revision, 2);
+        assert!(!serde_json::to_string(&stored.document)
+            .unwrap()
+            .contains("super-secret-value"));
+    }
+
+    #[test]
+    fn older_cursor_yields_to_a_newer_account_board() {
+        let (base, fake) = spawn_fake();
+        let (state, secrets) = with_ops(&base);
+        let client = service("user-1", "user-1.a");
+        let published = publish(&client, &state, &secrets, None).unwrap();
+        let cursor = published.cursor.unwrap();
+        fake.docs.lock().unwrap().insert(
+            "user-1".into(),
+            Stored {
+                revision: cursor.revision + 2,
+                document: serde_json::json!({
+                    "version": 1,
+                    "activeBoardId": "home",
+                    "layout": {"cols": 48, "rowHeight": 12, "margin": [4, 4]},
+                    "boards": [{"id": "home", "title": "Other computer", "panels": []}],
+                    "sources": {}
+                }),
+            },
+        );
+        let mut local = state;
+        local.boards[0].title = "Desk edit".into();
+        let result = reconcile(&client, &local, &secrets, Some(cursor)).unwrap();
+        assert!(result.restored);
+        assert!(!result.published);
+        assert_eq!(result.state.boards[0].title, "Other computer");
     }
 
     #[test]

@@ -255,7 +255,9 @@ impl<S: TokenStore> AuthService<S> {
         next: AuthSettings,
     ) -> Result<AuthSettings, AuthError> {
         let _guard = token_lock();
-        let normalized = normalize_settings(next)?;
+        let mut normalized = normalize_settings(next)?;
+        // The board always uses an account. A client cannot turn sign-in off.
+        normalized.enabled = true;
         let old_origin = canonical_or_raw(&previous.base_url);
         if old_origin != normalized.base_url {
             if let Ok(old) = normalize_settings(previous.clone()) {
@@ -1468,7 +1470,10 @@ mod tests {
     #[test]
     fn disabled_auth_does_not_contact_the_tailnet() {
         let service = AuthService::with_store(MemoryStore::default());
-        let session = service.session(&AuthSettings::default());
+        let session = service.session(&AuthSettings {
+            enabled: false,
+            ..AuthSettings::default()
+        });
         assert!(!session.enabled);
         assert!(!session.signed_in);
         assert_eq!(session.base_url, DEFAULT_AUTH_BASE_URL);

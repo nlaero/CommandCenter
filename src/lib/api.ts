@@ -224,7 +224,14 @@ function browserNormalizeIncidents(body: unknown): Incident[] {
         lat = coords[1];
       }
       const category =
-        str("primary_type", "offense_category", "category", "type") ?? undefined;
+        str(
+          "primary_type",
+          "offense_sub_category",
+          "nibrs_offense_code_description",
+          "offense_category",
+          "category",
+          "type",
+        ) ?? undefined;
       const description =
         str("description", "nibrs_offense_code_description", "summary") ?? undefined;
       const title =
@@ -234,8 +241,9 @@ function browserNormalizeIncidents(body: unknown): Incident[] {
         category ??
         str("offense_sub_category") ??
         `Incident ${index + 1}`;
-      const severityText = (category ?? title).toUpperCase();
-      const severity: Incident["severity"] = /HOMICIDE|MURDER|SHOOTING|ROBBERY|ASSAULT|WEAPON|RAPE/.test(
+      const severityText = [category, description, title].filter(Boolean).join(" ").toUpperCase();
+      const severity: Incident["severity"] =
+        /HOMICIDE|MURDER|SHOOTING|ROBBERY|ASSAULT|WEAPON|RAPE|KIDNAP|SEX OFFENSE/.test(
         severityText,
       )
         ? "alert"
@@ -352,16 +360,10 @@ function latLonToTile(lat: number, lon: number, zoom: number): { x: number; y: n
 }
 
 function browserProxyUrl(
-  kind: "carto" | "rainviewer-tiles" | "goes",
+  kind: "rainviewer-tiles" | "goes",
   absoluteHttpsUrl: string,
 ): string {
   // Rewrite absolute provider URLs through Vite middleware for the browser mock only.
-  if (kind === "carto") {
-    return absoluteHttpsUrl.replace(
-      "https://basemaps.cartocdn.com",
-      "/proxy/carto",
-    );
-  }
   if (kind === "goes") {
     return absoluteHttpsUrl.replace(
       "https://cdn.star.nesdis.noaa.gov",
@@ -373,6 +375,10 @@ function browserProxyUrl(
     "/proxy/rainviewer-tiles",
   );
 }
+
+/** Esri Dark Gray. Path is `{z}/{y}/{x}`. CARTO's keyless tiles now ask for an API key. */
+const ESRI_DARK =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile";
 
 const GOES_CONUS =
   "https://cdn.star.nesdis.noaa.gov/GOES16/ABI/CONUS/GEOCOLOR/latest.jpg";
@@ -404,10 +410,7 @@ function buildScope(
       const y = cy + dy;
       if (y < 0 || y >= n) continue;
       const x = (((cx + dx) % n) + n) % n;
-      const baseUrl = browserProxyUrl(
-        "carto",
-        `https://basemaps.cartocdn.com/dark_all/${meta.zoom}/${x}/${y}.png`,
-      );
+      const baseUrl = `${ESRI_DARK}/${meta.zoom}/${y}/${x}`;
       tiles.push({
         x,
         y,
@@ -540,7 +543,7 @@ async function browserFetchWeather(source: SourceConfig): Promise<SourcePayload>
     typeId: source.type,
     fetchedAt: new Date().toISOString(),
     attribution:
-      "Open-Meteo · RainViewer radar · NOAA GOES / NESDIS satellite · NWS alerts · CARTO basemap",
+      "Open-Meteo · RainViewer radar · NOAA GOES / NESDIS satellite · NWS alerts · Esri basemap",
     note: "Browser mock fetch via Vite proxy. Prefer npm run tauri:dev for the native path.",
     incidents: [],
     weather,
