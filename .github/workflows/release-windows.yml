@@ -59,8 +59,26 @@ jobs:
       - name: Check the Tiny English installer script
         run: node scripts/fetch-tiny-en.test.mjs
 
+      # Pull requests and v* tags both download the model here. It is not committed.
       - name: Stage Tiny English for the installer
         run: node scripts/fetch-tiny-en.mjs
+
+      - name: Confirm Tiny English is staged
+        shell: pwsh
+        run: |
+          $bundle = "src-tauri\windows\tiny-en\bundle.nsh"
+          $model = "src-tauri\windows\tiny-en\ggml-tiny.en.bin"
+          if (-not (Test-Path -LiteralPath $bundle)) {
+            throw "Tiny English is not staged. From the repo root run: node scripts/fetch-tiny-en.mjs"
+          }
+          if (-not (Test-Path -LiteralPath $model)) {
+            throw "Tiny English model was not staged."
+          }
+          $bytes = (Get-Item -LiteralPath $model).Length
+          Write-Host "Staged Tiny English ($bytes bytes) for makensis."
+          if ($bytes -lt 70000000) {
+            throw "Staged model is $bytes bytes."
+          }
 
       - name: Build the NSIS installer
         run: npm run tauri:build -- --bundles nsis
