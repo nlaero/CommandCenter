@@ -2,7 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import process from "node:process";
-import { transcribeClip } from "./scripts/local-captions.mjs";
+import { captionFailureText, transcribeClip } from "./scripts/local-captions.mjs";
 
 const host = process.env.TAURI_DEV_HOST;
 
@@ -204,7 +204,7 @@ function captionProxy(): Plugin {
             if (tooBig) {
               res.statusCode = 413;
               res.setHeader("content-type", "application/json");
-              res.end(JSON.stringify({ message: "Couldn't create captions on this device." }));
+              res.end(JSON.stringify({ message: "That caption request was too large." }));
               return;
             }
             try {
@@ -227,7 +227,7 @@ function captionProxy(): Plugin {
               res.setHeader("cache-control", "no-store");
               res.end(
                 JSON.stringify({
-                  message: err instanceof Error ? err.message : "Couldn't create captions on this device.",
+                  message: captionFailureText(err),
                 }),
               );
             }

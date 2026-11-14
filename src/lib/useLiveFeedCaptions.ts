@@ -9,7 +9,7 @@ import {
   openFeedCaptionSession,
   type FeedCaptionLine,
 } from "./feedCaptions";
-import { transcribeMediaLocal } from "./captions";
+import { captionFailureText, transcribeMediaLocal } from "./captions";
 import { cleanCaptionText } from "./streamCaptions";
 
 const RETRY_MS = 4_000;
@@ -106,7 +106,7 @@ export function useLiveFeedCaptions(options: {
           windowIndex += 1;
         } catch (err) {
           if (cancelled) return;
-          const message = err instanceof Error && err.message.trim() ? err.message : "Couldn't create captions on this device.";
+          const message = captionFailureText(err);
           setStatus(message);
           setRunning(false);
           await wait(RETRY_MS);

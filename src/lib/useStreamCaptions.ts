@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { activeCaptionAt, transcribeMediaLocal, type CaptionSegment } from "./captions";
+import { activeCaptionAt, captionFailureText, transcribeMediaLocal, type CaptionSegment } from "./captions";
 import {
   alignAudioSlices,
   cleanCaptionText,
@@ -187,7 +187,7 @@ export function useStreamCaptions(options: {
           if (stopped) return;
           if (err instanceof DOMException && err.name === "AbortError") return;
           cache.set(job.key, []);
-          note = err instanceof Error && err.message.trim() ? err.message : "Couldn't create captions on this device.";
+          note = captionFailureText(err);
         } finally {
           pending.delete(job.key);
         }
@@ -248,7 +248,7 @@ export function useStreamCaptions(options: {
 
     void loadHls().catch((err: unknown) => {
       if (stopped || (err instanceof DOMException && err.name === "AbortError")) return;
-      note = err instanceof Error && err.message.trim() ? err.message : "Couldn't create captions on this device.";
+      note = captionFailureText(err);
       mode = "local";
       publish();
     });

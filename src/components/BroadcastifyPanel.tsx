@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   activeCaptionAt,
+  captionFailureText,
   transcribeArchiveLocal,
   type CaptionResult,
   type CaptionSegment,
@@ -216,7 +217,7 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
           status: "error",
           sourceUrl: item.audioUrl!,
           segments: [],
-          note: err instanceof Error ? err.message : String(err),
+          note: captionFailureText(err),
           generatedAt: new Date().toISOString(),
         },
       }));
