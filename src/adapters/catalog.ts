@@ -383,6 +383,39 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     ],
   },
   {
+    typeId: "audio.local",
+    category: "product",
+    name: "Local audio",
+    description:
+      "A jack or Bluetooth input on this computer. Playback starts muted. Rolling captions come from Tiny English on this computer. Scroll the list and it stays put until you jump to the latest line. A caption fix stays on this computer and is used the next time those words appear.",
+    defaultWidget: "audio",
+    fields: [
+      {
+        key: "label",
+        label: "Label",
+        kind: "string",
+        required: false,
+        placeholder: "Scanner",
+        help: "Panel title.",
+      },
+      {
+        key: "deviceId",
+        label: "Audio input",
+        kind: "audio",
+        required: true,
+        help: "A jack or Bluetooth radio on this computer. The sound starts muted. Captions run while it is muted.",
+      },
+      {
+        key: "enableCaptions",
+        label: "Captions",
+        kind: "boolean",
+        required: false,
+        defaultChecked: true,
+        help: "On by default. Tiny English writes the lines on this computer. A wrong line can be corrected here, and that fix stays on this computer.",
+      },
+    ],
+  },
+  {
     typeId: "safety.nearby",
     category: "product",
     name: "Nearby public safety",

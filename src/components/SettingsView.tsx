@@ -30,7 +30,9 @@ import {
   validateSourceFields,
 } from "../lib/api";
 import { ensureLocationParams, locationSaveError } from "../lib/location";
+import { localAudioSaveError } from "../lib/localAudio";
 import { blankFeed, feedsSaveError, normalizeSafetyParams } from "../lib/safety";
+import { LocalAudioField } from "./LocalAudioField";
 import { LocationField } from "./LocationField";
 import { SafetyFeedsField } from "./SafetyFeedsField";
 import { TelevisionSettings } from "./TelevisionSettings";
@@ -210,6 +212,9 @@ export function SettingsView({
       initial.enableCaptions = true;
       initial.feeds = [blankFeed()];
     }
+    if (typeId === "audio.local") {
+      initial.enableCaptions = true;
+    }
     setParams(initial);
     setSecrets(
       typeId === "broadcastify.owner"
@@ -249,7 +254,12 @@ export function SettingsView({
                       kind: "warn",
                       text: "Nearby alerts use sources already set up, including Broadcastify Feed Owner. Each one keeps the county and state it covers. Audio starts muted, and captions stay on while the sound is off.",
                     }
-                  : null,
+                  : typeId === "audio.local"
+                    ? {
+                        kind: "warn",
+                        text: "A jack or Bluetooth input on this computer. Playback starts muted. Captions roll from Tiny English here. Scroll the list and it stays put until Latest. A fix stays on this computer.",
+                      }
+                    : null,
     );
   }
 
@@ -274,6 +284,9 @@ export function SettingsView({
       if (nextParams.enableCaptions === undefined) {
         nextParams.enableCaptions = true;
       }
+    }
+    if (source.type === "audio.local" && nextParams.enableCaptions === undefined) {
+      nextParams.enableCaptions = true;
     }
     if (source.type === "broadcastify.owner") {
       const feedId = String(nextParams.feedId ?? "").trim();
@@ -419,6 +432,13 @@ export function SettingsView({
           return;
         }
       }
+      if (adapter.typeId === "audio.local") {
+        const audioError = localAudioSaveError(params);
+        if (audioError) {
+          setMessage({ kind: "error", text: audioError });
+          return;
+        }
+      }
       const readyParams = ensureLocationParams(adapter.fields, params);
       const validation = await validateSourceFields(required, readyParams, secretsProvided);
       if (!validation.ok) {
@@ -558,7 +578,8 @@ export function SettingsView({
           type === "broadcastify.calls" ||
           type === "camera.http_image" ||
           type === "video.youtube" ||
-          type === "safety.nearby",
+          type === "safety.nearby" ||
+          type === "audio.local",
       );
       // Match the single-source panel size so a weather or quake slot is not crushed.
       const layoutSize = hasQuake
@@ -1118,6 +1139,10 @@ function panelTitleFor(
     const label = typeof params.label === "string" ? params.label.trim() : "";
     if (label) return label;
   }
+  if (adapter.typeId === "audio.local") {
+    const label = typeof params.label === "string" ? params.label.trim() : "";
+    if (label) return label;
+  }
   return adapter.name;
 }
 
@@ -1157,6 +1182,17 @@ function panelLayoutFor(
       h: 46,
       minW: 22,
       minH: 24,
+    };
+  }
+  if (typeId === "audio.local") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 28,
+      h: 32,
+      minW: 16,
+      minH: 18,
     };
   }
   if (typeId === "broadcastify.owner" || typeId === "broadcastify.calls") {
@@ -1276,6 +1312,18 @@ function SourceForm({
                   {field.required ? <span className="req"> *</span> : null}
                 </label>
                 <SafetyFeedsField params={params} sources={sources} disabled={busy} onChange={onParams} />
+                {field.help ? <div className="help">{field.help}</div> : null}
+              </div>
+            );
+          }
+          if (field.kind === "audio") {
+            return (
+              <div className="field" key={field.key}>
+                <label htmlFor={field.key}>
+                  {field.label}
+                  {field.required ? <span className="req"> *</span> : null}
+                </label>
+                <LocalAudioField params={params} disabled={busy} onChange={onParams} />
                 {field.help ? <div className="help">{field.help}</div> : null}
               </div>
             );

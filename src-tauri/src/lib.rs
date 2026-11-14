@@ -4,6 +4,7 @@ mod cast;
 mod commands;
 mod config;
 mod local_ai;
+mod local_audio;
 mod local_server;
 mod location;
 mod media;
@@ -49,6 +50,8 @@ pub fn run() {
             commands::transcribe_audio_local,
             commands::transcribe_media_local,
             commands::list_audio_inputs,
+            commands::list_local_audio_inputs,
+            commands::listen_local_audio,
             commands::listen_safety_feed,
             commands::safety_clip,
             commands::auth_session,

@@ -137,6 +137,23 @@ pub fn transcribe(
     root: &Path,
     source_url: &str,
 ) -> Result<(Vec<TranscriptSegment>, String), TranscribeError> {
+    transcribe_file(root, source_url, true)
+}
+
+/// Tiny English words before this computer's caption fixes.
+/// Local audio keeps those words and applies the caption store once.
+pub fn transcribe_heard(
+    root: &Path,
+    source_url: &str,
+) -> Result<(Vec<TranscriptSegment>, String), TranscribeError> {
+    transcribe_file(root, source_url, false)
+}
+
+fn transcribe_file(
+    root: &Path,
+    source_url: &str,
+    apply_memory: bool,
+) -> Result<(Vec<TranscriptSegment>, String), TranscribeError> {
     if caption_download_blocked(source_url) {
         return Err(TranscribeError::Message(
             "YouTube audio is not downloaded. This panel uses YouTube's captions.".into(),
@@ -150,7 +167,7 @@ pub fn transcribe(
         .ok_or_else(|| TranscribeError::Message("Local AI is not installed.".into()))?;
     let audio = materialize_audio(source_url).map_err(TranscribeError::Message)?;
     let memory = ai_sync::load(root);
-    let result = run_whisper(root, &marker, &audio.path, &memory);
+    let result = run_whisper(root, &marker, &audio.path, &memory, apply_memory);
     drop(audio);
     let segments = result.map_err(TranscribeError::Message)?;
     let note = format!(
@@ -502,6 +519,7 @@ fn run_whisper(
     marker: &Marker,
     audio: &Path,
     memory: &AiMemory,
+    apply_memory: bool,
 ) -> Result<Vec<TranscriptSegment>, String> {
     let runtime = root.join(&marker.runtime_path);
     let model = root.join(&marker.model_path);
@@ -570,8 +588,10 @@ fn run_whisper(
         .map_err(|_| "The local model did not write a transcript.".to_string())?;
     let _ = fs::remove_file(&json_path);
     let mut segments = parse_whisper_json(&raw)?;
-    for segment in &mut segments {
-        segment.text = ai_sync::apply_corrections(&segment.text, memory);
+    if apply_memory {
+        for segment in &mut segments {
+            segment.text = ai_sync::apply_corrections(&segment.text, memory);
+        }
     }
     if segments.is_empty() {
         return Err("The model did not return any words.".into());
@@ -693,7 +713,7 @@ pub fn transcribe_media(
     let audio = prepare_whisper_audio(request.source_url, seek, duration)
         .map_err(TranscribeError::Message)?;
     let memory = ai_sync::load(root);
-    let mut segments = match run_whisper(root, &marker, &audio.path, &memory) {
+    let mut segments = match run_whisper(root, &marker, &audio.path, &memory, true) {
         Ok(segments) => segments,
         Err(err) if err.contains("did not return any words") => Vec::new(),
         Err(err) => return Err(TranscribeError::Message(err)),
