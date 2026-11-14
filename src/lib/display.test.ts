@@ -86,6 +86,14 @@ assert.equal(readDisplayPrefs().width, 1920);
 const saved = await applyDisplayPrefs({ ...readDisplayPrefs(), density: 0.5 });
 assert.equal(saved.density, 0.5);
 assert.equal(readDisplayPrefs().width, 1920);
+assert.deepEqual(readDisplayPrefs().screens, []);
+
+const withScreens = await applyDisplayPrefs({
+  ...readDisplayPrefs(),
+  screens: ["hdmi", " hdmi ", "", "tv"],
+});
+assert.deepEqual(withScreens.screens, ["hdmi", "tv"]);
+assert.equal(withScreens.density, 0.5);
 
 const sized = await applyDisplayPrefs({
   ...readDisplayPrefs(),
@@ -97,3 +105,4 @@ const sized = await applyDisplayPrefs({
 assert.equal(sized.density, 0.5);
 assert.equal(sized.width, 1600);
 assert.equal(sized.height, 900);
+assert.deepEqual(sized.screens, ["hdmi", "tv"]);

@@ -62,6 +62,11 @@ export type DisplayPrefs = {
   label: string;
   /** Multiplier on the board grid. Saved on this computer, shared with the television. */
   density: number;
+  /**
+   * Screens the board is split across. Empty means this window only.
+   * Saved on this computer, not on the account. The computer keeps setup.
+   */
+  screens: string[];
 };
 
 export type DisplayPreset = {
@@ -165,8 +170,23 @@ export function panelsThatFit(panelRows: number, viewport: number, density: numb
   return count;
 }
 
+export const BOARD_SCREEN_LIMIT = 8;
+
+export function normalizeScreenIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const id = item.trim();
+    if (!id || out.includes(id)) continue;
+    out.push(id);
+    if (out.length >= BOARD_SCREEN_LIMIT) break;
+  }
+  return out;
+}
+
 export function defaultDisplayPrefs(): DisplayPrefs {
-  return { mode: "auto", width: 1440, height: 900, label: "Window", density: 1 };
+  return { mode: "auto", width: 1440, height: 900, label: "Window", density: 1, screens: [] };
 }
 
 export function readDisplayPrefs(): DisplayPrefs {
@@ -183,6 +203,7 @@ export function readDisplayPrefs(): DisplayPrefs {
       height: size.height,
       label: typeof parsed.label === "string" && parsed.label.trim() ? parsed.label : mode === "fixed" ? "Custom" : "Window",
       density: clampBoardDensity(parsed.density),
+      screens: normalizeScreenIds(parsed.screens),
     };
   } catch {
     return defaultDisplayPrefs();
@@ -217,6 +238,19 @@ export function useBoardDensity(): number {
   return density;
 }
 
+export function useBoardScreens(): string[] {
+  const [screens, setScreens] = useState(() => readDisplayPrefs().screens);
+  useEffect(() => subscribeDisplayPrefs(() => setScreens(readDisplayPrefs().screens)), []);
+  return screens;
+}
+
+/** Remember which screens the board uses. Does not resize the window. */
+export function saveBoardScreens(screenIds: string[]): DisplayPrefs {
+  const next: DisplayPrefs = { ...readDisplayPrefs(), screens: normalizeScreenIds(screenIds) };
+  writeDisplayPrefs(next);
+  return next;
+}
+
 function frameDisplay(width: number, height: number): void {
   document.documentElement.style.setProperty("--cc-frame-w", `${width}px`);
   document.documentElement.style.setProperty("--cc-frame-h", `${height}px`);
@@ -243,6 +277,7 @@ export async function applyDisplayPrefs(prefs: DisplayPrefs): Promise<DisplayPre
     height: size.height,
     label: prefs.label?.trim() || (prefs.mode === "fixed" ? "Custom" : "Window"),
     density: clampBoardDensity(prefs.density),
+    screens: normalizeScreenIds(prefs.screens),
   };
   if (typeof document === "undefined") {
     writeDisplayPrefs(next);

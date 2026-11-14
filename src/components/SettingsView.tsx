@@ -14,6 +14,11 @@ import { ServerSetup } from "./ServerSetup";
 import { UpdatesBody, useUpdates } from "./UpdatesPanel";
 import { clampAutoHideSec, useAlerts } from "../lib/alerts";
 import {
+  applyDisplayWall,
+  listCastScreens,
+  type CastScreen,
+} from "../lib/cast";
+import {
   BOARD_DENSITIES,
   DISPLAY_PRESETS,
   applyDisplayPrefs,
@@ -23,6 +28,7 @@ import {
   subscribeDisplayPrefs,
   type DisplayPrefs,
 } from "../lib/display";
+import { displayWallSummary } from "../lib/span";
 import {
   addPanelToBoard,
   newId,
@@ -1438,13 +1444,48 @@ function DisplaySettings({
   const [customW, setCustomW] = useState(() => String(readDisplayPrefs().width));
   const [customH, setCustomH] = useState(() => String(readDisplayPrefs().height));
   const [busy, setBusy] = useState(false);
+  const [available, setAvailable] = useState<CastScreen[]>([]);
+  const [picked, setPicked] = useState<string[]>(() => readDisplayPrefs().screens);
 
-  useEffect(() => subscribeDisplayPrefs(() => setPrefs(readDisplayPrefs())), []);
+  useEffect(
+    () =>
+      subscribeDisplayPrefs(() => {
+        const next = readDisplayPrefs();
+        setPrefs((current) => {
+          const sameScreens =
+            current.screens.length === next.screens.length &&
+            current.screens.every((id, index) => id === next.screens[index]);
+          if (!sameScreens) setPicked(next.screens);
+          return next;
+        });
+      }),
+    [],
+  );
 
-  async function apply(next: Omit<DisplayPrefs, "density">) {
+  useEffect(() => {
+    let cancelled = false;
+    void listCastScreens()
+      .then((screens) => {
+        if (!cancelled) setAvailable(screens);
+      })
+      .catch((err) => {
+        if (!cancelled) onMessage(err instanceof Error ? err.message : String(err), "error");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // The settings alert is owned by the parent. Report the first load once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function apply(next: Omit<DisplayPrefs, "density" | "screens">) {
     setBusy(true);
     try {
-      const saved = await applyDisplayPrefs({ ...next, density: readDisplayPrefs().density });
+      const saved = await applyDisplayPrefs({
+        ...next,
+        density: readDisplayPrefs().density,
+        screens: readDisplayPrefs().screens,
+      });
       setPrefs(saved);
       setCustomW(String(saved.width));
       setCustomH(String(saved.height));
@@ -1486,6 +1527,41 @@ function DisplaySettings({
     prefs.mode === "auto"
       ? "Following the window"
       : `${prefs.label} · ${prefs.width} × ${prefs.height}`;
+  const livePicked = available.filter((screen) => picked.includes(screen.id));
+  const wallSummary =
+    picked.length >= 2 && livePicked.length < 2
+      ? "Those screens are not connected. Refresh, then use them."
+      : displayWallSummary(livePicked);
+
+  function toggleScreen(id: string) {
+    setPicked((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id].slice(0, 8),
+    );
+  }
+
+  async function refreshScreens() {
+    setBusy(true);
+    try {
+      setAvailable(await listCastScreens());
+    } catch (err) {
+      onMessage(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function useScreens(ids: string[]) {
+    setBusy(true);
+    try {
+      const text = await applyDisplayWall(ids);
+      setPicked(readDisplayPrefs().screens);
+      onMessage(text, "ok");
+    } catch (err) {
+      onMessage(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <>
@@ -1596,6 +1672,75 @@ function DisplaySettings({
         </button>
         <button type="button" className="btn" disabled={busy} onClick={() => void matchScreen()}>
           Match this screen
+        </button>
+      </div>
+
+      <p className="section-label" style={{ marginTop: 22 }}>
+        Screens
+      </p>
+      <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
+        The board can use more than one screen. Setup stays on this computer. Checked screens
+        each show their part of the board, at that screen's own size. A 58-inch or larger
+        television stays sharp at 3840 × 2160 or higher. Pick a television under Television when
+        it has to refuse a smaller picture.
+      </p>
+      <p className="display-current">{wallSummary}</p>
+      {available.length === 0 ? (
+        <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
+          No screens reported yet.
+        </p>
+      ) : (
+        <div className="source-list">
+          {available.map((screen) => {
+            const active = picked.includes(screen.id);
+            const badge = screen.current ? "this computer" : screen.sharp ? "4K" : "below 4K";
+            return (
+              <button
+                key={screen.id}
+                type="button"
+                aria-pressed={active}
+                className={`source-row display-preset${active ? " is-checked" : ""}`}
+                disabled={busy}
+                onClick={() => toggleScreen(screen.id)}
+              >
+                <div>
+                  <h3>
+                    {screen.name}
+                    <span className="badge">{badge}</span>
+                  </h3>
+                  <p>
+                    {screen.width} × {screen.height}
+                    {screen.current
+                      ? ". Setup stays here. Check it to show this screen's part of the board."
+                      : screen.sharp
+                        ? ". Sharp on a 58-inch or larger television."
+                        : ". This screen's own size. Soft on a 58-inch or larger television until it is set to 4K."}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div className="form-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy}
+          onClick={() => void useScreens(picked)}
+        >
+          Use these screens
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={busy || prefs.screens.length === 0}
+          onClick={() => void useScreens([])}
+        >
+          This window only
+        </button>
+        <button type="button" className="btn" disabled={busy} onClick={() => void refreshScreens()}>
+          Refresh screens
         </button>
       </div>
     </>
