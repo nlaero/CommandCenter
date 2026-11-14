@@ -2,7 +2,7 @@ import { USGS_FEED_OPTIONS } from "../lib/usgs";
 import { PENN_HILLS_FEED } from "../lib/broadcastifyPreset";
 import type { AdapterDefinition } from "../types";
 
-/** Built-in source types for Settings catalog. Integrations are stubs in Phase A. */
+/** Built-in source types for the Settings catalog. */
 export const ADAPTER_CATALOG: AdapterDefinition[] = [
   {
     typeId: "weather.openmeteo",
@@ -127,7 +127,8 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     typeId: "camera.http_image",
     category: "product",
     name: "Public / HTTP camera",
-    description: "Allowlisted municipal/DOT image or HLS URL you are authorized to use.",
+    description:
+      "An image, MP4/WebM file, or HLS playlist (.m3u8) you are allowed to view. Plays in the panel, muted until you turn sound on.",
     defaultWidget: "camera",
     defaultRefresh: "30s",
     fields: [
@@ -136,7 +137,8 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Image or stream URL",
         kind: "url",
         required: true,
-        placeholder: "https://…",
+        placeholder: "https://…/playlist.m3u8",
+        help: "Still image, video file, or HLS playlist. A YouTube link plays here too, or use YouTube Live.",
       },
       {
         key: "label",
@@ -150,10 +152,34 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Optional local recording",
         kind: "boolean",
         required: false,
-        help: "Recording pipeline is a stub in Phase A.",
+        help: "Saved with the camera. The panel does not record yet.",
       },
     ],
-    stubNote: "Live decode / FFmpeg sidecar comes later; panel is a placeholder.",
+  },
+  {
+    typeId: "video.youtube",
+    category: "product",
+    name: "YouTube Live",
+    description:
+      "A YouTube live stream or video. Paste a watch, live, share, or youtu.be link. It plays in the panel, muted, with the stream's captions when they exist.",
+    defaultWidget: "video",
+    fields: [
+      {
+        key: "url",
+        label: "YouTube URL",
+        kind: "url",
+        required: true,
+        placeholder: "https://www.youtube.com/watch?v=…",
+        help: "Watch, /live, youtu.be, or a channel live link such as youtube.com/@name/live.",
+      },
+      {
+        key: "label",
+        label: "Label",
+        kind: "string",
+        required: true,
+        placeholder: "City council live",
+      },
+    ],
   },
   {
     typeId: "camera.rtsp",

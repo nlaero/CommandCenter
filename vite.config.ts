@@ -181,9 +181,99 @@ async function proxyAuth(req: IncomingMessage, res: ServerResponse): Promise<voi
   res.end(buf);
 }
 
+const MEDIA_MAX_BYTES = 32 * 1024 * 1024;
+const MEDIA_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 CommandCenter/0.1";
+
+/** Same-origin fetch for HLS playlists and segments. Camera hosts often omit CORS. */
+function mediaProxy(): Plugin {
+  return {
+    name: "camera-media-proxy",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const raw = req.url ?? "";
+        if (!raw.startsWith("/proxy/media")) {
+          next();
+          return;
+        }
+        void proxyMedia(req, res).catch((err) => {
+          if (res.writableEnded) return;
+          res.statusCode = 502;
+          res.setHeader("content-type", "application/json");
+          res.setHeader("cache-control", "no-store");
+          res.end(
+            JSON.stringify({
+              message: err instanceof Error ? err.message : "Couldn't reach that stream.",
+            }),
+          );
+        });
+      });
+    },
+  };
+}
+
+async function proxyMedia(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const parsed = new URL(req.url ?? "/", "http://127.0.0.1");
+  const target = parsed.searchParams.get("u")?.trim() ?? "";
+  let upstreamUrl: URL;
+  try {
+    upstreamUrl = new URL(target);
+  } catch {
+    throw new Error("Enter an http or https link.");
+  }
+  if (upstreamUrl.protocol !== "http:" && upstreamUrl.protocol !== "https:") {
+    throw new Error("Enter an http or https link.");
+  }
+  const headers: Record<string, string> = { accept: "*/*", "user-agent": MEDIA_UA };
+  const range = req.headers.range;
+  if (typeof range === "string" && range.startsWith("bytes=")) headers.range = range;
+  const upstream = await fetch(upstreamUrl, { headers, redirect: "follow" });
+  if (!upstream.ok) {
+    res.statusCode = upstream.status;
+    res.setHeader("content-type", "application/json");
+    res.setHeader("cache-control", "no-store");
+    res.end(JSON.stringify({ message: `The stream replied HTTP ${upstream.status}.` }));
+    return;
+  }
+  const advertised = Number(upstream.headers.get("content-length") ?? "0");
+  if (Number.isFinite(advertised) && advertised > MEDIA_MAX_BYTES) {
+    res.statusCode = 413;
+    res.setHeader("content-type", "application/json");
+    res.setHeader("cache-control", "no-store");
+    res.end(JSON.stringify({ message: "That response is too large to play." }));
+    return;
+  }
+  const reader = upstream.body?.getReader();
+  if (!reader) throw new Error("Couldn't reach that stream.");
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MEDIA_MAX_BYTES) {
+      await reader.cancel();
+      res.statusCode = 413;
+      res.setHeader("content-type", "application/json");
+      res.setHeader("cache-control", "no-store");
+      res.end(JSON.stringify({ message: "That response is too large to play." }));
+      return;
+    }
+    chunks.push(Buffer.from(value));
+  }
+  res.statusCode = upstream.status;
+  const contentType = upstream.headers.get("content-type");
+  if (contentType) res.setHeader("content-type", contentType);
+  res.setHeader("x-cc-final-url", upstream.url);
+  res.setHeader("cache-control", "no-store");
+  const contentRange = upstream.headers.get("content-range");
+  if (contentRange) res.setHeader("content-range", contentRange);
+  res.end(Buffer.concat(chunks));
+}
+
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react(), browserProxy(), authDevProxy()],
+  plugins: [react(), browserProxy(), authDevProxy(), mediaProxy()],
   clearScreen: false,
   server: {
     port: 1420,

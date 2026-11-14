@@ -3,6 +3,7 @@ import { getAdapter } from "../adapters/catalog";
 import { useSourceRevision } from "../lib/sourceRefresh";
 import type { SourceConfig } from "../types";
 import { BroadcastifyPanel } from "./BroadcastifyPanel";
+import { CameraPanel } from "./CameraPanel";
 import { IncidentPanel } from "./IncidentPanel";
 import { QuakePanel } from "./QuakePanel";
 import { WeatherPanel } from "./WeatherPanel";
@@ -40,6 +41,10 @@ export function SourceBody({ sourceId, source }: Props) {
     return (
       <QuakePanel sourceId={sourceId} source={source} configRevision={revision} />
     );
+  }
+
+  if (source.type === "camera.http_image" || source.type === "video.youtube") {
+    return <CameraPanel source={source} />;
   }
 
   return (
