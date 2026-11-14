@@ -26,6 +26,7 @@ import {
 } from "../lib/api";
 import { ensureLocationParams, locationSaveError } from "../lib/location";
 import { LocationField } from "./LocationField";
+import { TelevisionSettings } from "./TelevisionSettings";
 import { useSourceRefresh } from "../lib/sourceRefresh";
 import type {
   AdapterDefinition,
@@ -37,7 +38,18 @@ import type {
   SourceConfig,
 } from "../types";
 
-type Tab = "sources" | "configured" | "rotation" | "alerts" | "display" | "account" | "server" | "ai" | "updates" | "paths";
+export type SettingsTab =
+  | "sources"
+  | "configured"
+  | "rotation"
+  | "alerts"
+  | "display"
+  | "television"
+  | "account"
+  | "server"
+  | "ai"
+  | "updates"
+  | "paths";
 
 const ROTATION_PRESETS = [
   { label: "15s", value: 15 },
@@ -61,6 +73,7 @@ type Props = {
   onClose: () => void;
   onState: (state: AppState) => void;
   onSession: (session: AuthSession) => void;
+  initialTab?: SettingsTab;
 };
 
 function requiredKeys(adapter: AdapterDefinition): string[] {
@@ -85,10 +98,18 @@ function fieldValue(
   return v === undefined || v === null ? "" : String(v);
 }
 
-export function SettingsView({ state, paths, session, onClose, onState, onSession }: Props) {
+export function SettingsView({
+  state,
+  paths,
+  session,
+  onClose,
+  onState,
+  onSession,
+  initialTab,
+}: Props) {
   const updates = useUpdates();
   const { notifySourceSaved } = useSourceRefresh();
-  const [tab, setTab] = useState<Tab>("sources");
+  const [tab, setTab] = useState<SettingsTab>(initialTab ?? "sources");
   const [selectedType, setSelectedType] = useState<string | null>(null);
   /** When set, Save updates this existing source id (panels auto-refresh). */
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
@@ -112,6 +133,10 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
   useEffect(() => {
     setHideDraft(String(alertsPrefs.autoHideSec));
   }, [alertsPrefs.autoHideSec]);
+
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
 
   const adapter = selectedType ? getAdapter(selectedType) : undefined;
   const readySources = useMemo(
@@ -610,6 +635,13 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
             >
               Display
             </button>
+            <button
+              type="button"
+              className={tab === "television" ? "active" : ""}
+              onClick={() => setTab("television")}
+            >
+              Television
+            </button>
             {AUTH_IN_APP ? (
               <button
                 type="button"
@@ -962,6 +994,12 @@ export function SettingsView({ state, paths, session, onClose, onState, onSessio
 
             {tab === "display" ? (
               <DisplaySettings
+                onMessage={(text, kind) => setMessage({ kind, text })}
+              />
+            ) : null}
+
+            {tab === "television" ? (
+              <TelevisionSettings
                 onMessage={(text, kind) => setMessage({ kind, text })}
               />
             ) : null}

@@ -1,8 +1,19 @@
 type Props = {
-  onOpenSettings: () => void;
+  onOpenSettings?: () => void;
+  displayOnly?: boolean;
 };
 
-export function EmptyBoard({ onOpenSettings }: Props) {
+export function EmptyBoard({ onOpenSettings, displayOnly = false }: Props) {
+  if (displayOnly) {
+    return (
+      <div className="empty-board">
+        <div>
+          <h1>Empty board</h1>
+          <p>Add a source on the computer. This screen only shows the board.</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="empty-board">
       <div>

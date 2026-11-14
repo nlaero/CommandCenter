@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertsPane } from "./components/AlertsPane";
 import { BoardSwitcher } from "./components/BoardSwitcher";
 import { BoardView } from "./components/BoardView";
-import { SettingsView } from "./components/SettingsView";
+import { SettingsView, type SettingsTab } from "./components/SettingsView";
+import { TvStage } from "./components/TvStage";
 import { AuthScreen } from "./components/AuthScreen";
 import { AlertsProvider } from "./lib/alerts";
 import { authLogout, loadAuthSession } from "./lib/auth";
 import { AUTH_IN_APP } from "./lib/authFeature";
+import { onCastSession, readCastSession, readCastView, type CastSession } from "./lib/cast";
 import { applyDisplayPrefs, readDisplayPrefs } from "./lib/display";
 import { syncAiMemory } from "./lib/aiMemory";
 import { syncBoard } from "./lib/sync";
@@ -22,6 +24,14 @@ import { SourceRefreshProvider } from "./lib/sourceRefresh";
 import type { AppState, AuthSession, ConfigPaths, GridItem } from "./types";
 
 export default function App() {
+  const view = readCastView();
+  if (view.tv) {
+    return (
+      <SourceRefreshProvider>
+        <TvStage preview={view.preview} />
+      </SourceRefreshProvider>
+    );
+  }
   return (
     <SourceRefreshProvider>
       <UpdatesProvider>
@@ -36,6 +46,8 @@ function AppShell() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [paths, setPaths] = useState<ConfigPaths | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>();
+  const [castSession, setCastSession] = useState<CastSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const syncedFor = useRef<string | null>(null);
@@ -46,6 +58,27 @@ function AppShell() {
 
   useEffect(() => {
     void applyDisplayPrefs(readDisplayPrefs()).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pull = () => {
+      void readCastSession()
+        .then((session) => {
+          if (!cancelled) setCastSession(session);
+        })
+        .catch(() => undefined);
+    };
+    pull();
+    const timer = window.setInterval(pull, 2000);
+    const stop = onCastSession((session) => {
+      if (!cancelled) setCastSession(session);
+    });
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      stop();
+    };
   }, []);
 
   useEffect(() => {
@@ -121,6 +154,7 @@ function AppShell() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === ",") {
         e.preventDefault();
+        setSettingsTab(undefined);
         setSettingsOpen(true);
       }
     }
@@ -246,10 +280,26 @@ function AppShell() {
             {state.editMode ? "Editing layout" : "Edit layout"}
           </button>
           <UpdateButton />
+          {castSession ? (
+            <button
+              type="button"
+              className="btn active"
+              onClick={() => {
+                setSettingsTab("television");
+                setSettingsOpen(true);
+              }}
+              title={`${castSession.targetName} · ${castSession.width} × ${castSession.height}`}
+            >
+              On the TV
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => {
+              setSettingsTab(undefined);
+              setSettingsOpen(true);
+            }}
             title="Settings (Ctrl/Cmd+,)"
           >
             Settings
@@ -289,7 +339,10 @@ function AppShell() {
                 state={state}
                 board={activeBoard}
                 width={width}
-                onOpenSettings={() => setSettingsOpen(true)}
+                onOpenSettings={() => {
+                  setSettingsTab(undefined);
+                  setSettingsOpen(true);
+                }}
                 onLayoutChange={onLayoutChange}
               />
             </div>
@@ -300,7 +353,11 @@ function AppShell() {
               state={state}
               paths={paths}
               session={session}
-              onClose={() => setSettingsOpen(false)}
+              initialTab={settingsTab}
+              onClose={() => {
+                setSettingsOpen(false);
+                setSettingsTab(undefined);
+              }}
               onState={setState}
               onSession={setSession}
             />

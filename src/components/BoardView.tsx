@@ -16,6 +16,10 @@ type Props = {
   width: number;
   onOpenSettings: () => void;
   onLayoutChange: (items: GridItem[]) => void;
+  /** Television output: no settings button, no layout editing. */
+  displayOnly?: boolean;
+  /** Overrides the saved row height so the board fills a large screen. */
+  rowHeight?: number;
 };
 
 function toLayout(items: GridItem[]): Layout {
@@ -48,6 +52,8 @@ export function BoardView({
   width,
   onOpenSettings,
   onLayoutChange,
+  displayOnly = false,
+  rowHeight,
 }: Props) {
   const layout = useMemo(
     () => toLayout(board.panels.map((p) => p.layout)),
@@ -55,7 +61,7 @@ export function BoardView({
   );
 
   if (board.panels.length === 0) {
-    return <EmptyBoard onOpenSettings={onOpenSettings} />;
+    return <EmptyBoard onOpenSettings={onOpenSettings} displayOnly={displayOnly} />;
   }
 
   return (
@@ -66,26 +72,26 @@ export function BoardView({
         </div>
       ) : null}
       <GridLayout
-        key={`grid-${state.editMode ? "edit" : "view"}`}
+        key={`grid-${state.editMode ? "edit" : "view"}-${rowHeight ?? state.layout.rowHeight}`}
         className="layout"
         layout={layout}
         width={Math.max(width, 320)}
         gridConfig={{
           cols: state.layout.cols,
-          rowHeight: state.layout.rowHeight,
+          rowHeight: rowHeight ?? state.layout.rowHeight,
           margin: state.layout.margin,
           containerPadding: [8, 8],
           maxRows: Infinity,
         }}
         dragConfig={{
-          enabled: state.editMode,
+          enabled: state.editMode && !displayOnly,
           handle: ".panel-header",
           cancel: "input,button,a,textarea,select",
           bounded: false,
           threshold: 3,
         }}
         resizeConfig={{
-          enabled: state.editMode,
+          enabled: state.editMode && !displayOnly,
           handles: ["se", "e", "s"],
         }}
         compactor={noCompactor}
