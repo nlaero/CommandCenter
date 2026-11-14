@@ -239,6 +239,44 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     ],
   },
   {
+    typeId: "noaa.space",
+    category: "product",
+    name: "Space weather / aurora",
+    description:
+      "NOAA SWPC alerts, the current R, S, and G scales, Kp, 10.7 cm flux, GOES X-ray, and the OVATION aurora forecast for a place you confirm. Pairs with Ham propagation / solar when that source is saved: its bands are marked from these same NOAA indices.",
+    defaultWidget: "space",
+    defaultRefresh: "5m",
+    fields: [
+      {
+        key: "location",
+        label: "Location",
+        kind: "location",
+        required: true,
+        help: "GPS, network location, or another source on this device, or an address. The aurora chance is the OVATION point nearest this place.",
+      },
+      {
+        key: "hemisphere",
+        label: "Aurora map",
+        kind: "select",
+        required: true,
+        options: [
+          { value: "auto", label: "Auto from this place" },
+          { value: "north", label: "Northern hemisphere" },
+          { value: "south", label: "Southern hemisphere" },
+        ],
+        help: "Auto uses the hemisphere of the confirmed place. The chance number always uses that place, even if you pick the other map.",
+      },
+      {
+        key: "showAurora",
+        label: "Show aurora map",
+        kind: "boolean",
+        required: false,
+        defaultChecked: true,
+        help: "Draw the NOAA OVATION forecast. The chance at your place still shows when this is off.",
+      },
+    ],
+  },
+  {
     typeId: "broadcastify.owner",
     category: "product",
     name: "Broadcastify (Feed Owner)",

@@ -205,6 +205,10 @@ export function SettingsView({
       initial.notableMinMag = 4.5;
       initial.autoPan = true;
     }
+    if (typeId === "noaa.space") {
+      initial.hemisphere = "auto";
+      initial.showAurora = true;
+    }
     if (typeId === "safety.nearby") {
       initial.radiusMi = 10;
       initial.enableCaptions = true;
@@ -249,7 +253,12 @@ export function SettingsView({
                       kind: "warn",
                       text: "Nearby alerts use sources already set up, including Broadcastify Feed Owner. Each one keeps the county and state it covers. Audio starts muted, and captions stay on while the sound is off.",
                     }
-                  : null,
+                  : typeId === "noaa.space"
+                    ? {
+                        kind: "warn",
+                        text: "NOAA SWPC alerts, scales, and the OVATION aurora forecast. No API key. The panel waits at least 5 minutes between polls. When Ham propagation / solar is saved, its bands are paired with these indices.",
+                      }
+                    : null,
     );
   }
 
@@ -1144,6 +1153,17 @@ function panelLayoutFor(
       y: yMax,
       w: 32,
       h: 34,
+      minW: 18,
+      minH: 18,
+    };
+  }
+  if (typeId === "noaa.space") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 32,
+      h: 36,
       minW: 18,
       minH: 18,
     };
