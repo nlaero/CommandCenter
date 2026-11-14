@@ -1,7 +1,7 @@
 import { AUTH_IN_APP } from "./authFeature";
 
 /** Browser preview only. The desktop app reads its version from the package. */
-const APP_VERSION = "0.1.3";
+const APP_VERSION = "0.1.4";
 
 export type UpdateProduct = {
   id: string;
@@ -67,7 +67,7 @@ function currentReport(): UpdateReport {
         applyLabel: "",
         assetName: null,
         message:
-          "Command Center 0.1.3 is current. The latest GitHub tag is prerelease v0.1.0-test.1, which is not a newer release.",
+          "Command Center 0.1.4 is current. The latest GitHub tag is prerelease v0.1.0-test.1, which is not a newer release.",
         error: null,
       },
       {
@@ -114,7 +114,7 @@ function availableReport(): UpdateReport {
         canApply: true,
         applyLabel: "Download and install",
         assetName: "Command.Center_0.2.0_x64-setup.exe",
-        message: "0.2.0 is available. This copy is 0.1.3.",
+        message: "0.2.0 is available. This copy is 0.1.4.",
         error: null,
       },
       {
