@@ -335,6 +335,54 @@ export type QuakePayload = {
   notModified: boolean;
 };
 
+export type TrafficSeverity = "info" | "warn" | "alert";
+
+export type TrafficKind = "incident" | "closure" | "roadwork" | "condition" | "delay";
+
+export type TrafficBounds = {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+};
+
+export type TrafficFeedReport = {
+  id: string;
+  name: string;
+  status: "live" | "needs-credentials" | "error";
+  detail?: string;
+};
+
+/** One road incident, closure, delay, or driving condition inside the region. */
+export type TrafficEvent = {
+  id: string;
+  title: string;
+  kind: TrafficKind;
+  severity: TrafficSeverity;
+  /** Closure, crash, lane restriction, delay, or a surface that slows a trip. */
+  affectsTravel: boolean;
+  summary?: string;
+  road?: string;
+  direction?: string;
+  lat: number;
+  lon: number;
+  updatedAt?: string;
+  detailUrl?: string;
+  feedName: string;
+};
+
+export type TrafficPayload = {
+  lat: number;
+  lon: number;
+  label?: string;
+  radiusMi: number;
+  bounds: TrafficBounds;
+  feeds: TrafficFeedReport[];
+  events: TrafficEvent[];
+  /** Clear or wet segments counted and left off the list. */
+  routineOmitted: number;
+};
+
 export type SourcePayload = {
   sourceId: string;
   typeId: string;
@@ -345,4 +393,5 @@ export type SourcePayload = {
   feed?: FeedStatus;
   weather?: WeatherPayload;
   quake?: QuakePayload;
+  traffic?: TrafficPayload;
 };

@@ -28,6 +28,7 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     source?.type === "broadcastify.calls" ||
     source?.type === "weather.openmeteo" ||
     source?.type === "usgs.earthquake" ||
+    source?.type === "traffic.roads" ||
     source?.type === "safety.nearby" ||
     source?.type === "camera.http_image" ||
     source?.type === "video.youtube" ||
@@ -36,6 +37,7 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     panel.widget === "calls" ||
     panel.widget === "weather" ||
     panel.widget === "quake" ||
+    panel.widget === "traffic" ||
     panel.widget === "safety" ||
     panel.widget === "video" ||
     panel.widget === "rotate";

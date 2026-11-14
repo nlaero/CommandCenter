@@ -3,8 +3,9 @@ import type {
   Incident,
   IncidentSeverity,
   QuakeEvent,
+  TrafficEvent,
   WeatherAlert,
-} from "../types";
+} from "../types.ts";
 
 export function boardAlertId(sourceId: string, rawId: string): string {
   return `${sourceId}::${rawId}`;
@@ -102,6 +103,35 @@ function quakeSummary(event: QuakeEvent): string {
   if (event.depthKm != null) parts.push(`${event.depthKm.toFixed(1)} km deep`);
   if (event.place) parts.push(event.place);
   return parts.join(" · ");
+}
+
+/** Road incidents and conditions that can change travel time. */
+export function trafficEventsToBoardAlerts(args: {
+  sourceId: string;
+  sourceType: string;
+  sourceLabel: string;
+  events: TrafficEvent[];
+}): BoardAlert[] {
+  return args.events
+    .filter((event) => event.affectsTravel && (event.severity === "warn" || event.severity === "alert"))
+    .map((event) => {
+      const summary = [event.road, event.direction, event.summary].filter(Boolean).join(" · ");
+      return {
+        id: boardAlertId(args.sourceId, event.id),
+        sourceId: args.sourceId,
+        sourceType: args.sourceType,
+        sourceLabel: args.sourceLabel,
+        title: event.title,
+        summary: summary || event.feedName,
+        body: event.summary ?? event.title,
+        severity: event.severity,
+        category: event.kind,
+        area: event.road,
+        address: event.road,
+        occurredAt: event.updatedAt,
+        detailUrl: event.detailUrl,
+      };
+    });
 }
 
 /** Notable USGS rows (tsunami, PAGER yellow+, magnitude threshold, landslides, eruptions). */
