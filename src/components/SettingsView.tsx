@@ -7,6 +7,7 @@ import {
   isPennHillsPreset,
 } from "../lib/broadcastifyPreset";
 import { AUTH_IN_APP } from "../lib/authFeature";
+import { booleanFieldChecked } from "../lib/formFields";
 import { AccountSettings } from "./AuthScreen";
 import { LocalAiPanel } from "./LocalAiPanel";
 import { ServerSetup } from "./ServerSetup";
@@ -98,7 +99,7 @@ function fieldValue(
     return secrets[name] ?? "";
   }
   if (field.kind === "boolean") {
-    return Boolean(params[field.key]);
+    return booleanFieldChecked(field, params[field.key]);
   }
   const v = params[field.key];
   return v === undefined || v === null ? "" : String(v);

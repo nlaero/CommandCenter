@@ -303,6 +303,7 @@ Checking does not publish a release. Installers stay unpublished until asked.
 npm run test:rust
 node --experimental-strip-types src/lib/safety.test.ts
 node --experimental-strip-types src/lib/feedCaptions.test.ts
+node --experimental-strip-types src/lib/formFields.test.ts
 npm run build
 ```
 

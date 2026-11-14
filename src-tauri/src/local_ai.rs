@@ -714,12 +714,42 @@ fn prepare_whisper_audio(source_url: &str, seek: f64, duration: f64) -> Result<T
     }
     match ffmpeg_to_wav(source_url, seek, duration) {
         Ok(audio) => Ok(audio),
-        Err(err) if err == "FFMPEG_MISSING" => decode_to_whisper_wav(source_url, seek, duration),
+        Err(err) if err == "FFMPEG_MISSING" => {
+            if finite_caption_source(source_url) {
+                decode_to_whisper_wav(source_url, seek, duration)
+            } else {
+                Err("ffmpeg is not installed, so this live audio cannot be captioned on this computer. Audio was not uploaded.".into())
+            }
+        }
+        // A relay does not end. Do not fall back to downloading it.
+        Err(err) if !finite_caption_source(source_url) => Err(err),
         Err(err) => match decode_to_whisper_wav(source_url, seek, duration) {
             Ok(audio) => Ok(audio),
             Err(decode_err) => Err(format!("{err} {decode_err}")),
         },
     }
+}
+
+/// A finished file can be decoded here. A relay or playlist is not downloaded whole.
+fn finite_caption_source(source_url: &str) -> bool {
+    if source_url.starts_with("file:") {
+        return true;
+    }
+    let path = url::Url::parse(source_url)
+        .map(|parsed| parsed.path().to_ascii_lowercase())
+        .unwrap_or_else(|_| {
+            source_url
+                .split(['?', '#'])
+                .next()
+                .unwrap_or("")
+                .to_ascii_lowercase()
+        });
+    [
+        ".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac", ".mp4", ".webm", ".m4v", ".mov", ".ts",
+        ".m4s", ".caf",
+    ]
+    .iter()
+    .any(|ext| path.ends_with(ext))
 }
 
 fn existing_whisper_wav(source_url: &str) -> Option<TempAudio> {
@@ -784,42 +814,107 @@ fn ffmpeg_input(source_url: &str) -> Result<String, String> {
     Ok(source_url.to_string())
 }
 
+fn ffmpeg_caption_args(input: &str, seek: f64, duration: f64, wav: &Path) -> Vec<String> {
+    let mut args = vec![
+        "-nostdin".into(),
+        "-hide_banner".into(),
+        "-loglevel".into(),
+        "error".into(),
+        "-user_agent".into(),
+        "CommandCenter/0.1".into(),
+    ];
+    if seek > 0.05 {
+        args.push("-ss".into());
+        args.push(format!("{seek:.3}"));
+    }
+    // `-t` is an output limit so a live relay stops after this window.
+    // Putting it before `-i` does not stop every stream.
+    args.push("-i".into());
+    args.push(input.to_string());
+    args.push("-t".into());
+    args.push(format!("{:.3}", duration.clamp(1.0, 30.0)));
+    args.extend([
+        "-vn".into(),
+        "-ac".into(),
+        "1".into(),
+        "-ar".into(),
+        "16000".into(),
+        "-c:a".into(),
+        "pcm_s16le".into(),
+        "-y".into(),
+        wav.display().to_string(),
+    ]);
+    args
+}
+
+fn caption_prep_error(detail: &str) -> String {
+    let trimmed = detail.trim();
+    if trimmed.is_empty() || trimmed.contains("://") {
+        return "couldn't prepare audio for captions. Audio was not uploaded.".into();
+    }
+    let short: String = trimmed.chars().take(180).collect();
+    format!("couldn't prepare audio for captions. Audio was not uploaded. {short}")
+}
+
 fn ffmpeg_to_wav(source_url: &str, seek: f64, duration: f64) -> Result<TempAudio, String> {
     let dir = std::env::temp_dir().join(format!("command-center-ai-{}", unique_stamp()));
     fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
     let wav = dir.join("clip.wav");
     let input = ffmpeg_input(source_url)?;
-    let mut cmd = Command::new("ffmpeg");
-    cmd.arg("-nostdin")
-        .arg("-hide_banner")
-        .arg("-loglevel")
-        .arg("error")
-        .arg("-user_agent")
-        .arg("CommandCenter/0.1");
-    if seek > 0.05 {
-        cmd.arg("-ss").arg(format!("{seek:.3}"));
-    }
-    cmd.arg("-t")
-        .arg(format!("{:.3}", duration.clamp(1.0, 30.0)))
-        .arg("-i")
-        .arg(input)
-        .args(["-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-y"])
-        .arg(&wav)
+    let args = ffmpeg_caption_args(&input, seek, duration, &wav);
+    let mut child = match Command::new("ffmpeg")
+        .args(&args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped());
-    let output = match cmd.output() {
-        Ok(output) => output,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Err("FFMPEG_MISSING".into()),
-        Err(err) => return Err(format!("couldn't prepare audio for captions: {err}")),
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            let _ = fs::remove_dir_all(&dir);
+            return Err("FFMPEG_MISSING".into());
+        }
+        Err(err) => {
+            let _ = fs::remove_dir_all(&dir);
+            return Err(caption_prep_error(&err.to_string()));
+        }
     };
-    if !output.status.success() || !wav.is_file() {
-        let detail = String::from_utf8_lossy(&output.stderr);
+    let stderr = child.stderr.take();
+    let reader = std::thread::spawn(move || {
+        let mut err = String::new();
+        if let Some(mut pipe) = stderr {
+            let _ = std::io::Read::read_to_string(&mut pipe, &mut err);
+        }
+        err
+    });
+    let limit = Duration::from_secs_f64(duration.clamp(1.0, 30.0) + 20.0);
+    let started = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() > limit => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                let _ = fs::remove_dir_all(&dir);
+                return Err(
+                    "couldn't prepare audio for captions. The capture took too long and was stopped."
+                        .into(),
+                );
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(80)),
+            Err(err) => {
+                let _ = child.kill();
+                let _ = reader.join();
+                let _ = fs::remove_dir_all(&dir);
+                return Err(caption_prep_error(&err.to_string()));
+            }
+        }
+    };
+    let detail = reader.join().unwrap_or_default();
+    if !status.success() || !wav.is_file() {
         let _ = fs::remove_dir_all(&dir);
-        let trimmed = detail.chars().take(240).collect::<String>();
-        return Err(format!(
-            "couldn't prepare audio for captions. Audio was not uploaded. {trimmed}"
-        ));
+        return Err(caption_prep_error(&detail));
     }
     Ok(TempAudio {
         path: wav,
@@ -1215,6 +1310,28 @@ mod tests {
         assert!(!caption_download_blocked(
             "https://cdn.example/hls/playlist_audio_en_1_00001.aac"
         ));
+    }
+
+    #[test]
+    fn live_relay_is_not_a_finite_caption_file() {
+        assert!(finite_caption_source("file:///tmp/clip.wav"));
+        assert!(finite_caption_source(
+            "https://cdn.example/archive/hour.mp3?token=abc"
+        ));
+        assert!(!finite_caption_source("http://relay.example/penn_hills"));
+        assert!(!finite_caption_source(
+            "https://cdn.example/hls/playlist.m3u8"
+        ));
+        let args = ffmpeg_caption_args(
+            "http://relay.example/penn_hills",
+            0.0,
+            12.0,
+            std::path::Path::new("clip.wav"),
+        );
+        let input = args.iter().position(|arg| arg == "-i").unwrap();
+        let limit = args.iter().position(|arg| arg == "-t").unwrap();
+        assert!(limit > input);
+        assert_eq!(args[limit + 1], "12.000");
     }
 
     #[test]

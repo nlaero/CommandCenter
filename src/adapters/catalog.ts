@@ -52,6 +52,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Show weather radar",
         kind: "boolean",
         required: false,
+        defaultChecked: true,
         help: "RainViewer public radar tiles (personal/educational; max zoom 7).",
       },
       {
@@ -59,6 +60,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Show satellite",
         kind: "boolean",
         required: false,
+        defaultChecked: true,
         help: "NOAA GOES GeoColor stills (public NESDIS imagery).",
       },
       {
@@ -277,6 +279,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Include archives",
         kind: "boolean",
         required: false,
+        defaultChecked: true,
         help: "Archives are personal-use only — never redistribute or use commercially.",
       },
       {
@@ -284,6 +287,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Captions / transcription",
         kind: "boolean",
         required: false,
+        defaultChecked: true,
         help: "On by default. The live feed is captioned on this computer while it plays, including while the sound is muted. A wrong line can be corrected here, and that fix stays on this computer. Nearby public safety can select this feed as an audio input and read those captions.",
       },
       {
@@ -414,6 +418,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Captions",
         kind: "boolean",
         required: false,
+        defaultChecked: true,
         help: "On by default. Audio starts muted. Captions follow the clip with Tiny English from Settings → Local AI when it is installed on this computer.",
       },
     ],
@@ -511,6 +516,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Pan map to new events",
         kind: "boolean",
         required: false,
+        defaultChecked: true,
         help: "On each poll, move the map to every new earthquake, tsunami flag, or other event. Clicking a row always pans.",
       },
     ],

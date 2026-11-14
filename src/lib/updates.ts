@@ -1,6 +1,7 @@
 import { AUTH_IN_APP } from "./authFeature";
 
-const APP_VERSION = "0.1.0";
+/** Browser preview only. The desktop app reads its version from the package. */
+const APP_VERSION = "0.1.2";
 
 export type UpdateProduct = {
   id: string;
@@ -66,7 +67,7 @@ function currentReport(): UpdateReport {
         applyLabel: "",
         assetName: null,
         message:
-          "Command Center 0.1.0 is current. The latest GitHub tag is prerelease v0.1.0-test.1, which is not a newer release.",
+          "Command Center 0.1.2 is current. The latest GitHub tag is prerelease v0.1.0-test.1, which is not a newer release.",
         error: null,
       },
       {
@@ -108,12 +109,12 @@ function availableReport(): UpdateReport {
         prerelease: false,
         publishedAt: "2026-11-14T12:00:00Z",
         htmlUrl: "https://github.com/nlaero/CommandCenter/releases/tag/v0.2.0",
-        notes: "Windows installer for Command Center. It can install the desktop app, a local auth-server, or both.",
+        notes: "Windows installer for Command Center. The app opens on the board. Settings and caption fixes stay on this computer.",
         updateAvailable: true,
         canApply: true,
         applyLabel: "Download and install",
         assetName: "Command.Center_0.2.0_x64-setup.exe",
-        message: "0.2.0 is available. This copy is 0.1.0.",
+        message: "0.2.0 is available. This copy is 0.1.2.",
         error: null,
       },
       {

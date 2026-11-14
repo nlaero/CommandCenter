@@ -939,6 +939,7 @@ mod tests {
         assert_eq!(tv_row_height_scaled(12, 32, 2160, 1.0), 63);
     }
 
+    #[test]
     fn denser_grid_leaves_room_on_a_four_k_television() {
         let standard = tv_row_height(12, 66, 2160);
         let dense = tv_row_height_scaled(12, 66, 2160, 0.5);
@@ -952,6 +953,7 @@ mod tests {
         assert!(rows * cell + chrome <= 2160);
     }
 
+    #[test]
     fn larger_grid_stays_readable_on_television() {
         assert!(tv_row_height_scaled(12, 32, 2160, 1.35) >= tv_row_height(12, 32, 2160));
         assert_eq!(tv_row_height_scaled(12, 1, 2160, 1.35), 200);

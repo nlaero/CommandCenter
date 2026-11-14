@@ -3,6 +3,7 @@ import { BoardView } from "./BoardView";
 import { AlertsPane } from "./AlertsPane";
 import { AlertsProvider } from "../lib/alerts";
 import { loadAuthSession } from "../lib/auth";
+import { AUTH_IN_APP } from "../lib/authFeature";
 import { loadAppState } from "../lib/api";
 import { boardSpanRows, closePictureCheck, tvRowHeight } from "../lib/cast";
 import { useBoardDensity } from "../lib/display";
@@ -35,7 +36,10 @@ export function TvStage({ preview }: Props) {
     const load = () => {
       void (async () => {
         try {
-          const [result, auth] = await Promise.all([loadAppState(), loadAuthSession()]);
+          const [result, auth] = await Promise.all([
+            loadAppState(),
+            AUTH_IN_APP ? loadAuthSession() : Promise.resolve(null),
+          ]);
           if (cancelled) return;
           setState(result.state);
           setSession(auth);
@@ -81,7 +85,7 @@ export function TvStage({ preview }: Props) {
         </div>
       </div>
     );
-  } else if (!state || !session || !board) {
+  } else if (!state || !board || (AUTH_IN_APP && !session)) {
     body = (
       <div className="empty-board">
         <div>
