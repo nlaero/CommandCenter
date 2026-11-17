@@ -210,6 +210,51 @@ pub fn fetch_source_payload(args: FetchSourceArgs) -> Result<SourcePayload, Comm
 }
 
 #[tauri::command]
+pub fn x_account() -> Result<sources::x::Account, CommandError> {
+    Ok(sources::x::account()?)
+}
+
+#[tauri::command]
+pub fn x_sign_out() -> Result<sources::x::Account, CommandError> {
+    Ok(sources::x::sign_out()?)
+}
+
+/// Opens the system browser for X sign-in. Tokens are stored in the OS keyring.
+#[tauri::command]
+pub fn x_begin_sign_in(
+    app: tauri::AppHandle,
+    source_id: String,
+) -> Result<sources::x::SignInStart, CommandError> {
+    let loaded = config::load_or_create()?;
+    let source = loaded
+        .state
+        .sources
+        .get(&source_id)
+        .ok_or_else(|| CommandError {
+            message: format!("source not found: {source_id}"),
+        })?;
+    if source.type_id != "x.follow" {
+        return Err(CommandError {
+            message: "This source is not an X follow feed.".into(),
+        });
+    }
+    let url = sources::x::begin_sign_in(source, |url| {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_url(url, None::<&str>)
+            .map_err(|err| err.to_string())
+    })?;
+    Ok(sources::x::SignInStart {
+        authorize_url: url,
+    })
+}
+
+#[tauri::command]
+pub fn x_poll_sign_in() -> Result<Option<sources::x::Account>, CommandError> {
+    Ok(sources::x::poll_sign_in()?)
+}
+
+#[tauri::command]
 pub async fn fetch_media_url(
     url: String,
     range: Option<String>,

@@ -6,6 +6,7 @@ import {
   applyBroadcastifyPreset,
   isPennHillsPreset,
 } from "../lib/broadcastifyPreset";
+import { xClientIdError, xPostLimitError } from "../lib/xFollow";
 import { AUTH_IN_APP } from "../lib/authFeature";
 import { booleanFieldChecked } from "../lib/formFields";
 import { AccountSettings } from "./AuthScreen";
@@ -224,6 +225,9 @@ export function SettingsView({
     if (typeId === "scanner.web") {
       initial.enableCaptions = true;
     }
+    if (typeId === "x.follow") {
+      initial.limit = 20;
+    }
     setParams(initial);
     setSecrets(
       typeId === "broadcastify.owner"
@@ -272,6 +276,11 @@ export function SettingsView({
                     ? {
                         kind: "warn",
                         text: "Plays a direct audio stream you are allowed to use. It starts muted. Captions are written on this computer while the sound is off. This is not the Feed Owner panel, and nearby alerts do not read it. A Broadcastify listen page or relay stays in Feed Owner.",
+                      }
+                  : typeId === "x.follow"
+                    ? {
+                        kind: "warn",
+                        text: "Sign in from the panel. The access token and refresh token stay in the OS keyring. A client secret, if the X app has one, stays there too. Video and audio start muted.",
                       }
                     : null,
     );
@@ -447,6 +456,15 @@ export function SettingsView({
         const scannerError = webScannerUrlError(String(params.url ?? ""));
         if (scannerError) {
           setMessage({ kind: "error", text: scannerError });
+          return;
+        }
+      }
+      if (adapter.typeId === "x.follow") {
+        const clientError = xClientIdError(String(params.clientId ?? ""));
+        const limitError = xPostLimitError(params.limit);
+        const xError = clientError ?? limitError;
+        if (xError) {
+          setMessage({ kind: "error", text: xError });
           return;
         }
       }
@@ -1158,6 +1176,11 @@ function panelTitleFor(
     const label = typeof params.label === "string" ? params.label.trim() : "";
     if (label) return label;
   }
+  if (adapter.typeId === "x.follow") {
+    const label = typeof params.label === "string" ? params.label.trim() : "";
+    if (label) return label;
+    return "X";
+  }
   return adapter.name;
 }
 
@@ -1219,6 +1242,17 @@ function panelLayoutFor(
       h: 28,
       minW: 16,
       minH: 16,
+    };
+  }
+  if (typeId === "x.follow") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 26,
+      h: 32,
+      minW: 16,
+      minH: 18,
     };
   }
   if (typeId === "incident.opendata") {

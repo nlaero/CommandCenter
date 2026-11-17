@@ -4,6 +4,7 @@ pub mod incident;
 pub mod quake;
 pub mod space;
 pub mod weather;
+pub mod x;
 
 use crate::config::SourceConfig;
 use crate::secrets;
@@ -31,6 +32,9 @@ pub struct SourcePayload {
     /// Present for `noaa.space`. Alerts, scales, indices, and the OVATION aurora grid.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub space: Option<space::SpacePayload>,
+    /// Present for `x.follow`. Posts from accounts the signed-in user follows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x_feed: Option<x::FollowFeed>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -69,6 +73,7 @@ pub fn fetch_source(
                 weather: None,
                 quake: None,
                 space: None,
+                x_feed: None,
             })
         }
         "broadcastify.calls" => {
@@ -85,6 +90,7 @@ pub fn fetch_source(
                 weather: None,
                 quake: None,
                 space: None,
+                x_feed: None,
             })
         }
         "broadcastify.owner" => {
@@ -101,6 +107,7 @@ pub fn fetch_source(
                 weather: None,
                 quake: None,
                 space: None,
+                x_feed: None,
             })
         }
         "weather.openmeteo" => {
@@ -117,6 +124,7 @@ pub fn fetch_source(
                 weather: Some(result.weather),
                 quake: None,
                 space: None,
+                x_feed: None,
             })
         }
         "usgs.earthquake" => {
@@ -132,6 +140,7 @@ pub fn fetch_source(
                 weather: None,
                 quake: Some(result.quake),
                 space: None,
+                x_feed: None,
             })
         }
         "noaa.space" => {
@@ -147,6 +156,23 @@ pub fn fetch_source(
                 weather: None,
                 quake: None,
                 space: Some(result.space),
+                x_feed: None,
+            })
+        }
+        "x.follow" => {
+            let result = x::fetch(source)?;
+            Ok(SourcePayload {
+                source_id: source_id.to_string(),
+                type_id: source.type_id.clone(),
+                fetched_at: result.fetched_at,
+                attribution: Some(result.attribution),
+                note: result.note,
+                incidents: vec![],
+                feed: None,
+                weather: None,
+                quake: None,
+                space: None,
+                x_feed: Some(result.feed),
             })
         }
         other => Err(SourceError::Message(format!(
