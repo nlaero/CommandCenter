@@ -947,6 +947,7 @@ fn safe_file_name(name: &str) -> Result<String, String> {
 fn start_installer(path: &Path) -> Result<(), String> {
     #[cfg(windows)]
     {
+        // The setup program is a window the user finishes. Leave that window visible.
         std::process::Command::new(path)
             .spawn()
             .map(|_| ())

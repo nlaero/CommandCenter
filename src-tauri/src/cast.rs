@@ -679,6 +679,9 @@ fn open_board_window(
         builder = builder.inner_size(1280.0, 720.0).center();
     }
     let window = builder.build().map_err(|err| err.to_string())?;
+    if !borderless {
+        crate::win_window::install(&window);
+    }
     let _ = window.remove_menu();
     if borderless {
         if let Some(screen) = screen {

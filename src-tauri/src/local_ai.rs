@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const MODEL_URL: &str =
@@ -134,6 +134,13 @@ pub fn remove(root: &Path) -> Result<LocalAiStatus, String> {
 }
 
 pub fn transcribe(
+    root: &Path,
+    source_url: &str,
+) -> Result<(Vec<TranscriptSegment>, String), TranscribeError> {
+    crate::local_job::one_at_a_time(|| transcribe_unguarded(root, source_url))
+}
+
+pub(crate) fn transcribe_unguarded(
     root: &Path,
     source_url: &str,
 ) -> Result<(Vec<TranscriptSegment>, String), TranscribeError> {
@@ -345,7 +352,7 @@ fn http_client() -> Result<reqwest::blocking::Client, String> {
 
 fn extract(archive: &Path, dest: &Path, kind: ArchiveKind) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|err| err.to_string())?;
-    let mut cmd = Command::new("tar");
+    let mut cmd = crate::local_job::command("tar");
     match kind {
         ArchiveKind::TarGz => {
             cmd.arg("-xzf");
@@ -507,7 +514,7 @@ fn run_whisper(
     let model = root.join(&marker.model_path);
     let stamp = unique_stamp();
     let out_base = std::env::temp_dir().join(format!("command-center-ai-{stamp}"));
-    let mut cmd = Command::new(&runtime);
+    let mut cmd = crate::local_job::command(&runtime);
     cmd.arg("-m")
         .arg(&model)
         .arg("-f")
@@ -671,6 +678,13 @@ pub fn caption_download_blocked(url: &str) -> bool {
 /// Transcribe one short slice on this computer. `timeline_start` is added to
 /// every timestamp so the words line up with playback. Audio is not uploaded.
 pub fn transcribe_media(
+    root: &Path,
+    request: MediaTranscriptRequest<'_>,
+) -> Result<(Vec<TranscriptSegment>, String), TranscribeError> {
+    crate::local_job::one_at_a_time(|| transcribe_media_unguarded(root, request))
+}
+
+fn transcribe_media_unguarded(
     root: &Path,
     request: MediaTranscriptRequest<'_>,
 ) -> Result<(Vec<TranscriptSegment>, String), TranscribeError> {
@@ -1160,7 +1174,7 @@ fn ffmpeg_to_wav(source_url: &str, seek: f64, duration: f64) -> Result<TempAudio
     let wav = dir.join("clip.wav");
     let input = ffmpeg_input(source_url)?;
     let args = ffmpeg_caption_args(&input, seek, duration, &wav);
-    let mut child = match Command::new("ffmpeg")
+    let mut child = match crate::local_job::command("ffmpeg")
         .args(&args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -1419,6 +1433,7 @@ mod tests {
     use super::*;
     use std::io::Read;
     use std::net::TcpListener;
+    use std::process::Command;
     use std::sync::{Arc, Mutex};
     use std::thread;
 

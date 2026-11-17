@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant, SystemTime};
 
 const WINDOW_SECONDS: u32 = 12;
@@ -64,12 +64,19 @@ pub struct SafetyClip {
 }
 
 pub fn list_inputs() -> Vec<AudioInput> {
+    crate::local_job::one_at_a_time(list_inputs_unguarded)
+}
+
+fn list_inputs_unguarded() -> Vec<AudioInput> {
     let mut out = vec![AudioInput {
         id: "default".into(),
         label: "Default input".into(),
     }];
     for item in capture_devices() {
-        if item.id != "default" && device_id_ok(&item.id) && !out.iter().any(|row| row.id == item.id) {
+        if item.id != "default"
+            && device_id_ok(&item.id)
+            && !out.iter().any(|row| row.id == item.id)
+        {
             out.push(item);
         }
     }
@@ -77,15 +84,22 @@ pub fn list_inputs() -> Vec<AudioInput> {
 }
 
 pub fn listen(root: &Path, request: ListenRequest) -> Result<ListenResult, String> {
+    crate::local_job::one_at_a_time(|| listen_unguarded(root, request))
+}
+
+fn listen_unguarded(root: &Path, request: ListenRequest) -> Result<ListenResult, String> {
     let dir = root.join("safety-clips");
-    fs::create_dir_all(&dir).map_err(|err| format!("could not prepare a recording folder: {err}"))?;
+    fs::create_dir_all(&dir)
+        .map_err(|err| format!("could not prepare a recording folder: {err}"))?;
     prune_clips(&dir);
     let clip_id = uuid::Uuid::new_v4().simple().to_string();
     let dest = dir.join(format!("{clip_id}.wav"));
     let kind = request.kind.trim().to_ascii_lowercase();
     let recorded = match kind.as_str() {
         "online" => capture_online(request.url.as_deref().unwrap_or(""), &dest),
-        "audio-in" | "audio" => capture_input(request.device_id.as_deref().unwrap_or("default"), &dest),
+        "audio-in" | "audio" => {
+            capture_input(request.device_id.as_deref().unwrap_or("default"), &dest)
+        }
         _ => Err("Feed kind must be online or audio-in.".into()),
     };
     if let Err(err) = recorded {
@@ -99,7 +113,7 @@ pub fn listen(root: &Path, request: ListenRequest) -> Result<ListenResult, Strin
     }
     let file_url = url::Url::from_file_path(&dest)
         .map_err(|_| "Could not read the recorded window.".to_string())?;
-    match local_ai::transcribe(root, file_url.as_str()) {
+    match local_ai::transcribe_unguarded(root, file_url.as_str()) {
         Ok((segments, note)) => {
             let heard = segments
                 .into_iter()
@@ -139,7 +153,8 @@ pub fn listen(root: &Path, request: ListenRequest) -> Result<ListenResult, Strin
 
 pub fn read_clip(root: &Path, clip_id: &str) -> Result<SafetyClip, String> {
     let path = clip_file(root, clip_id)?;
-    let bytes = fs::read(&path).map_err(|_| "That recording is no longer on this computer.".to_string())?;
+    let bytes =
+        fs::read(&path).map_err(|_| "That recording is no longer on this computer.".to_string())?;
     if bytes.len() as u64 > MAX_CLIP_BYTES {
         return Err("That recording is too large.".into());
     }
@@ -177,7 +192,8 @@ fn validate_stream_url(raw: &str) -> Result<String, String> {
     if trimmed.is_empty() || trimmed.chars().count() > 4096 {
         return Err("Could not caption that audio.".into());
     }
-    let parsed = url::Url::parse(trimmed).map_err(|_| "Could not caption that audio.".to_string())?;
+    let parsed =
+        url::Url::parse(trimmed).map_err(|_| "Could not caption that audio.".to_string())?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
         return Err("Could not caption that audio.".into());
     }
@@ -189,7 +205,11 @@ fn validate_stream_url(raw: &str) -> Result<String, String> {
 
 fn normalize_device(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
-    let id = if trimmed.is_empty() { "default" } else { trimmed };
+    let id = if trimmed.is_empty() {
+        "default"
+    } else {
+        trimmed
+    };
     if !device_id_ok(id) {
         return Err("That audio input is not a device name this computer can record.".into());
     }
@@ -203,7 +223,10 @@ fn device_id_ok(id: &str) -> bool {
     }
     trimmed.chars().all(|ch| {
         ch.is_ascii_alphanumeric()
-            || matches!(ch, ' ' | '.' | '_' | ':' | '+' | '/' | '-' | '(' | ')' | '\'')
+            || matches!(
+                ch,
+                ' ' | '.' | '_' | ':' | '+' | '/' | '-' | '(' | ')' | '\''
+            )
     })
 }
 
@@ -264,13 +287,15 @@ fn input_ffmpeg_args(device_id: &str, seconds: u32, dest: &Path) -> Vec<String> 
 }
 
 fn run_ffmpeg(args: &[String], limit: Duration) -> Result<(), String> {
-    let mut child = Command::new("ffmpeg")
+    let mut child = crate::local_job::command("ffmpeg")
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|_| "ffmpeg is not installed, so this computer cannot record that feed.".to_string())?;
+        .map_err(|_| {
+            "ffmpeg is not installed, so this computer cannot record that feed.".to_string()
+        })?;
     let stderr = child.stderr.take();
     let reader = std::thread::spawn(move || {
         let mut err = String::new();
@@ -317,7 +342,18 @@ fn redact_ffmpeg(err: &str) -> String {
 fn capture_devices() -> Vec<AudioInput> {
     #[cfg(windows)]
     {
-        parse_dshow(&command_text("ffmpeg", &["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"]))
+        parse_dshow(&command_text(
+            "ffmpeg",
+            &[
+                "-hide_banner",
+                "-list_devices",
+                "true",
+                "-f",
+                "dshow",
+                "-i",
+                "dummy",
+            ],
+        ))
     }
     #[cfg(not(windows))]
     {
@@ -326,18 +362,34 @@ fn capture_devices() -> Vec<AudioInput> {
 }
 
 fn command_text(program: &str, args: &[&str]) -> String {
-    let output = Command::new(program)
+    let child = match crate::local_job::command(program)
         .args(args)
         .stdin(Stdio::null())
-        .output();
-    match output {
-        Ok(output) => {
-            let mut text = String::from_utf8_lossy(&output.stdout).to_string();
-            text.push_str(&String::from_utf8_lossy(&output.stderr));
-            text
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => return String::new(),
+    };
+    let pid = child.id();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+    // Device listing can sit forever on a DirectShow graph. Don't hold the
+    // only local-tool slot, or captions never start and the board stays stuck.
+    let output = match rx.recv_timeout(Duration::from_secs(8)) {
+        Ok(Ok(output)) => output,
+        Ok(Err(_)) => return String::new(),
+        Err(_) => {
+            crate::local_job::stop_pid(pid);
+            return String::new();
         }
-        Err(_) => String::new(),
-    }
+    };
+    let mut text = String::from_utf8_lossy(&output.stdout).to_string();
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    text
 }
 
 fn parse_pactl(text: &str) -> Vec<AudioInput> {
@@ -403,7 +455,9 @@ fn quoted(line: &str) -> Option<String> {
 }
 
 fn prune_clips(dir: &Path) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     let mut files: Vec<(SystemTime, PathBuf)> = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
@@ -438,7 +492,9 @@ fn encode_base64(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     let mut index = 0;
     while index + 3 <= data.len() {
-        let n = ((data[index] as u32) << 16) | ((data[index + 1] as u32) << 8) | (data[index + 2] as u32);
+        let n = ((data[index] as u32) << 16)
+            | ((data[index + 1] as u32) << 8)
+            | (data[index + 2] as u32);
         out.push(TABLE[((n >> 18) & 63) as usize] as char);
         out.push(TABLE[((n >> 12) & 63) as usize] as char);
         out.push(TABLE[((n >> 6) & 63) as usize] as char);
@@ -538,7 +594,8 @@ DirectShow audio devices
 
     #[test]
     fn clip_ids_cannot_escape_the_folder() {
-        let root = std::env::temp_dir().join(format!("cc-safety-{}", uuid::Uuid::new_v4().simple()));
+        let root =
+            std::env::temp_dir().join(format!("cc-safety-{}", uuid::Uuid::new_v4().simple()));
         let err = clip_file(&root, "../secret").unwrap_err();
         assert!(err.contains("Unknown"));
         let _ = fs::remove_dir_all(&root);

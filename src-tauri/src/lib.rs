@@ -4,6 +4,7 @@ mod cast;
 mod commands;
 mod config;
 mod local_ai;
+mod local_job;
 mod local_server;
 mod location;
 mod media;
@@ -12,15 +13,21 @@ mod secrets;
 mod sources;
 mod sync;
 mod updates;
+mod win_window;
 
 use tauri::menu::{Menu, MenuItem, Submenu, HELP_SUBMENU_ID};
 use tauri::Emitter;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // The configured window stays on the taskbar. Close is not turned into hide.
+            for window in app.webview_windows().values() {
+                win_window::install(window);
+            }
             if let Err(err) = install_update_menu(app) {
                 eprintln!("command-center: update menu was not installed: {err}");
             }

@@ -166,19 +166,19 @@ pub fn open_admin(root: &Path) -> Result<(), String> {
 fn open_url(url: &str) -> Result<(), String> {
     #[cfg(windows)]
     let mut cmd = {
-        let mut cmd = Command::new("cmd");
+        let mut cmd = crate::local_job::command("cmd");
         cmd.args(["/C", "start", "", url]);
         cmd
     };
     #[cfg(target_os = "macos")]
     let mut cmd = {
-        let mut cmd = Command::new("open");
+        let mut cmd = crate::local_job::command("open");
         cmd.arg(url);
         cmd
     };
     #[cfg(all(unix, not(target_os = "macos")))]
     let mut cmd = {
-        let mut cmd = Command::new("xdg-open");
+        let mut cmd = crate::local_job::command("xdg-open");
         cmd.arg(url);
         cmd
     };
@@ -211,7 +211,9 @@ pub fn stop_installed(root: &Path) -> Result<(), String> {
     let marker =
         read_marker(root).ok_or_else(|| "No server is installed on this computer.".to_string())?;
     if let Some(bin) = find_binary() {
-        let _ = Command::new(&bin).arg("--service-stop").output();
+        let _ = crate::local_job::command(&bin)
+            .arg("--service-stop")
+            .output();
     }
     stop_pid(root);
     for _ in 0..20 {
@@ -500,7 +502,7 @@ fn run_install(
             let _ = fs::set_permissions(&admin_file, fs::Permissions::from_mode(0o600));
         }
     }
-    let mut cmd = Command::new(bin);
+    let mut cmd = crate::local_job::command(bin);
     cmd.arg("--install")
         .arg("--home")
         .arg(root)
@@ -538,7 +540,7 @@ fn run_install(
 }
 
 fn run_backup(bin: &Path, root: &Path, file: &Path, import: bool) -> Result<(), String> {
-    let mut cmd = Command::new(bin);
+    let mut cmd = crate::local_job::command(bin);
     if import {
         cmd.arg("--backup-import").arg("--yes");
     } else {
@@ -566,7 +568,7 @@ fn ensure_running(bin: &Path, root: &Path, port: u16, startup: &str) -> Result<(
         return Ok(());
     }
     if startup == "service" {
-        let output = Command::new(bin)
+        let output = crate::local_job::command(bin)
             .arg("--service-start")
             .output()
             .map_err(|err| format!("could not start the Windows service: {err}"))?;
@@ -608,9 +610,9 @@ fn ensure_running(bin: &Path, root: &Path, port: u16, startup: &str) -> Result<(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        const DETACHED_PROCESS: u32 = 0x0000_0008;
-        cmd.creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS);
+        // Replaces any earlier flags. Hide the console and detach so the server
+        // outlives this window. Caption tools must not use the detach flag.
+        cmd.creation_flags(crate::local_job::background_flags());
     }
     let mut child = cmd
         .spawn()
@@ -643,13 +645,13 @@ fn stop_pid(root: &Path) {
     }
     #[cfg(unix)]
     {
-        let _ = Command::new("kill")
+        let _ = crate::local_job::command("kill")
             .args(["-TERM", &pid.to_string()])
             .status();
     }
     #[cfg(windows)]
     {
-        let _ = Command::new("taskkill")
+        let _ = crate::local_job::command("taskkill")
             .args(["/PID", &pid.to_string(), "/F"])
             .status();
     }
