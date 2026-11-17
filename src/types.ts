@@ -120,6 +120,7 @@ export type FieldKind =
   | "secret"
   | "boolean"
   | "select"
+  | "checklist"
   | "location"
   | "feeds"
   | "audio";
@@ -479,6 +480,37 @@ export type TrafficPayload = {
   routineOmitted: number;
 };
 
+export type NewsStory = {
+  id: string;
+  title: string;
+  outletId: string;
+  outlet: string;
+  scope: "national" | "local";
+  summary?: string;
+  url?: string;
+  publishedAt?: string;
+};
+
+export type NewsFeedState = {
+  id: string;
+  name: string;
+  scope: "national" | "local";
+  /** Milliseconds until this feed may be requested again. */
+  pollAfterMs: number;
+  fromCache: boolean;
+  notModified: boolean;
+  error?: string;
+  itemCount: number;
+};
+
+export type NewsPayload = {
+  placeLabel?: string;
+  stories: NewsStory[];
+  feeds: NewsFeedState[];
+  /** Soonest next request across the selected feeds. */
+  pollAfterMs: number;
+};
+
 export type SourcePayload = {
   sourceId: string;
   typeId: string;
@@ -493,4 +525,5 @@ export type SourcePayload = {
   /** Present for `x.follow`. */
   xFeed?: XFeed;
   traffic?: TrafficPayload;
+  news?: NewsPayload;
 };

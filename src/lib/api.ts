@@ -2,6 +2,7 @@ import { withAuth } from "./auth";
 import { AUTH_IN_APP } from "./authFeature";
 import { PENN_HILLS_FEED, isPennHillsPreset } from "./broadcastifyPreset";
 import { confirmedPlaceLabel, isMissingParam, readCoords } from "./location";
+import { fetchNewsInBrowser } from "./news";
 import { fetchSpaceInBrowser } from "./spaceWeather";
 import { fetchTrafficPayload } from "./traffic";
 import { fetchUsgsInBrowser } from "./usgs";
@@ -656,6 +657,9 @@ export async function fetchSourcePayload(
     if (src.type === "traffic.roads") {
       const payload = await browserFetchTraffic(src);
       return { ...payload, sourceId };
+    }
+    if (src.type === "news.rss") {
+      return fetchNewsInBrowser(sourceId, src);
     }
     throw new Error(`live fetch not implemented for source type: ${src.type}`);
   }
