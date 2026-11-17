@@ -1,8 +1,9 @@
 import { withAuth } from "./auth";
 import { AUTH_IN_APP } from "./authFeature";
 import { PENN_HILLS_FEED, isPennHillsPreset } from "./broadcastifyPreset";
-import { isMissingParam, readCoords } from "./location";
+import { confirmedPlaceLabel, isMissingParam, readCoords } from "./location";
 import { fetchSpaceInBrowser } from "./spaceWeather";
+import { fetchTrafficPayload } from "./traffic";
 import { fetchUsgsInBrowser } from "./usgs";
 import { xClientIdError } from "./xFollow";
 import type {
@@ -446,6 +447,30 @@ function buildScope(
   };
 }
 
+async function browserFetchTraffic(source: SourceConfig): Promise<SourcePayload> {
+  const coords = readCoords(source.params, "lat", "lon");
+  if (!coords) {
+    throw new Error("Confirm a location before traffic can load.");
+  }
+  const result = await fetchTrafficPayload(
+    {
+      lat: coords.lat,
+      lon: coords.lon,
+      label: confirmedPlaceLabel(source.params) ?? undefined,
+    },
+    readBrowserSecrets(),
+  );
+  return {
+    sourceId: "browser",
+    typeId: source.type,
+    fetchedAt: new Date().toISOString(),
+    attribution: result.attribution,
+    note: result.note,
+    incidents: [],
+    traffic: result.traffic,
+  };
+}
+
 async function browserFetchWeather(source: SourceConfig): Promise<SourcePayload> {
   const coords = readCoords(source.params, "lat", "lon");
   if (!coords) {
@@ -626,6 +651,10 @@ export async function fetchSourcePayload(
     }
     if (src.type === "x.follow") {
       const payload = browserFetchX(src);
+      return { ...payload, sourceId };
+    }
+    if (src.type === "traffic.roads") {
+      const payload = await browserFetchTraffic(src);
       return { ...payload, sourceId };
     }
     throw new Error(`live fetch not implemented for source type: ${src.type}`);

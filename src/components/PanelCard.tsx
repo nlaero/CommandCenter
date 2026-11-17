@@ -31,6 +31,7 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     source?.type === "weather.openmeteo" ||
     source?.type === "usgs.earthquake" ||
     source?.type === "noaa.space" ||
+    source?.type === "traffic.roads" ||
     source?.type === "safety.nearby" ||
     source?.type === "audio.local" ||
     source?.type === "camera.http_image" ||
@@ -43,6 +44,7 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     panel.widget === "weather" ||
     panel.widget === "quake" ||
     panel.widget === "space" ||
+    panel.widget === "traffic" ||
     panel.widget === "safety" ||
     panel.widget === "audio" ||
     panel.widget === "video" ||
