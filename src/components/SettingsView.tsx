@@ -39,11 +39,15 @@ import {
 import { confirmedPlaceLabel, ensureLocationParams, locationSaveError } from "../lib/location";
 import { localAudioSaveError } from "../lib/localAudio";
 import { newsSaveError } from "../lib/news";
+import { brandId, canonicalStreamUrl, streamLinkError } from "../lib/privateCameras";
+import { sealPublicCamera } from "../lib/publicCameras";
 import { normalizeWebScannerUrl, webScannerUrlError } from "../lib/webScanner";
 import { blankFeed, feedsSaveError, normalizeSafetyParams } from "../lib/safety";
 import { LocalAudioField } from "./LocalAudioField";
 import { LocationField } from "./LocationField";
 import { NewsOutletsField } from "./NewsOutletsField";
+import { PrivateCameraField } from "./PrivateCameraField";
+import { PublicCamerasField } from "./PublicCamerasField";
 import { SafetyFeedsField } from "./SafetyFeedsField";
 import { TelevisionSettings } from "./TelevisionSettings";
 import { useSourceRefresh } from "../lib/sourceRefresh";
@@ -239,6 +243,9 @@ export function SettingsView({
       initial.limit = 40;
       initial.outlets = [];
     }
+    if (typeId === "camera.private") {
+      initial.brand = "custom";
+    }
     setParams(initial);
     setSecrets(
       typeId === "broadcastify.owner"
@@ -308,7 +315,17 @@ export function SettingsView({
                         kind: "warn",
                         text: "Pick the national outlets you want. Local outlets are filled in from the confirmed place. Each feed waits for its own schedule, and not faster than once a minute.",
                       }
-                    : null,
+                  : typeId === "camera.public"
+                    ? {
+                        kind: "warn",
+                        text: "Search published traffic cameras, or confirm a place and the nearest ones come first. Picking one fills in the link. A still has no captions. Video starts muted.",
+                      }
+                    : typeId === "camera.private"
+                      ? {
+                          kind: "warn",
+                          text: "Pick the brand or system for the steps, then paste the stream link. HLS, a video file, a still, and YouTube play here. A still has no captions. Sound starts muted. UDP and RTSP stay on the camera system.",
+                        }
+                      : null,
     );
   }
 
@@ -511,6 +528,20 @@ export function SettingsView({
           return;
         }
       }
+      if (adapter.typeId === "camera.public") {
+        const sealed = sealPublicCamera(params);
+        if (!sealed.ok) {
+          setMessage({ kind: "error", text: sealed.message });
+          return;
+        }
+      }
+      if (adapter.typeId === "camera.private") {
+        const linkError = streamLinkError(params.url);
+        if (linkError) {
+          setMessage({ kind: "error", text: linkError });
+          return;
+        }
+      }
       const readyParams = ensureLocationParams(adapter.fields, params);
       const validation = await validateSourceFields(required, readyParams, secretsProvided);
       if (!validation.ok) {
@@ -540,14 +571,28 @@ export function SettingsView({
       if (adapter.typeId === "safety.nearby") {
         Object.assign(cleanedParams, normalizeSafetyParams(cleanedParams));
       }
+      let refresh = existing?.refresh ?? adapter.defaultRefresh;
       if (adapter.typeId === "scanner.web") {
         cleanedParams.url = normalizeWebScannerUrl(String(cleanedParams.url ?? ""));
         if (cleanedParams.enableCaptions === undefined) cleanedParams.enableCaptions = true;
       }
+      if (adapter.typeId === "camera.public") {
+        const sealed = sealPublicCamera(cleanedParams);
+        if (!sealed.ok) {
+          setMessage({ kind: "error", text: sealed.message });
+          return;
+        }
+        Object.assign(cleanedParams, sealed.params);
+        refresh = sealed.refresh;
+      }
+      if (adapter.typeId === "camera.private") {
+        cleanedParams.url = canonicalStreamUrl(cleanedParams.url);
+        cleanedParams.brand = brandId(cleanedParams.brand);
+      }
       const source: SourceConfig = {
         type: adapter.typeId,
         params: cleanedParams,
-        refresh: existing?.refresh ?? adapter.defaultRefresh,
+        refresh,
         secrets: secretRefs,
         enabled: true,
         draft: false,
@@ -654,6 +699,8 @@ export function SettingsView({
           type === "broadcastify.owner" ||
           type === "broadcastify.calls" ||
           type === "camera.http_image" ||
+          type === "camera.public" ||
+          type === "camera.private" ||
           type === "video.youtube" ||
           type === "safety.nearby" ||
           type === "scanner.web" ||
@@ -1215,6 +1262,8 @@ function panelTitleFor(
   }
   if (
     adapter.typeId === "camera.http_image" ||
+    adapter.typeId === "camera.public" ||
+    adapter.typeId === "camera.private" ||
     adapter.typeId === "video.youtube" ||
     adapter.typeId === "scanner.web"
   ) {
@@ -1342,7 +1391,12 @@ function panelLayoutFor(
       minH: 16,
     };
   }
-  if (typeId === "camera.http_image" || typeId === "video.youtube") {
+  if (
+    typeId === "camera.http_image" ||
+    typeId === "camera.public" ||
+    typeId === "camera.private" ||
+    typeId === "video.youtube"
+  ) {
     return {
       i: panelId,
       x: 0,
@@ -1465,6 +1519,22 @@ function SourceForm({
                   {field.required ? <span className="req"> *</span> : null}
                 </label>
                 <LocalAudioField params={params} disabled={busy} onChange={onParams} />
+                {field.help ? <div className="help">{field.help}</div> : null}
+              </div>
+            );
+          }
+          if (field.kind === "publicCameras" || field.kind === "privateCamera") {
+            return (
+              <div className="field" key={field.key}>
+                <label>
+                  {field.label}
+                  {field.required ? <span className="req"> *</span> : null}
+                </label>
+                {field.kind === "publicCameras" ? (
+                  <PublicCamerasField params={params} disabled={busy} onChange={onParams} />
+                ) : (
+                  <PrivateCameraField params={params} disabled={busy} onChange={onParams} />
+                )}
                 {field.help ? <div className="help">{field.help}</div> : null}
               </div>
             );

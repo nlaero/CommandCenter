@@ -11,7 +11,19 @@ export type MediaBytes = {
   /** URL after redirects. Relative playlist entries resolve against this. */
   finalUrl: string;
   contentType: string;
+  /** HTTP status when the browser proxy answered. 206 is a real byte range. */
+  status?: number;
 };
+
+/**
+ * Byte range hls.js puts on a fragment request.
+ * rangeEnd is 0 for a whole fragment. Sending bytes=0--1 makes some cameras
+ * answer 206 with a slice the demuxer cannot read, so no Range is sent then.
+ */
+export function mediaByteRange(rangeStart?: number, rangeEnd?: number): string | undefined {
+  if (!rangeEnd) return undefined;
+  return `bytes=${rangeStart ?? 0}-${rangeEnd - 1}`;
+}
 
 export function assertHttpUrl(input: string): string {
   let url: URL;
@@ -363,7 +375,7 @@ export async function fetchMedia(
     const encoded = new TextEncoder().encode(rewritten);
     data = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength);
   }
-  return { data, finalUrl, contentType };
+  return { data, finalUrl, contentType, status: response.status };
 }
 
 export function withCacheBust(url: string, token: number): string {
