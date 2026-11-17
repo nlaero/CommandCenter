@@ -15,6 +15,7 @@ function browserProxy(): Plugin {
     "/proxy/goes": "https://cdn.star.nesdis.noaa.gov",
     "/proxy/nws": "https://api.weather.gov",
     "/proxy/usgs": "https://earthquake.usgs.gov",
+    "/proxy/swpc": "https://services.swpc.noaa.gov",
     "/proxy/photon": "https://photon.komoot.io",
     "/proxy/nominatim": "https://nominatim.openstreetmap.org",
     "/proxy/geocode": "https://geocoding-api.open-meteo.com",
@@ -38,6 +39,8 @@ function browserProxy(): Plugin {
             "user-agent":
               prefix === "/proxy/usgs"
                 ? "CommandCenter/0.1 (personal USGS earthquake feed; +https://github.com/nlaero/CommandCenter)"
+                : prefix === "/proxy/swpc"
+                  ? "CommandCenter/0.1 (personal space weather; +https://github.com/nlaero/CommandCenter)"
                 : prefix === "/proxy/nominatim" || prefix === "/proxy/photon"
                   ? "CommandCenter/0.1 (personal location lookup; +https://github.com/nlaero/CommandCenter)"
                   : "CommandCenter-browser-mock/0.1",

@@ -335,6 +335,69 @@ export type QuakePayload = {
   notModified: boolean;
 };
 
+export type Hemisphere = "north" | "south" | "both";
+
+export type SpaceScale = {
+  level: number;
+  text: string;
+};
+
+/** Current NOAA R / S / G scales (key "0" on noaa-scales.json). */
+export type SpaceScales = {
+  observedAt?: string;
+  radio: SpaceScale;
+  solar: SpaceScale;
+  geomagnetic: SpaceScale;
+};
+
+export type SpaceAlert = {
+  id: string;
+  code: string;
+  title: string;
+  summary?: string;
+  body?: string;
+  issuedAt?: string;
+  validUntil?: string;
+  severity: IncidentSeverity;
+  /** Watches, warnings, and storm-scale alerts. The pane also requires a current window. */
+  notable: boolean;
+  detailUrl?: string;
+};
+
+/** One OVATION grid sample kept for the map. */
+export type AuroraPoint = {
+  lon: number;
+  lat: number;
+  chance: number;
+};
+
+export type SpacePayload = {
+  lat: number;
+  lon: number;
+  hemisphere: Hemisphere;
+  /** Official 3-hour planetary Kp. */
+  kp?: number;
+  kpTime?: string;
+  /** 1-minute estimated Kp. */
+  estimatedKp?: number;
+  estimatedKpTime?: string;
+  /** Penticton 10.7 cm flux, solar flux units. */
+  solarFlux?: number;
+  solarFluxTime?: string;
+  /** GOES 0.1–0.8 nm class, for example B5.6. */
+  xrayClass?: string;
+  xrayTime?: string;
+  /** OVATION visible-aurora chance at the nearest grid point, 0–100. */
+  auroraChance?: number;
+  auroraObservedAt?: string;
+  auroraForecastAt?: string;
+  auroraPoints: AuroraPoint[];
+  scales?: SpaceScales;
+  alerts: SpaceAlert[];
+  /** Milliseconds until the next SWPC request is allowed. */
+  pollAfterMs: number;
+};
+
 export type SourcePayload = {
   sourceId: string;
   typeId: string;
@@ -345,4 +408,5 @@ export type SourcePayload = {
   feed?: FeedStatus;
   weather?: WeatherPayload;
   quake?: QuakePayload;
+  space?: SpacePayload;
 };

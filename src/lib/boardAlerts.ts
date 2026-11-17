@@ -3,6 +3,7 @@ import type {
   Incident,
   IncidentSeverity,
   QuakeEvent,
+  SpaceAlert,
   WeatherAlert,
 } from "../types";
 
@@ -102,6 +103,29 @@ function quakeSummary(event: QuakeEvent): string {
   if (event.depthKm != null) parts.push(`${event.depthKm.toFixed(1)} km deep`);
   if (event.place) parts.push(event.place);
   return parts.join(" · ");
+}
+
+/** Current NOAA scales and fresh SWPC watches, warnings, and storm alerts. */
+export function spaceAlertsToBoardAlerts(args: {
+  sourceId: string;
+  sourceType: string;
+  sourceLabel: string;
+  alerts: SpaceAlert[];
+}): BoardAlert[] {
+  return args.alerts.map((item) => ({
+    id: boardAlertId(args.sourceId, item.id),
+    sourceId: args.sourceId,
+    sourceType: args.sourceType,
+    sourceLabel: args.sourceLabel,
+    title: item.title,
+    summary: item.summary,
+    body: item.body ?? item.summary,
+    severity: item.severity,
+    category: item.code,
+    occurredAt: item.issuedAt,
+    endsAt: item.validUntil,
+    detailUrl: item.detailUrl,
+  }));
 }
 
 /** Notable USGS rows (tsunami, PAGER yellow+, magnitude threshold, landslides, eruptions). */

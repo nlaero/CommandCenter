@@ -2,6 +2,7 @@ import { withAuth } from "./auth";
 import { AUTH_IN_APP } from "./authFeature";
 import { PENN_HILLS_FEED, isPennHillsPreset } from "./broadcastifyPreset";
 import { isMissingParam, readCoords } from "./location";
+import { fetchSpaceInBrowser } from "./spaceWeather";
 import { fetchUsgsInBrowser } from "./usgs";
 import type {
   AppState,
@@ -616,6 +617,9 @@ export async function fetchSourcePayload(
     }
     if (src.type === "usgs.earthquake") {
       return fetchUsgsInBrowser(sourceId, src);
+    }
+    if (src.type === "noaa.space") {
+      return fetchSpaceInBrowser(sourceId, src);
     }
     throw new Error(`live fetch not implemented for source type: ${src.type}`);
   }

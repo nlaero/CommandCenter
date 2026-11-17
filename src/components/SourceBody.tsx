@@ -8,15 +8,17 @@ import { CameraPanel } from "./CameraPanel";
 import { SafetyPanel } from "./SafetyPanel";
 import { IncidentPanel } from "./IncidentPanel";
 import { QuakePanel } from "./QuakePanel";
+import { SpacePanel } from "./SpacePanel";
 import { WeatherPanel } from "./WeatherPanel";
 
 type Props = {
   sourceId: string;
   source: SourceConfig;
+  sources?: Record<string, SourceConfig>;
 };
 
 /** Renders the active source inside a panel (including rotating slots). */
-export function SourceBody({ sourceId, source }: Props) {
+export function SourceBody({ sourceId, source, sources = {} }: Props) {
   const adapter = getAdapter(source.type);
   const revision = useSourceRevision(sourceId);
   const syncedAt = useMemo(() => new Date(), [revision]);
@@ -54,6 +56,17 @@ export function SourceBody({ sourceId, source }: Props) {
   if (source.type === "usgs.earthquake") {
     return (
       <QuakePanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
+  }
+
+  if (source.type === "noaa.space") {
+    return (
+      <SpacePanel
+        sourceId={sourceId}
+        source={source}
+        sources={sources}
+        configRevision={revision}
+      />
     );
   }
 
