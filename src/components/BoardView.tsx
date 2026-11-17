@@ -22,6 +22,15 @@ type Props = {
   displayOnly?: boolean;
   /** Overrides the saved row height so the board fills a large screen. */
   rowHeight?: number;
+  /**
+   * This screen's part of a board that is split across screens.
+   * Null shows the whole board. An empty list is a screen with nothing placed on it.
+   */
+  placed?: GridItem[] | null;
+  /** Column count for `placed`. The saved board stays on the full grid. */
+  gridCols?: number;
+  /** Edit mode is showing the whole board while other screens keep their part. */
+  wallEditing?: boolean;
 };
 
 function toLayout(items: GridItem[]): Layout {
@@ -56,14 +65,24 @@ export function BoardView({
   onLayoutChange,
   displayOnly = false,
   rowHeight,
+  placed = null,
+  gridCols,
+  wallEditing = false,
 }: Props) {
   const density = useBoardDensity();
   const metrics = boardGridMetrics(state.layout, density);
   const television = rowHeight != null;
   const tvChrome = television ? tvGridChrome(density) : null;
+  const visible = useMemo(() => {
+    if (!placed) return board.panels;
+    return board.panels.flatMap((panel) => {
+      const layout = placed.find((item) => item.i === panel.id);
+      return layout ? [{ ...panel, layout }] : [];
+    });
+  }, [board.panels, placed]);
   const layout = useMemo(
-    () => toLayout(board.panels.map((p) => p.layout)),
-    [board.panels],
+    () => toLayout(visible.map((panel) => panel.layout)),
+    [visible],
   );
   const row = rowHeight ?? metrics.rowHeight;
   const margin: [number, number] = tvChrome
@@ -71,7 +90,21 @@ export function BoardView({
     : metrics.margin;
   const padding = tvChrome ? tvChrome.padding : metrics.padding;
 
-  if (board.panels.length === 0) {
+  if (visible.length === 0) {
+    if (placed && board.panels.length > 0) {
+      return (
+        <div className="empty-board">
+          <div>
+            <h1>This screen</h1>
+            <p>
+              {displayOnly
+                ? "Nothing is placed on this part of the board. Move a source from the computer."
+                : "Nothing is placed on this part of the board. Edit layout to move a source here."}
+            </p>
+          </div>
+        </div>
+      );
+    }
     return <EmptyBoard onOpenSettings={onOpenSettings} displayOnly={displayOnly} />;
   }
 
@@ -82,16 +115,18 @@ export function BoardView({
     >
       {state.editMode ? (
         <div className="edit-banner" role="status">
-          Layout edit mode — drag panels or resize from the corner. Changes save automatically.
+          {wallEditing
+            ? "Layout edit mode. This window shows the whole board so you can move a source onto another screen. The other screens keep their own part."
+            : "Layout edit mode — drag panels or resize from the corner. Changes save automatically."}
         </div>
       ) : null}
       <GridLayout
-        key={`grid-${state.editMode ? "edit" : "view"}-${row}-${margin.join("x")}-${padding}`}
+        key={`grid-${state.editMode ? "edit" : "view"}-${row}-${margin.join("x")}-${padding}-${gridCols ?? metrics.cols}`}
         className="layout"
         layout={layout}
         width={Math.max(width, 320)}
         gridConfig={{
-          cols: metrics.cols,
+          cols: gridCols && gridCols > 0 ? gridCols : metrics.cols,
           rowHeight: row,
           margin,
           containerPadding: [padding, padding],
@@ -112,7 +147,7 @@ export function BoardView({
         onDragStop={(next) => onLayoutChange(fromLayout(next))}
         onResizeStop={(next) => onLayoutChange(fromLayout(next))}
       >
-        {board.panels.map((panel) => (
+        {visible.map((panel) => (
           <div key={panel.id}>
             <PanelCard
               panel={panel}

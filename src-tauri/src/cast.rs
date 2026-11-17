@@ -2,6 +2,8 @@
 //!
 //! A 58-inch or larger television stays sharp at 3840×2160 or higher. Smaller
 //! framebuffers are refused so Command Center does not stretch a soft picture.
+//! More than one television splits that board. Display screens on this computer
+//! can split it too, at each screen's own size.
 
 use crate::commands::CommandError;
 use mdns_sd::{ServiceDaemon, ServiceEvent};
@@ -54,12 +56,24 @@ pub struct AirPlayReceiver {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CastSplitTarget {
+    pub id: String,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CastSession {
     pub method: String,
     pub target_id: String,
     pub target_name: String,
     pub width: u32,
     pub height: u32,
+    /// Televisions the board is divided across. Empty when one television shows the whole board.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub split: Vec<CastSplitTarget>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -74,6 +88,14 @@ pub struct AirPlayScan {
 pub struct CastRequest {
     pub method: String,
     pub target_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpanRequest {
+    pub screen_ids: Vec<String>,
+    #[serde(default)]
+    pub require_sharp: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -159,7 +181,9 @@ pub fn tv_row_height_scaled(base: i32, rows: i32, viewport_height: i32, density:
     }
     let natural = ((f64::from(safe_base)) * scale).round().max(4.0) as i32;
     let distance = (f64::from(viewport_height) / 1080.0).clamp(1.0, 2.0);
-    let cap = ((f64::from(natural)) * distance).round().max(f64::from(natural)) as i32;
+    let cap = ((f64::from(natural)) * distance)
+        .round()
+        .max(f64::from(natural)) as i32;
     fitted.min(cap)
 }
 
@@ -187,7 +211,11 @@ fn tv_grid_chrome(scale: f64) -> (i32, i32) {
 fn fitted_row(span: i32, viewport_height: i32, margin_y: i32, padding_y: i32) -> i32 {
     let chrome = padding_y * 2 + margin_y * (span - 1).max(0);
     let available = (viewport_height - chrome).max(span);
-    let floor = if margin_y == 4 && padding_y == 8 { 8 } else { 4 };
+    let floor = if margin_y == 4 && padding_y == 8 {
+        8
+    } else {
+        4
+    };
     (available / span).max(floor)
 }
 
@@ -317,6 +345,76 @@ pub fn names_match(receiver: &str, monitor: &str) -> bool {
         return false;
     }
     left.contains(&right) || right.contains(&left)
+}
+
+/// Screens to open for a wall. The computer is skipped unless this is a television
+/// wall, which refuses it. A television wall also refuses anything below 4K.
+fn span_plan<'a>(
+    screens: &'a [CastScreen],
+    ids: &[String],
+    require_sharp: bool,
+) -> Result<Vec<&'a CastScreen>, String> {
+    let mut picked: Vec<&CastScreen> = Vec::new();
+    for id in ids {
+        let Some(screen) = screens.iter().find(|screen| screen.id == *id) else {
+            return Err("That screen is no longer connected. Refresh and pick it again.".into());
+        };
+        if screen.current {
+            if require_sharp {
+                return Err("This is the computer. Setup stays here. Pick the television.".into());
+            }
+            continue;
+        }
+        if require_sharp {
+            if let Some(reason) = mirror_block_reason(screen) {
+                return Err(reason);
+            }
+        }
+        if picked.iter().any(|item| item.id == screen.id) {
+            continue;
+        }
+        picked.push(screen);
+    }
+    picked.sort_by(|a, b| a.y.cmp(&b.y).then(a.x.cmp(&b.x)).then(a.id.cmp(&b.id)));
+    if picked.len() > 8 {
+        picked.truncate(8);
+    }
+    if require_sharp && picked.len() < 2 {
+        return Err("Pick at least two televisions to split the board.".into());
+    }
+    Ok(picked)
+}
+
+fn encode_query(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
+fn pool_labels(prefix: &str) -> Vec<String> {
+    (1..=8).map(|index| format!("{prefix}-{index}")).collect()
+}
+
+fn close_pool(app: &tauri::AppHandle, prefix: &str) -> Result<(), String> {
+    for label in pool_labels(prefix) {
+        if let Some(window) = app.get_webview_window(&label) {
+            window.close().map_err(|err| err.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn pool_open(app: &tauri::AppHandle, prefix: &str) -> bool {
+    pool_labels(prefix)
+        .iter()
+        .any(|label| app.get_webview_window(label).is_some())
 }
 
 pub fn mirror_block_reason(screen: &CastScreen) -> Option<String> {
@@ -696,6 +794,42 @@ fn session_for(method: &str, screen: &CastScreen) -> CastSession {
         target_name: screen.name.clone(),
         width: screen.width,
         height: screen.height,
+        split: Vec::new(),
+    }
+}
+
+fn split_session(screens: &[CastScreen]) -> CastSession {
+    CastSession {
+        method: "mirror".to_string(),
+        target_id: screens
+            .iter()
+            .map(|screen| screen.id.clone())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        target_name: screens
+            .iter()
+            .map(|screen| screen.name.clone())
+            .collect::<Vec<_>>()
+            .join(" · "),
+        width: screens
+            .iter()
+            .map(|screen| screen.width)
+            .max()
+            .unwrap_or(TV_MIN_WIDTH),
+        height: screens
+            .iter()
+            .map(|screen| screen.height)
+            .max()
+            .unwrap_or(TV_MIN_HEIGHT),
+        split: screens
+            .iter()
+            .map(|screen| CastSplitTarget {
+                id: screen.id.clone(),
+                name: screen.name.clone(),
+                width: screen.width,
+                height: screen.height,
+            })
+            .collect(),
     }
 }
 
@@ -757,6 +891,7 @@ pub async fn cast_start(
             let placed = screen.clone();
             let app_window = app.clone();
             on_main(&app, move || {
+                close_pool(&app_window, "tv")?;
                 open_board_window(
                     &app_window,
                     TV_LABEL,
@@ -794,6 +929,7 @@ pub async fn cast_start(
             let placed = screen.clone();
             let app_window = app.clone();
             on_main(&app, move || {
+                close_pool(&app_window, "tv")?;
                 open_board_window(
                     &app_window,
                     TV_LABEL,
@@ -821,6 +957,7 @@ pub async fn cast_stop(app: tauri::AppHandle) -> Result<(), CommandError> {
         if let Some(window) = app_window.get_webview_window(TV_LABEL) {
             window.close().map_err(|err| err.to_string())?;
         }
+        close_pool(&app_window, "tv")?;
         Ok(())
     })
     .map_err(|message| CommandError { message })?;
@@ -831,10 +968,91 @@ pub async fn cast_stop(app: tauri::AppHandle) -> Result<(), CommandError> {
 #[tauri::command]
 pub fn cast_status(app: tauri::AppHandle) -> Option<CastSession> {
     let mut book = lock_book();
-    if book.session.is_some() && app.get_webview_window(TV_LABEL).is_none() {
-        book.session = None;
+    if let Some(session) = book.session.clone() {
+        let alive = if session.split.is_empty() {
+            app.get_webview_window(TV_LABEL).is_some()
+        } else {
+            pool_open(&app, "tv")
+        };
+        if !alive {
+            book.session = None;
+        }
     }
     book.session.clone()
+}
+
+#[tauri::command]
+pub async fn span_show(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    args: SpanRequest,
+) -> Result<(), CommandError> {
+    let screens = collect_screens(&window)?;
+    let picked = span_plan(&screens, &args.screen_ids, args.require_sharp)
+        .map_err(|message| CommandError { message })?;
+    let owned: Vec<CastScreen> = picked.into_iter().cloned().collect();
+    open_wall(&app, owned, "span", "index.html?view=span&screen=")
+}
+
+#[tauri::command]
+pub async fn span_hide(app: tauri::AppHandle) -> Result<(), CommandError> {
+    let app_window = app.clone();
+    on_main(&app, move || close_pool(&app_window, "span"))
+        .map_err(|message| CommandError { message })
+}
+
+#[tauri::command]
+pub async fn cast_split(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    args: SpanRequest,
+) -> Result<CastSession, CommandError> {
+    let screens = collect_screens(&window)?;
+    let picked =
+        span_plan(&screens, &args.screen_ids, true).map_err(|message| CommandError { message })?;
+    let owned: Vec<CastScreen> = picked.into_iter().cloned().collect();
+    let session = split_session(&owned);
+    let app_window = app.clone();
+    let placed = owned;
+    on_main(&app, move || {
+        if let Some(existing) = app_window.get_webview_window(TV_LABEL) {
+            existing.close().map_err(|err| err.to_string())?;
+        }
+        close_pool(&app_window, "tv")?;
+        open_labeled(&app_window, &placed, "tv", "index.html?view=tv&screen=")
+    })
+    .map_err(|message| CommandError { message })?;
+    Ok(remember(session))
+}
+
+fn open_wall(
+    app: &tauri::AppHandle,
+    screens: Vec<CastScreen>,
+    prefix: &str,
+    url_prefix: &str,
+) -> Result<(), CommandError> {
+    let prefix = prefix.to_string();
+    let url_prefix = url_prefix.to_string();
+    let app_window = app.clone();
+    on_main(app, move || {
+        close_pool(&app_window, &prefix)?;
+        open_labeled(&app_window, &screens, &prefix, &url_prefix)
+    })
+    .map_err(|message| CommandError { message })
+}
+
+fn open_labeled(
+    app: &tauri::AppHandle,
+    screens: &[CastScreen],
+    prefix: &str,
+    url_prefix: &str,
+) -> Result<(), String> {
+    for (index, screen) in screens.iter().enumerate() {
+        let label = format!("{prefix}-{}", index + 1);
+        let url = format!("{url_prefix}{}", encode_query(&screen.id));
+        open_board_window(app, &label, &url, Some(screen), true)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1084,5 +1302,83 @@ mod tests {
             "Living Room"
         );
         assert_eq!(instance_name("Den\\032TV._airplay._tcp.local."), "Den TV");
+    }
+
+    fn screen_at(
+        id: &str,
+        name: &str,
+        width: u32,
+        height: u32,
+        current: bool,
+        x: i32,
+        y: i32,
+    ) -> CastScreen {
+        CastScreen {
+            id: id.into(),
+            name: name.into(),
+            width,
+            height,
+            scale: 1.0,
+            x,
+            y,
+            current,
+            sharp: is_sharp(width, height),
+        }
+    }
+
+    #[test]
+    fn a_display_wall_skips_the_computer_and_keeps_a_smaller_monitor() {
+        let screens = vec![
+            screen_at("computer", "Built-in", 1920, 1080, true, 0, 0),
+            screen_at("desk", "Dell", 1920, 1080, false, 1920, 0),
+            screen_at("tv", "Samsung", 3840, 2160, false, 0, 1080),
+        ];
+        let picked = span_plan(
+            &screens,
+            &["computer".into(), "tv".into(), "desk".into()],
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            picked
+                .iter()
+                .map(|screen| screen.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["desk", "tv"]
+        );
+    }
+
+    #[test]
+    fn a_television_wall_refuses_the_computer_and_a_soft_picture() {
+        let screens = vec![
+            screen_at("computer", "Built-in", 3840, 2160, true, 0, 0),
+            screen_at("soft", "Samsung", 1920, 1080, false, 1920, 0),
+            screen_at("left", "LG", 3840, 2160, false, 0, 0),
+            screen_at("right", "Sony", 3840, 2160, false, 3840, 0),
+        ];
+        let soft = span_plan(&screens, &["soft".into(), "left".into()], true).unwrap_err();
+        assert!(soft.contains("1920 × 1080"));
+        assert!(soft.contains("58-inch"));
+        let computer = span_plan(&screens, &["computer".into(), "left".into()], true).unwrap_err();
+        assert!(computer.contains("Setup stays here"));
+        let one = span_plan(&screens, &["left".into(), "left".into()], true).unwrap_err();
+        assert!(one.contains("two"));
+        let picked = span_plan(&screens, &["right".into(), "left".into()], true).unwrap();
+        assert_eq!(
+            picked
+                .iter()
+                .map(|screen| screen.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["left", "right"]
+        );
+    }
+
+    #[test]
+    fn screen_ids_stay_intact_in_the_window_url() {
+        assert_eq!(
+            encode_query("Dell|1920|1080|0|0"),
+            "Dell%7C1920%7C1080%7C0%7C0"
+        );
+        assert_eq!(encode_query("HDMI-1"), "HDMI-1");
     }
 }
