@@ -121,6 +121,7 @@ export type FieldKind =
   | "boolean"
   | "select"
   | "checklist"
+  | "weatherMaps"
   | "location"
   | "feeds"
   | "audio"
@@ -513,6 +514,38 @@ export type NewsPayload = {
   pollAfterMs: number;
 };
 
+export type WatchMetric = {
+  label: string;
+  value: string;
+};
+
+export type WatchItem = {
+  id: string;
+  title: string;
+  summary?: string;
+  body?: string;
+  severity?: BoardAlertSeverity;
+  category?: string;
+  area?: string;
+  occurredAt?: string;
+  endsAt?: string;
+  detailUrl?: string;
+  lat?: number;
+  lon?: number;
+  metrics?: WatchMetric[];
+  notable?: boolean;
+};
+
+/** Shared list payload for the situational sources. */
+export type WatchPayload = {
+  kind: string;
+  placeLabel?: string;
+  headline?: string;
+  status?: string;
+  items: WatchItem[];
+  pollAfterMs: number;
+};
+
 export type SourcePayload = {
   sourceId: string;
   typeId: string;
@@ -528,4 +561,6 @@ export type SourcePayload = {
   xFeed?: XFeed;
   traffic?: TrafficPayload;
   news?: NewsPayload;
+  /** Rivers, storms, lightning, and the other situational lists. */
+  watch?: WatchPayload;
 };

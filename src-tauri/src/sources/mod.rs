@@ -1,10 +1,15 @@
 pub mod broadcastify;
 pub mod calls;
+pub mod glm;
+pub mod gtfs;
 pub mod incident;
+pub mod mqtt;
 pub mod news;
 pub mod quake;
+pub mod sheet;
 pub mod space;
 pub mod traffic;
+pub mod watch;
 pub mod weather;
 pub mod x;
 
@@ -43,6 +48,9 @@ pub struct SourcePayload {
     /// Present for `news.rss`. Headlines and the per-feed poll schedule.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub news: Option<news::NewsPayload>,
+    /// Situational lists: rivers, storms, lightning, and the other watch sources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub watch: Option<watch::WatchPayload>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -84,6 +92,7 @@ pub fn fetch_source(
                 x_feed: None,
                 traffic: None,
                 news: None,
+                watch: None,
             })
         }
         "broadcastify.calls" => {
@@ -103,6 +112,7 @@ pub fn fetch_source(
                 x_feed: None,
                 traffic: None,
                 news: None,
+                watch: None,
             })
         }
         "broadcastify.owner" => {
@@ -122,6 +132,7 @@ pub fn fetch_source(
                 x_feed: None,
                 traffic: None,
                 news: None,
+                watch: None,
             })
         }
         "weather.openmeteo" => {
@@ -141,6 +152,7 @@ pub fn fetch_source(
                 x_feed: None,
                 traffic: None,
                 news: None,
+                watch: None,
             })
         }
         "usgs.earthquake" => {
@@ -159,6 +171,7 @@ pub fn fetch_source(
                 x_feed: None,
                 traffic: None,
                 news: None,
+                watch: None,
             })
         }
         "noaa.space" => {
@@ -177,6 +190,7 @@ pub fn fetch_source(
                 x_feed: None,
                 traffic: None,
                 news: None,
+                watch: None,
             })
         }
         "x.follow" => {
@@ -195,6 +209,7 @@ pub fn fetch_source(
                 x_feed: Some(result.feed),
                 traffic: None,
                 news: None,
+                watch: None,
             })
         }
         "traffic.roads" => {
@@ -214,6 +229,7 @@ pub fn fetch_source(
                 x_feed: None,
                 traffic: Some(result.traffic),
                 news: None,
+                watch: None,
             })
         }
         "news.rss" => {
@@ -232,6 +248,38 @@ pub fn fetch_source(
                 x_feed: None,
                 traffic: None,
                 news: Some(result.news),
+                watch: None,
+            })
+        }
+        "rivers.nwps"
+        | "storms.spc"
+        | "lightning.glm"
+        | "agency.rss"
+        | "transit.gtfs"
+        | "tfr.faa"
+        | "nuclear.nrc"
+        | "radiation.epa"
+        | "spills.uscg"
+        | "disease.who"
+        | "internet.ioda"
+        | "alarms.home" => {
+            let secrets = resolve_secrets(&source.secrets)?;
+            let result = watch::fetch(source, &secrets)?;
+            Ok(SourcePayload {
+                source_id: source_id.to_string(),
+                type_id: source.type_id.clone(),
+                fetched_at: result.fetched_at,
+                attribution: Some(result.attribution),
+                note: result.note,
+                incidents: vec![],
+                feed: None,
+                weather: None,
+                quake: None,
+                space: None,
+                x_feed: None,
+                traffic: None,
+                news: None,
+                watch: Some(result.watch),
             })
         }
         other => Err(SourceError::Message(format!(

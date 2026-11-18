@@ -5,6 +5,7 @@ import type {
   QuakeEvent,
   SpaceAlert,
   TrafficEvent,
+  WatchItem,
   WeatherAlert,
 } from "../types.ts";
 
@@ -184,4 +185,30 @@ export function quakesToBoardAlerts(args: {
         detailUrl: event.url,
       };
     });
+}
+
+/** Notable rows from a situational list. */
+export function watchItemsToBoardAlerts(args: {
+  sourceId: string;
+  sourceType: string;
+  sourceLabel: string;
+  items: WatchItem[];
+}): BoardAlert[] {
+  return args.items
+    .filter((item) => item.notable)
+    .map((item) => ({
+      id: boardAlertId(args.sourceId, item.id),
+      sourceId: args.sourceId,
+      sourceType: args.sourceType,
+      sourceLabel: args.sourceLabel,
+      title: item.title,
+      summary: item.summary,
+      body: item.body ?? item.summary,
+      severity: item.severity ?? "info",
+      category: item.category,
+      area: item.area,
+      occurredAt: item.occurredAt,
+      endsAt: item.endsAt,
+      detailUrl: item.detailUrl,
+    }));
 }

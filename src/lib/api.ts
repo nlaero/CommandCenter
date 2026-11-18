@@ -2,6 +2,8 @@ import { withAuth } from "./auth";
 import { AUTH_IN_APP } from "./authFeature";
 import { PENN_HILLS_FEED, isPennHillsPreset } from "./broadcastifyPreset";
 import { confirmedPlaceLabel, isMissingParam, readCoords } from "./location";
+import { rollingPanelRefusal } from "./rolling";
+import { isWatchType } from "./watchTypes";
 import { fetchNewsInBrowser } from "./news";
 import { fetchSpaceInBrowser } from "./spaceWeather";
 import { fetchTrafficPayload } from "./traffic";
@@ -661,6 +663,22 @@ export async function fetchSourcePayload(
     if (src.type === "news.rss") {
       return fetchNewsInBrowser(sourceId, src);
     }
+    if (isWatchType(src.type)) {
+      return {
+        sourceId,
+        typeId: src.type,
+        fetchedAt: new Date().toISOString(),
+        attribution: "Live data loads in the desktop app.",
+        note: "The browser preview cannot reach this feed.",
+        incidents: [],
+        watch: {
+          kind: src.type,
+          items: [],
+          pollAfterMs: 60_000,
+          status: "Live data loads in the desktop app.",
+        },
+      };
+    }
     throw new Error(`live fetch not implemented for source type: ${src.type}`);
   }
   return invoke<SourcePayload>("fetch_source_payload", {
@@ -964,6 +982,11 @@ function assertPanelSourcesReady(
     if (panel.rotation.intervalSec < 5 || panel.rotation.intervalSec > 3600) {
       throw new Error("rotation interval must be between 5 and 3600 seconds");
     }
+    const typeIds = required
+      .map((sourceId) => state.sources[sourceId]?.type)
+      .filter((typeId): typeId is string => Boolean(typeId));
+    const refusal = rollingPanelRefusal(typeIds);
+    if (refusal) throw new Error(refusal);
   }
 
   for (const sourceId of required) {

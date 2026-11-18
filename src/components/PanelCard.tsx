@@ -1,4 +1,5 @@
 import { useSourceRevision } from "../lib/sourceRefresh";
+import { isWatchType } from "../lib/watchTypes";
 import type { Panel, SourceConfig } from "../types";
 import { RotatingPanel } from "./RotatingPanel";
 import { SourceBody } from "./SourceBody";
@@ -43,6 +44,7 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     source?.type === "video.youtube" ||
     source?.type === "scanner.web" ||
     source?.type === "x.follow" ||
+    (source ? isWatchType(source.type) : false) ||
     panel.widget === "incident" ||
     panel.widget === "broadcastify" ||
     panel.widget === "calls" ||
@@ -56,6 +58,7 @@ export function PanelCard({ panel, source, sources, editMode }: Props) {
     panel.widget === "video" ||
     panel.widget === "scanner" ||
     panel.widget === "x" ||
+    panel.widget === "watch" ||
     panel.widget === "rotate";
 
   return (

@@ -3,6 +3,13 @@ import { useAlerts } from "../lib/alerts";
 import { weatherAlertsToBoardAlerts } from "../lib/boardAlerts";
 import { fetchSourcePayload } from "../lib/api";
 import { confirmedPlaceLabel, formatCoords, readCoords } from "../lib/location";
+import {
+  readMapCount,
+  readMapRotateSec,
+  readRotateMaps,
+  readWeatherMaps,
+  visibleWeatherMaps,
+} from "../lib/weatherMaps";
 import type { ScopeView, SourceConfig, SourcePayload, WeatherPayload } from "../types";
 
 type Props = {
@@ -58,6 +65,7 @@ export function WeatherPanel({ sourceId, source, configRevision = 0 }: Props) {
   const [loading, setLoading] = useState(true);
   const [overlay, setOverlay] = useState<OverlayMode>("both");
   const [activeScope, setActiveScope] = useState<string | null>(null);
+  const [mapIndex, setMapIndex] = useState(0);
   const { publishSourceAlerts, clearSourceAlerts } = useAlerts();
 
   const weather = payload?.weather;
@@ -128,12 +136,27 @@ export function WeatherPanel({ sourceId, source, configRevision = 0 }: Props) {
 
   const conditions = weather?.conditions;
   const scopes = weather?.scopes ?? [];
-  const multiScope = scopes.length > 1;
+  const chosenMaps = readWeatherMaps(source.params);
+  const mapCount = readMapCount(source.params, chosenMaps);
+  const rotateMaps = readRotateMaps(source.params) && chosenMaps.length > mapCount;
+  const rotateSec = readMapRotateSec(source.params);
 
-  const focused = useMemo(
-    () => scopes.find((s) => s.id === activeScope) ?? scopes[0] ?? null,
-    [scopes, activeScope],
-  );
+  useEffect(() => {
+    if (!rotateMaps) return;
+    const timer = window.setInterval(() => setMapIndex((index) => index + 1), rotateSec * 1000);
+    return () => window.clearInterval(timer);
+  }, [rotateMaps, rotateSec, chosenMaps.join("|"), mapCount]);
+
+  const visibleIds = visibleWeatherMaps(source.params, mapIndex);
+  const visible = useMemo(() => {
+    const byId = new Map(scopes.map((scope) => [scope.id, scope]));
+    const picked = visibleIds
+      .map((id) => byId.get(id))
+      .filter((scope): scope is ScopeView => Boolean(scope));
+    return picked.length ? picked : scopes.slice(0, Math.max(1, mapCount));
+  }, [scopes, visibleIds, mapCount]);
+  const focused = visible.find((scope) => scope.id === activeScope) ?? visible[0] ?? null;
+  const multiScope = visible.length > 1;
 
   return (
     <div className="weather-panel">
@@ -286,9 +309,16 @@ export function WeatherPanel({ sourceId, source, configRevision = 0 }: Props) {
       ) : null}
 
       <div className="weather-maps">
+        {chosenMaps.length > 1 ? (
+          <p className="weather-meta">
+            {rotateMaps
+              ? `Rotating ${mapCount} of ${chosenMaps.length} maps every ${rotateSec}s`
+              : `Showing ${visible.length} of ${chosenMaps.length} maps`}
+          </p>
+        ) : null}
         {multiScope ? (
           <div className="weather-scope-tabs" role="tablist" aria-label="Display scopes">
-            {scopes.map((scope) => (
+            {visible.map((scope) => (
               <button
                 key={scope.id}
                 type="button"
@@ -305,7 +335,7 @@ export function WeatherPanel({ sourceId, source, configRevision = 0 }: Props) {
 
         {multiScope ? (
           <div className="weather-scope-grid">
-            {scopes.map((scope) => (
+            {visible.map((scope) => (
               <ScopeMap
                 key={scope.id}
                 scope={scope}

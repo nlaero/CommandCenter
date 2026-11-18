@@ -14,7 +14,9 @@ import { QuakePanel } from "./QuakePanel";
 import { SpacePanel } from "./SpacePanel";
 import { TrafficPanel } from "./TrafficPanel";
 import { WeatherPanel } from "./WeatherPanel";
+import { WatchPanel } from "./WatchPanel";
 import { XPanel } from "./XPanel";
+import { isWatchType } from "../lib/watchTypes";
 
 type Props = {
   sourceId: string;
@@ -92,6 +94,12 @@ export function SourceBody({ sourceId, source, sources = {} }: Props) {
   if (source.type === "news.rss") {
     return (
       <NewsPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
+  }
+
+  if (isWatchType(source.type)) {
+    return (
+      <WatchPanel sourceId={sourceId} source={source} configRevision={revision} />
     );
   }
 
