@@ -12,6 +12,7 @@ import { IncidentPanel } from "./IncidentPanel";
 import { NewsPanel } from "./NewsPanel";
 import { QuakePanel } from "./QuakePanel";
 import { SpacePanel } from "./SpacePanel";
+import { PenndotCameraPanel } from "./PenndotCameraPanel";
 import { TrafficPanel } from "./TrafficPanel";
 import { WeatherPanel } from "./WeatherPanel";
 import { WatchPanel } from "./WatchPanel";
@@ -88,6 +89,12 @@ export function SourceBody({ sourceId, source, sources = {} }: Props) {
   if (source.type === "traffic.roads") {
     return (
       <TrafficPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
+  }
+
+  if (source.type === "camera.penndot") {
+    return (
+      <PenndotCameraPanel sourceId={sourceId} source={source} configRevision={revision} />
     );
   }
 

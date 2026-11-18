@@ -22,6 +22,7 @@ function browserProxy(): Plugin {
     "/proxy/geocode": "https://geocoding-api.open-meteo.com",
     "/proxy/ipwho": "https://ipwho.is",
     "/proxy/penndot": "https://gisdata.penndot.pa.gov",
+    "/proxy/511pa": "https://www.511pa.com",
     "/proxy/ohgo": "https://publicapi.ohgo.com",
     "/proxy/chart": "https://chartexp1.sha.maryland.gov",
     "/proxy/arcgis": "https://services.arcgis.com",
@@ -57,6 +58,9 @@ function browserProxy(): Plugin {
           const ifModifiedSince = req.headers["if-modified-since"];
           if (typeof ifNoneMatch === "string") headers["if-none-match"] = ifNoneMatch;
           if (typeof ifModifiedSince === "string") headers["if-modified-since"] = ifModifiedSince;
+          if (prefix === "/proxy/511pa") {
+            headers["x-requested-with"] = "XMLHttpRequest";
+          }
           if (prefix === "/proxy/penndot" || prefix === "/proxy/ohgo") {
             const authorization = req.headers.authorization;
             if (typeof authorization === "string" && authorization.trim()) {

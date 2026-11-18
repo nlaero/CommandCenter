@@ -3,7 +3,7 @@ import { useAlerts } from "../lib/alerts";
 import { trafficEventsToBoardAlerts } from "../lib/boardAlerts";
 import { fetchSourcePayload } from "../lib/api";
 import { project, unproject, zoomToFit } from "../lib/traffic";
-import type { SourceConfig, SourcePayload, TrafficBounds, TrafficEvent, TrafficKind } from "../types";
+import type { SourceConfig, SourcePayload, TrafficBounds, TrafficCamera, TrafficEvent, TrafficKind } from "../types";
 
 type Props = {
   sourceId: string;
@@ -72,17 +72,29 @@ export function TrafficPanel({ sourceId, source, configRevision = 0 }: Props) {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [camera, setCamera] = useState<View | null>(null);
+  const [listMode, setListMode] = useState<"roads" | "cameras">("roads");
+  const [openCameraId, setOpenCameraId] = useState<string | null>(null);
+  const [pictureStamp, setPictureStamp] = useState(() => Date.now());
   const { publishSourceAlerts, clearSourceAlerts } = useAlerts();
 
   const traffic = payload?.traffic;
   const events = traffic?.events ?? [];
+  const cameras = traffic?.cameras ?? [];
   const selected = events.find((event) => event.id === selectedId) ?? null;
-  const placeKey = traffic ? `${traffic.lat.toFixed(4)},${traffic.lon.toFixed(4)}` : "";
+  const openCamera = cameras.find((item) => item.id === openCameraId) ?? null;
+  const placeKey = traffic ? `${traffic.lat.toFixed(4)},${traffic.lon.toFixed(4)},${traffic.radiusMi}` : "";
 
   useEffect(() => {
     setCamera(null);
     setSelectedId(null);
+    setOpenCameraId(null);
   }, [placeKey]);
+
+  useEffect(() => {
+    if (!openCameraId) return;
+    const timer = window.setInterval(() => setPictureStamp(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [openCameraId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,7 +146,7 @@ export function TrafficPanel({ sourceId, source, configRevision = 0 }: Props) {
         <span className="incident-meta">
           {loading && !payload ? "Loading…" : null}
           {traffic
-            ? `${traffic.label ? `${traffic.label} · ` : ""}${traffic.radiusMi}-mile region · ${events.length} listed · ${travelCount} affecting travel`
+            ? `${traffic.label ? `${traffic.label} · ` : ""}${traffic.radiusMi} mi · ${events.length} roads · ${cameras.length} cameras · ${travelCount} affecting travel`
             : null}
           {payload ? ` · ${formatWhen(payload.fetchedAt)}` : null}
         </span>
@@ -143,8 +155,50 @@ export function TrafficPanel({ sourceId, source, configRevision = 0 }: Props) {
       {error ? <div className="alert error">{error}</div> : null}
 
       <div className="traffic-layout">
-        <div className="incident-feed" role="list" aria-label="Road incidents and conditions">
-          {events.map((event) => {
+        <div className="incident-feed" role="list" aria-label={listMode === "cameras" ? "PennDOT cameras" : "Road incidents and conditions"}>
+          <div className="traffic-switch" role="group" aria-label="Traffic list">
+            <button
+              type="button"
+              className={`btn btn-ghost${listMode === "roads" ? " active" : ""}`}
+              onClick={() => setListMode("roads")}
+            >
+              Roads
+            </button>
+            <button
+              type="button"
+              className={`btn btn-ghost${listMode === "cameras" ? " active" : ""}`}
+              onClick={() => setListMode("cameras")}
+            >
+              Cameras{cameras.length ? ` ${cameras.length}` : ""}
+            </button>
+          </div>
+          {listMode === "cameras"
+            ? cameras.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="listitem"
+                  className={`incident-alert traffic-row${openCameraId === item.id ? " is-active" : ""}`}
+                  onClick={() => {
+                    setOpenCameraId(item.id);
+                    setSelectedId(null);
+                  }}
+                >
+                  <span className="traffic-kind">cam</span>
+                  <span className="quake-row-copy">
+                    <span className="incident-alert-title">{item.name}</span>
+                    <span className="traffic-road">
+                      {[item.road, item.county, `${item.miles} mi`].filter(Boolean).join(" · ")}
+                    </span>
+                  </span>
+                </button>
+              ))
+            : null}
+          {listMode === "cameras" && !loading && cameras.length === 0 ? (
+            <p className="incident-empty">No PennDOT cameras are inside this distance.</p>
+          ) : null}
+          {listMode === "roads"
+            ? events.map((event) => {
             const active = selectedId === event.id;
             return (
               <button
@@ -152,7 +206,10 @@ export function TrafficPanel({ sourceId, source, configRevision = 0 }: Props) {
                 type="button"
                 role="listitem"
                 className={`incident-alert traffic-row ${severityClass(event.severity)}${active ? " is-active" : ""}`}
-                onClick={() => setSelectedId(event.id)}
+                onClick={() => {
+                  setSelectedId(event.id);
+                  setOpenCameraId(null);
+                }}
               >
                 <span className={`traffic-kind ${severityClass(event.severity)}`}>{kindLabel(event.kind)}</span>
                 <span className="quake-row-copy">
@@ -184,8 +241,9 @@ export function TrafficPanel({ sourceId, source, configRevision = 0 }: Props) {
                 </span>
               </button>
             );
-          })}
-          {!loading && traffic && events.length === 0 ? (
+          })
+            : null}
+          {listMode === "roads" && !loading && traffic && events.length === 0 ? (
             <p className="incident-empty">
               {traffic.feeds.some((feed) => feed.status === "live")
                 ? "Nothing in this region is slowing travel right now."
@@ -200,12 +258,26 @@ export function TrafficPanel({ sourceId, source, configRevision = 0 }: Props) {
           {traffic ? (
             <TrafficMap
               bounds={traffic.bounds}
+              radiusMi={traffic.radiusMi}
               home={{ lat: traffic.lat, lon: traffic.lon, label: traffic.label }}
-              events={events}
+              events={listMode === "roads" ? events : []}
+              cameras={cameras}
               selectedId={selected?.id ?? null}
+              openCamera={openCamera}
+              pictureStamp={pictureStamp}
               camera={camera}
               onCamera={setCamera}
-              onSelect={setSelectedId}
+              onSelect={(id) => {
+                setSelectedId(id);
+                setOpenCameraId(null);
+                setListMode("roads");
+              }}
+              onOpenCamera={(id) => {
+                setOpenCameraId(id);
+                setSelectedId(null);
+                setListMode("cameras");
+              }}
+              onCloseCamera={() => setOpenCameraId(null)}
             />
           ) : (
             <div className="quake-map" aria-label="Traffic map" />
@@ -231,20 +303,32 @@ export function TrafficPanel({ sourceId, source, configRevision = 0 }: Props) {
 
 function TrafficMap({
   bounds,
+  radiusMi,
   home,
   events,
+  cameras,
   selectedId,
+  openCamera,
+  pictureStamp,
   camera,
   onCamera,
   onSelect,
+  onOpenCamera,
+  onCloseCamera,
 }: {
   bounds: TrafficBounds;
+  radiusMi: number;
   home: { lat: number; lon: number; label?: string };
   events: TrafficEvent[];
+  cameras: TrafficCamera[];
   selectedId: string | null;
+  openCamera: TrafficCamera | null;
+  pictureStamp: number;
   camera: View | null;
   onCamera: (view: View | null) => void;
   onSelect: (id: string) => void;
+  onOpenCamera: (id: string) => void;
+  onCloseCamera: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 360, h: 280 });
@@ -308,7 +392,7 @@ function TrafficMap({
     <div
       ref={ref}
       className={`quake-map${dragging ? " is-dragging" : ""}`}
-      aria-label="Traffic map for the 80-mile region"
+      aria-label={`Traffic map for the ${radiusMi}-mile radius`}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -376,6 +460,28 @@ function TrafficMap({
           />
         );
       })}
+      {cameras.map((item) => {
+        const px = project(item.lat, item.lon, zoom);
+        const x = px.x - left;
+        const y = px.y - top;
+        if (x < -24 || y < -24 || x > size.w + 24 || y > size.h + 24) return null;
+        const focused = item.id === openCamera?.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            className={`traffic-cam${focused ? " is-open" : ""}`}
+            style={{ left: x, top: y }}
+            title={item.name}
+            aria-label={`Open ${item.name}`}
+            onPointerDown={(pointer) => pointer.stopPropagation()}
+            onClick={() => onOpenCamera(item.id)}
+          />
+        );
+      })}
+      {openCamera ? (
+        <CameraFrame key={openCamera.id} camera={openCamera} stamp={pictureStamp} onClose={onCloseCamera} />
+      ) : null}
       <div className="quake-zoom" role="group" aria-label="Map zoom">
         <button
           type="button"
@@ -404,6 +510,53 @@ function TrafficMap({
       </div>
       <div className="quake-map-attrib">
         Esri, TomTom, Garmin, FAO, NOAA, USGS, © OpenStreetMap · z{zoom}
+      </div>
+    </div>
+  );
+}
+
+function CameraFrame({
+  camera,
+  stamp,
+  onClose,
+}: {
+  camera: TrafficCamera;
+  stamp: number;
+  onClose: () => void;
+}) {
+  const [viewIndex, setViewIndex] = useState(0);
+  const [broken, setBroken] = useState(false);
+  const view = camera.views[viewIndex] ?? camera.views[0];
+  return (
+    <div className="traffic-camera-frame" onPointerDown={(event) => event.stopPropagation()}>
+      {view && !broken ? (
+        <img src={`${view.imageUrl}?t=${Math.floor(stamp / 60_000)}`} alt="" onError={() => setBroken(true)} />
+      ) : (
+        <div className="penndot-missing">This camera did not return a picture.</div>
+      )}
+      <div className="traffic-camera-copy">
+        <strong>{camera.name}</strong>
+        <span>{[camera.road, camera.county, view?.label].filter(Boolean).join(" · ")}</span>
+        {camera.views.length > 1 ? (
+          <span className="penndot-views">
+            {camera.views.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`btn btn-ghost${index === viewIndex ? " active" : ""}`}
+                onClick={() => {
+                  setBroken(false);
+                  setViewIndex(index);
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </span>
+        ) : null}
+        <button type="button" className="btn btn-ghost" onClick={onClose}>
+          Close
+        </button>
       </div>
     </div>
   );
