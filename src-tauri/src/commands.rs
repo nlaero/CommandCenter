@@ -314,6 +314,13 @@ pub fn add_panel_to_board(args: AddPanelArgs) -> Result<AppState, CommandError> 
                 message: "rotation interval must be between 5 and 3600 seconds".into(),
             });
         }
+        let type_ids: Vec<String> = required_ids
+            .iter()
+            .filter_map(|id| loaded.state.sources.get(id).map(|source| source.type_id.clone()))
+            .collect();
+        if let Some(message) = crate::rolling::rolling_panel_refusal(&type_ids) {
+            return Err(CommandError { message });
+        }
     }
 
     for source_id in &required_ids {

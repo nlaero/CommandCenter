@@ -4,6 +4,7 @@ import { CALLS_APP } from "../lib/broadcastifyCallsPreset";
 import { PENN_HILLS_FEED } from "../lib/broadcastifyPreset";
 import { X_REDIRECT_URI } from "../lib/xFollow";
 import type { AdapterDefinition } from "../types";
+import { WATCH_ADAPTERS } from "./watchCatalog";
 
 /** Built-in source types for the Settings catalog. */
 export const ADAPTER_CATALOG: AdapterDefinition[] = [
@@ -25,19 +26,10 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
       },
       {
         key: "scopes",
-        label: "Display scopes",
-        kind: "select",
+        label: "Maps",
+        kind: "weatherMaps",
         required: true,
-        options: [
-          { value: "local", label: "Local" },
-          { value: "regional", label: "Regional" },
-          { value: "nationwide", label: "Nationwide" },
-          { value: "local,regional", label: "Local + Regional" },
-          { value: "local,nationwide", label: "Local + Nationwide" },
-          { value: "regional,nationwide", label: "Regional + Nationwide" },
-          { value: "local,regional,nationwide", label: "All scales" },
-        ],
-        help: "Combinations open multiple map windows in one panel. Or add separate panels per scope.",
+        help: "Choose which maps this panel shows, how many are on screen, and whether those maps rotate inside the weather panel. Weather stays its own panel.",
       },
       {
         key: "units",
@@ -921,6 +913,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
       },
     ],
   },
+  ...WATCH_ADAPTERS,
 ];
 
 export function getAdapter(typeId: string): AdapterDefinition | undefined {

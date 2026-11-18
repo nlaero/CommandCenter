@@ -146,7 +146,7 @@ pub fn fetch(
     let units = param_str(source, "units")
         .unwrap_or_else(|| "imperial".into())
         .to_ascii_lowercase();
-    let scopes = parse_scopes(param_str(source, "scopes").as_deref().unwrap_or("local"));
+    let scopes = scopes_from_params(source);
     if scopes.is_empty() {
         return Err(super::SourceError::Message(
             "at least one scope is required (local, regional, nationwide)".into(),
@@ -321,15 +321,35 @@ pub fn parse_nws_alerts(body: &Value) -> Vec<WeatherAlert> {
     out
 }
 
+fn scopes_from_params(source: &SourceConfig) -> Vec<String> {
+    match source.params.get("scopes") {
+        Some(Value::Array(items)) => {
+            let joined = items
+                .iter()
+                .filter_map(|item| item.as_str())
+                .collect::<Vec<_>>()
+                .join(",");
+            parse_scopes(&joined)
+        }
+        Some(Value::String(raw)) => parse_scopes(raw),
+        _ => parse_scopes("local"),
+    }
+}
+
 fn parse_scopes(raw: &str) -> Vec<String> {
-    let mut out = Vec::new();
+    let mut chosen = Vec::new();
     for part in raw.split([',', '+', '|', ' ']) {
         let p = part.trim().to_ascii_lowercase();
-        if matches!(p.as_str(), "local" | "regional" | "nationwide") && !out.contains(&p) {
-            out.push(p);
+        if matches!(p.as_str(), "local" | "regional" | "nationwide") && !chosen.contains(&p) {
+            chosen.push(p);
         }
     }
-    out
+    // Same order the weather panel rotates: local, then regional, then nationwide.
+    ["local", "regional", "nationwide"]
+        .into_iter()
+        .filter(|id| chosen.iter().any(|item| item == id))
+        .map(str::to_string)
+        .collect()
 }
 
 fn build_scope(
@@ -562,6 +582,7 @@ fn num_field(row: &Value, keys: &[&str]) -> Option<f64> {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::BTreeMap;
 
     #[test]
     fn parses_scope_combinations() {
@@ -571,6 +592,21 @@ mod tests {
         );
         assert_eq!(parse_scopes("local+regional"), vec!["local", "regional"]);
         assert!(parse_scopes("").is_empty());
+    }
+
+    #[test]
+    fn reads_scope_arrays() {
+        let mut params = BTreeMap::new();
+        params.insert("scopes".into(), json!(["nationwide", "local"]));
+        let source = SourceConfig {
+            type_id: "weather.openmeteo".into(),
+            params,
+            refresh: Some("10m".into()),
+            secrets: Vec::new(),
+            enabled: true,
+            draft: false,
+        };
+        assert_eq!(scopes_from_params(&source), vec!["local", "nationwide"]);
     }
 
     #[test]

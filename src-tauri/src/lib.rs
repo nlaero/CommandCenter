@@ -8,6 +8,7 @@ mod local_audio;
 mod local_job;
 mod local_server;
 mod location;
+mod rolling;
 mod media;
 mod safety;
 mod secrets;

@@ -4,7 +4,9 @@
 
 [`multi-user`](https://github.com/nlaero/CommandCenter/tree/multi-user) is the future server version, branched from `main`. A server there can run on this computer or on another machine. Shared caption memory belongs on that branch. `main` keeps caption fixes on this computer.
 
-Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), NOAA space weather and aurora, traffic and road conditions for the region around a confirmed place, USGS earthquakes, news RSS, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), Broadcastify Calls, public cameras (search and recommendations), a private camera link, pasted image / video / HLS links, YouTube Live, a web scanner stream, X following (posts from accounts you follow), nearby public-safety alerts from online streams and audio inputs, and local audio captions from a jack or Bluetooth input. Mounted source windows publish into the right-side alerts pane. X posts stay in their own panel. Headlines stay in the news panel.
+Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add panels from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), NOAA space weather and aurora, traffic and road conditions for the region around a confirmed place, USGS earthquakes, news RSS, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), Broadcastify Calls, public cameras (search and recommendations), a private camera link, pasted image / video / HLS links, YouTube Live, a web scanner stream, X following (posts from accounts you follow), nearby public-safety alerts from online streams and audio inputs, and local audio captions from a jack or Bluetooth input. The same board also lists river stage, storm outlooks and reports, GOES-East lightning, a public agency feed you paste, transit alerts, flight restrictions, NRC event notices, the nearest EPA radiation station, Coast Guard spill calls, WHO disease notices, internet outages for the state, and home alarms on this network. Mounted source windows publish into the right-side alerts pane. X posts stay in their own panel. Headlines stay in the news panel.
+
+Settings lists the panels already on the board. Each row can adjust that panel or delete it. New panel opens a grouped list of every source. After you pick one, you can make that panel rolling and add more sources, each with its own settings. A live picture or a live audio feed stays a single panel: the form warns and leaves it off the rotation. Weather stays a single panel too. The weather panel itself chooses which maps to show, how many are on screen, and whether those maps rotate.
 
 ## Audio rule
 
@@ -90,15 +92,13 @@ Optional Open-Meteo commercial key goes in the keyring / `secrets.local.json` as
 | Setting | Required | Notes |
 |---------|----------|--------|
 | Location | yes | GPS, network location, another device location service, or an address. The source cannot be saved until Command Center confirms the place. |
-| Display scopes | yes | `local`, `regional`, `nationwide`, or combinations |
+| Maps | yes | Local, regional, and nationwide. The panel chooses which of those to show, how many are on screen, and whether they rotate inside this panel. |
 | Units | yes | Imperial or Metric |
 | Show radar | no | Default on |
 | Show satellite | no | Default on |
 | Open-Meteo API key | no | Secret `weather.optional_key` |
 
-**In the app:** Settings → Source catalog → Weather → Configure. Pick GPS, network location, or another source on this device, or type an address, and wait until the form says the location was found. Then scopes and units. Save, or Save & add to board. Panel shows conditions, the confirmed place, a short hourly strip, and a map per selected scope. Radar / Satellite chips toggle layers.
-
-Add more Weather sources if you want separate panels per scope instead of a combo.
+**In the app:** Settings → Panels → Weather. Pick GPS, network location, or another source on this device, or type an address, and wait until the form says the location was found. Check the maps, set how many are on screen, and turn on rotation if you want the panel to step through them. Then units. Add panel. The window shows conditions, the confirmed place, a short hourly strip, and the maps you chose. Radar / Satellite chips toggle layers. Weather is not part of a rolling panel.
 
 ## Location
 
@@ -125,7 +125,7 @@ A row that can change travel time (a closure, crash, lane restriction, meaningfu
 
 The app asks a feed only when the 80-mile circle meets that feed's coverage. A place with no free feed still shows the map, and the note says so. Credentials stay in the OS keyring. The basemap is Esri Dark Gray.
 
-**In the app:** Settings → Source catalog → Traffic / road conditions → Configure. Confirm a place the same way as weather. Save the PennDOT or OHGO credentials only if this region reaches Pennsylvania or Ohio. Save, or Save & add to board.
+**In the app:** Settings → Panels → Traffic / road conditions. Confirm a place the same way as weather. Save the PennDOT or OHGO credentials only if this region reaches Pennsylvania or Ohio. Add panel.
 
 ## USGS earthquakes
 
@@ -140,7 +140,7 @@ USGS updates these about once a minute and sends `Cache-Control: max-age=60` plu
 | Alerts magnitude | yes | Default 4.5. Also sends tsunami flags, PAGER yellow+, landslides, and volcanic eruptions to the alerts pane |
 | Pan map to new events | no | Default on. Clicking a row always pans |
 
-**In the app:** Settings → Source catalog → USGS earthquakes → Configure. Pick a feed. Save, or Save & add to board. The map opens on the newest event. Later polls move it to each new earthquake, tsunami flag, or other event. Drag to look around; +/- zooms. Basemap is Esri Dark Gray (CARTO's keyless raster tiles now ask for an API key). Credit Esri / OSM on the map; USGS stays in the footer.
+**In the app:** Settings → Panels → USGS earthquakes. Pick a feed. Add panel. The map opens on the newest event. Later polls move it to each new earthquake, tsunami flag, or other event. Drag to look around; +/- zooms. Basemap is Esri Dark Gray (CARTO's keyless raster tiles now ask for an API key). Credit Esri / OSM on the map; USGS stays in the footer.
 
 While that window is on the board, notable rows (tsunami flag, PAGER yellow or higher, magnitude at or above the threshold, landslides, volcanic eruptions) show in the right-side alerts pane. Taking the window off the board removes them. Click a row in the pane for the USGS detail link.
 
@@ -168,7 +168,7 @@ While that window is on the board, notable rows (tsunami flag, PAGER yellow or h
 
 While this window is on the board, a current G, S, or R of 1 or higher goes to the alerts pane, along with watches, warnings, and K-index alerts of 5 or higher from the last 72 hours (or still inside their valid-until time). Taking the window off the board removes them.
 
-**In the app:** Settings → Source catalog → Space weather / aurora → Configure. Confirm a place. Save, or Save & add to board.
+**In the app:** Settings → Panels → Space weather / aurora. Confirm a place. Add panel.
 
 ## News
 
@@ -184,7 +184,7 @@ Headlines stay in the news panel. They are not copied to the alerts pane.
 | National outlets | yes | At least one |
 | Max stories | yes | Newest first (default 40, max 100) |
 
-**In the app:** Settings → Source catalog → News → Configure. Confirm the place, check the national outlets, and save. The window title uses the city. New stories flash in the list. Click a row for the summary and the story link.
+**In the app:** Settings → Panels → News. Confirm the place, check the national outlets, and save. The window title uses the city. New stories flash in the list. Click a row for the summary and the story link.
 
 ## Crime / incident
 
@@ -198,7 +198,7 @@ Municipal open data via Socrata SODA or a custom GeoJSON/JSON URL. Not CrimeRada
 | Attribution | yes | Panel footer |
 | Socrata App Token | no | Secret `socrata.app_token` — keyring preferred |
 
-**In the app:** Settings → Source catalog → Crime / incident → Configure. Pick a provider (Chicago / Seattle fill attribution). Optional Socrata token. Save or Save & add to board. New IDs flash in-panel; click a row for detail. Rows with `audioUrl` / `audio` get a muted player in the detail pane.
+**In the app:** Settings → Panels → Crime / incident. Pick a provider (Chicago / Seattle fill attribution). Optional Socrata token. Add panel. New IDs flash in-panel; click a row for detail. Rows with `audioUrl` / `audio` get a muted player in the detail pane.
 
 Normalized fields when present: `title`, `category`, `description`, `occurredAt`/`date`, `address`, `lat`/`lon`, `audioUrl`, `detailUrl`.
 
@@ -231,7 +231,7 @@ Players start muted. Keep personal archive audio on-device — no cloud ASR uplo
 
 With captions enabled, the live row starts muted and transcribes while it plays. The newest line sits above a scrolling list of earlier lines. Scroll up and the list stays put until Latest. Fix caption writes the correction to the caption store on this computer, and later lines pick it up. The history keeps the relay listen URL with any password removed, so another source can use that audio. Archive clips still use Transcribe local: Tiny English when it is installed, and a short placeholder until then. Live captions do not invent that placeholder. If Tiny English is not installed, the live line says so. With Tiny English installed, this computer records one short window of the relay and transcribes it here. If that fails, the line shows the reason in plain text. Audio stays on this computer.
 
-**In the app:** Settings → Source catalog → Broadcastify (Feed Owner) → Configure. Confirm the feed, enter the password, optional archive day. Save & add to board. The window is titled Penn Hills / Plum Police Dispatch. It shows online/offline, listeners, and archives. The live row plays muted with captions. Change day in the toolbar; use CC + Transcribe local on a clip when captions are on.
+**In the app:** Settings → Panels → Broadcastify (Feed Owner). Confirm the feed, enter the password, optional archive day. Add panel. The window is titled Penn Hills / Plum Police Dispatch. It shows online/offline, listeners, and archives. The live row plays muted with captions. Change day in the toolbar; use CC + Transcribe local on a clip when captions are on.
 
 Live Owner API calls need the Tauri app. The browser Vite mock previews this feed without calling the API (CORS, and the password never leaves the desktop keyring).
 
@@ -255,7 +255,7 @@ Auth is an HS256 JWT. The header carries `kid`, and the payload carries `iss`, `
 
 Players start muted. Unmute a clip to hear it. Each refresh is a metered read, so the panel does not poll faster than every 30 seconds.
 
-**In the app:** Settings → Source catalog → Broadcastify Calls → Configure. Confirm the system, groups, or node. Enter the signing secret. Save & add to board. The window lists the clips the API returned.
+**In the app:** Settings → Panels → Broadcastify Calls. Confirm the system, groups, or node. Enter the signing secret. Add panel. The window lists the clips the API returned.
 
 Live Calls requests need the Tauri app. The browser preview shows two sample clips after the secret field is filled and does not call the API.
 
@@ -273,7 +273,7 @@ A Broadcastify listen page, relay, or Calls link is refused. Your uploaded feed 
 
 Playback starts muted. The mute control turns the sound on and off. While the sound is muted, a short window of the stream is transcribed here with Tiny English when that model is installed. The newest line stays up, and earlier lines stay in a scrolling list. Scroll up and the list stays put until Latest. A wrong line can be corrected on this computer. If Tiny English is not installed, the line says so. The line stays empty of invented words. Audio is not uploaded.
 
-**In the app:** Settings → Source catalog → Web scanner → Configure. Name the stream, paste the link, Save & add to board.
+**In the app:** Settings → Panels → Web scanner. Name the stream, paste the link, Add panel.
 
 The browser preview plays the link too. Captions still run on this computer when Tiny English is installed.
 
@@ -292,7 +292,7 @@ Video and audio start muted. Captions show while the sound is off. CC keeps them
 | Client secret | no | Keyring only, for a confidential app |
 | Max posts | yes | Newest first, 5–100 |
 
-**In the app:** Settings → Source catalog → X → Configure. Enter the client ID. Save & add to board. Sign in on the panel. The list scrolls. Posts that show up after the first load are marked.
+**In the app:** Settings → Panels → X. Enter the client ID. Add panel. Sign in on the panel. The list scrolls. Posts that show up after the first load are marked.
 
 The browser preview signs in locally and shows sample posts. It does not call X, and it does not use a real token. Live posts need the desktop app.
 
@@ -315,7 +315,7 @@ Click a call for the transcript and the audio. Each transmission shows the unit 
 
 ffmpeg has to be on PATH for a real recording. The desktop app records the feed. Audio is not uploaded.
 
-**In the app:** Settings → Source catalog → Nearby public safety → Configure. Find your location, set the radius, add each feed with its county and state. Save & add to board.
+**In the app:** Settings → Panels → Nearby public safety. Find your location, set the radius, add each feed with its county and state. Add panel.
 
 ## Local audio
 
@@ -333,7 +333,7 @@ ffmpeg has to be on PATH to record the input. Audio is not uploaded. The browser
 | Audio input | yes | A jack or Bluetooth device on this computer |
 | Captions | no | Default on. Tiny English from Settings → Local AI |
 
-**In the app:** Settings → Source catalog → Local audio → Configure. Pick the input. Save & add to board.
+**In the app:** Settings → Panels → Local audio. Pick the input. Add panel.
 
 ## Cameras and YouTube
 
@@ -351,23 +351,35 @@ YouTube Live is its own source, and a YouTube link pasted on a camera plays the 
 
 Captions are only for a source that has sound. HLS WebVTT or CEA-708 is used when the playlist already has it, and YouTube uses its own captions. An HLS stream or video file with no caption track is transcribed here with Tiny English from Settings → Local AI. Music and a repeated non-speech phrase are not shown; if the audio has no speech the caption line stays empty. The lines show while the panel is muted. Turn the sound on and they hide, unless CC is on. CC does not have to be pressed for the muted case. A still image never takes this path. YouTube audio is not downloaded for this. Preparing the audio for the local model uses ffmpeg when it is on the computer, and otherwise decodes AAC, MP3, and MP4 here. RTSP and USB cameras still need a native player.
 
-## Timed panel rotation
+## Rolling panels
 
-Optional: cycle any combination of saved sources in one panel on a timer.
+A panel can switch between sources that scroll. In Settings → Panels, choose the first source, turn on Make this panel rolling, add the others, and set how long each one stays up (15s, 30s, 1m, 5m, or 5–3600 seconds). They cycle in the order you add them. The toolbar shows the slot, the active source, a countdown, and pause / previous / next. The panel stores `rotation.enabled`, `intervalSec`, and `sourceIds`.
 
-1. Configure at least two sources under Settings → Source catalog.
-2. Settings → Panel rotation.
-3. Turn on timed rotation.
-4. Set title + interval (15s / 30s / 1m / 5m, or custom 5–3600s), check any mix of sources, Add rotating panel to board. They cycle in the order you check them.
+A live feed does not scroll, so the form warns and refuses to put it on a rolling panel. Leave it as its own panel. Weather is the same: its maps, the count, and the rotation stay inside the weather panel.
 
-Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on the panel (`rotation.enabled`, `intervalSec`, `sourceIds`). Single-source panels are unchanged.
+## More lists on the board
+
+These sit next to the sources above. Each one is its own panel, and each one can join a rolling panel.
+
+- River stage from NOAA, inside a radius of the confirmed place, with the forecast crest.
+- Storm Prediction Center outlooks and local storm reports. General thunderstorms stay on the list and stay off the alerts pane.
+- GOES-East lightning. Flashes outside the radius are dropped. The panel credits NOAA.
+- A public agency RSS or Atom URL you paste. There is no directory of agencies, and meeting calendars stay out.
+- Transit alerts. A place in the Pittsburgh area fills in the PRT bus and rail feeds. Anywhere else, paste the agency's alerts URL.
+- FAA temporary flight restrictions whose shapes fall inside the radius, plus a short list of shapeless notices in this state.
+- NRC event notices. Beaver Valley is called out when it appears.
+- The nearest EPA RadNet station. A reading is notable when it leaves that station's own recent range.
+- Coast Guard National Response Center caller reports for nearby counties. These are calls, not confirmed spills, and they do not include a cleanup status.
+- WHO disease outbreak notices, a short global list.
+- Internet outages for this state from Georgia Tech IODA, with that credit on the panel. Shown on this computer.
+- Home alarms from a Home Assistant hub or an MQTT broker already on this network. Smoke, gas, and carbon monoxide trip as alerts. Water, doors, and gates warn. The token stays in the OS keyring.
 
 ## Shell behavior
 
 - Empty board on first launch
-- Settings → Source catalog: weather, traffic / road conditions, USGS earthquakes, news RSS, ADS-B, cameras (public list, private link, pasted image / HLS / file, plus YouTube Live), web scanner, ham, NOAA space weather and aurora, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, X following, local audio, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
-- Configure → Save or Save & add to board
-- Settings → Panel rotation for any mix of configured sources in one panel
+- Settings → Panels lists the panels on the board. Adjust or delete one there. New panel is grouped: weather, storms, lightning, space weather, and ham; rivers, quakes, spills, radiation, and nuclear notices; traffic and transit; ADS-B and flight restrictions; radio, scanners, and cameras; news, X, crime, agency feeds, disease notices, and internet outages; home alarms; and the file / HTTP / SQLite / system-metrics stubs
+- Add panel saves that source onto the board. A source that no panel uses is dropped when you save or delete a panel
+- A rolling panel cycles sources that scroll. Live feeds and weather stay single panels
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
 - Settings → Display sets the window size (1280×720 through 4K, this screen, or a custom size) and which screens the board uses. More than one screen splits the board. Saved on this computer.
 - Settings → Television sends the board to one TV, or splits it across more than one. The TV is display-only. Each picture has to be 3840×2160 or higher so a 58-inch or larger set stays sharp. Setup stays on the computer.
@@ -375,7 +387,7 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 - Board switcher in the chrome (+ for another empty board)
 - Help → Check for updates… (also the toolbar button, and Settings → Updates) asks GitHub if this copy is behind a published release. Nothing is downloaded until you choose it.
 
-Other catalog entries stay stubs until their adapters land.
+File, HTTP, SQLite, and system metrics stay stubs.
 
 ## Screens
 
@@ -442,6 +454,7 @@ Checking does not publish a release. Installers stay unpublished until asked.
 
 ```bash
 npm run test:rust
+node --experimental-strip-types src/lib/weatherMaps.test.ts
 node --experimental-strip-types src/lib/news.test.ts
 node --experimental-strip-types src/lib/safety.test.ts
 node --experimental-strip-types src/lib/spaceWeather.test.ts
