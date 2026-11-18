@@ -39,29 +39,14 @@ function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-/** Deterministic stub segments for UI / smoke (no model download). */
+/** Missing Tiny English. Do not invent dispatch text — a public install must not show words nobody said. */
 export function stubLocalCaptions(sourceUrl: string, clipId: string): CaptionResult {
-  const seed = clipId.length + sourceUrl.length;
-  const base = [
-    "Dispatch, unit responding.",
-    "Traffic holding on the main.",
-    "Copy, standing by.",
-    "Clear the last.",
-  ];
-  const segments: CaptionSegment[] = base.map((text, i) => {
-    const startSec = i * 8 + (seed % 3);
-    return {
-      id: `${clipId}-seg-${i}`,
-      startSec,
-      endSec: startSec + 7,
-      text,
-    };
-  });
+  void clipId;
   return {
     engine: "local-stub",
-    status: "stub",
+    status: "needs-model",
     sourceUrl,
-    segments,
+    segments: [],
     note:
       "Local AI is not installed. Settings → Local AI downloads Tiny English onto this computer. Audio stays here.",
     generatedAt: new Date().toISOString(),

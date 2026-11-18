@@ -32,7 +32,7 @@ export type LocalCaptionLine = {
 
 export type LocalAudioWindow = {
   engine: "local-whisper" | "local-stub";
-  status: "ready" | "needs-model" | "empty" | "error";
+  status: "ready" | "needs-model" | "empty" | "error" | "off";
   note: string;
   durationSec: number;
   segments: { id: string; startSec: number; endSec: number; text: string }[];
@@ -197,10 +197,10 @@ export async function refreshLocalAudioInputs(): Promise<LocalAudioInput[]> {
   return listLocalAudioInputs();
 }
 
-export async function listenLocalAudio(deviceId: string): Promise<LocalAudioWindow> {
+export async function listenLocalAudio(deviceId: string, captions = true): Promise<LocalAudioWindow> {
   const { invoke } = await import("@tauri-apps/api/core");
   const raw = await invoke<RawWindow>("listen_local_audio", {
-    args: { deviceId },
+    args: { deviceId, captions },
   });
   const segments = (raw.segments ?? [])
     .map((segment, index) => ({
@@ -211,7 +211,11 @@ export async function listenLocalAudio(deviceId: string): Promise<LocalAudioWind
     }))
     .filter((segment) => segment.text.trim());
   const status =
-    raw.status === "ready" || raw.status === "needs-model" || raw.status === "empty" || raw.status === "error"
+    raw.status === "ready" ||
+    raw.status === "needs-model" ||
+    raw.status === "empty" ||
+    raw.status === "error" ||
+    raw.status === "off"
       ? raw.status
       : segments.length
         ? "ready"

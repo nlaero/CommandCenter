@@ -3,6 +3,7 @@ import {
   absolutizePlaylist,
   classifyPlayback,
   mediaByteRange,
+  looksLikeContainer,
   looksLikeImage,
   playbackHasAudio,
   prefersChannelLive,
@@ -98,5 +99,15 @@ assert.equal(livePage.videoId, "FX6GYpj-PnA");
 assert.equal(mediaByteRange(0, 0), undefined);
 assert.equal(mediaByteRange(undefined, undefined), undefined);
 assert.equal(mediaByteRange(0, 188), "bytes=0-187");
+
+const mp4 = new Uint8Array(12);
+mp4.set([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70], 0);
+assert.equal(looksLikeContainer(mp4.buffer), true);
+const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+assert.equal(looksLikeImage(jpeg.buffer, ""), true);
+assert.equal(looksLikeContainer(jpeg.buffer), false);
+const html = new TextEncoder().encode("<html>offline</html>");
+assert.equal(looksLikeContainer(html.buffer), false);
+assert.equal(looksLikeImage(html.buffer, ""), false);
 
 console.log("stream media checks ok");

@@ -6,7 +6,7 @@ import Hls, {
   type LoaderContext,
   type LoaderStats,
 } from "hls.js";
-import { fetchMedia, looksLikePlaylist } from "./streamMedia";
+import { fetchMedia, looksLikePlaylist, mediaByteRange } from "./streamMedia";
 
 function hlsFailure(details?: string): string {
   switch (details) {
@@ -63,8 +63,9 @@ class MediaProxyLoader {
       callbacks.onTimeout(this.stats, context, null);
     }, budget);
 
-    const range =
-      typeof context.rangeEnd === "number" ? `bytes=${context.rangeStart ?? 0}-${context.rangeEnd - 1}` : undefined;
+    // rangeEnd 0 means the whole fragment. bytes=0--1 makes playlists return a slice
+    // the demuxer cannot read. The camera panel uses the same helper.
+    const range = mediaByteRange(context.rangeStart, context.rangeEnd);
 
     void fetchMedia(context.url, { range, signal: controller.signal })
       .then((result) => {

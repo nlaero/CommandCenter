@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { programAudioSources } from "./feedCaptions.ts";
+import { mediaByteRange } from "./streamMedia.ts";
 import {
   normalizeWebScannerUrl,
   scannerCaptionWindow,
@@ -19,6 +20,10 @@ assert.equal(webScannerUrlError(file), null);
 assert.equal(scannerPlayback(file), "file");
 assert.deepEqual(scannerCaptionWindow(file, 1), { seekSec: 12, timelineStart: 12, durationSec: 12 });
 
+// The web scanner HLS loader must use this. rangeEnd 0 is a whole fragment, not bytes=0--1.
+assert.equal(mediaByteRange(0, 0), undefined);
+assert.equal(mediaByteRange(undefined, undefined), undefined);
+assert.equal(mediaByteRange(0, 188), "bytes=0-187");
 assert.equal(scannerPlayback("https://cdn.example/live.m3u8"), "hls");
 assert.equal(scannerPlayback("https://cdn.example/live.m3u8?token=1"), "hls");
 assert.equal(webScannerUrlError("  https://cdn.example/feed.aac  "), null);

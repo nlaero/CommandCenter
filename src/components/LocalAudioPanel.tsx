@@ -36,6 +36,8 @@ export function LocalAudioPanel({ sourceId, source }: Props) {
       ? storedKind
       : classifyLocalInput(deviceId, deviceLabel || deviceId);
   const captionsOn = source.params.enableCaptions !== false;
+  const captionsOnRef = useRef(captionsOn);
+  captionsOnRef.current = captionsOn;
   const desktop = isDesktop();
   const [muted, setMuted] = useState(true);
   const [ccOn, setCcOn] = useState(false);
@@ -132,10 +134,13 @@ export function LocalAudioPanel({ sourceId, source }: Props) {
 
     const loop = async () => {
       while (!cancelled) {
+        const wantCaptions = captionsOnRef.current;
         setRunning(true);
-        setStatus((current) => current ?? "Creating captions on this device…");
+        setStatus((current) =>
+          wantCaptions ? (current ?? "Creating captions on this device…") : null,
+        );
         try {
-          const heard = await listenLocalAudio(deviceId);
+          const heard = await listenLocalAudio(deviceId, wantCaptions);
           if (cancelled) return;
           if (heard.audioUrl) {
             owned.push(heard.audioUrl);
@@ -162,6 +167,11 @@ export function LocalAudioPanel({ sourceId, source }: Props) {
           });
           cursor += heard.durationSec || LOCAL_AUDIO_WINDOW_SEC;
           windowIndex += 1;
+          if (heard.status === "off") {
+            setRunning(false);
+            setStatus(null);
+            continue;
+          }
           if (heard.status === "needs-model") {
             setRunning(false);
             setStatus(heard.note);

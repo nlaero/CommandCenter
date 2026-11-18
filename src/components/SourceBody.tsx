@@ -111,10 +111,7 @@ export function SourceBody({ sourceId, source, sources = {} }: Props) {
   return (
     <div className="source-stub">
       <div className="source-stub-toolbar">
-        <span className="incident-live">
-          <span className="live-dot" aria-hidden />
-          Bound
-        </span>
+        <span className="incident-meta">Not available</span>
         <span className="incident-meta">
           {source.type}
           {source.refresh ? ` · ${source.refresh}` : null}
@@ -134,7 +131,7 @@ export function SourceBody({ sourceId, source, sources = {} }: Props) {
         </p>
         <p className="source-stub-note">
           {adapter?.stubNote ??
-            "Live data adapter is stubbed in Phase A. Layout, Settings, and rotation are active."}
+            "This source is in the catalog and does not load live data yet."}
         </p>
         {Object.keys(source.params).length > 0 ? (
           <dl className="incident-dl source-stub-params">

@@ -452,7 +452,7 @@ fn transcribe_audio_local_job(args: TranscribeAudioArgs) -> Result<CaptionResult
             note,
             generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         }),
-        Err(local_ai::TranscribeError::NotInstalled) => Ok(stub_captions(url, &clip)),
+        Err(local_ai::TranscribeError::NotInstalled) => Ok(needs_model_captions(&url, &clip)),
         Err(local_ai::TranscribeError::Message(message)) => Err(CommandError { message }),
     }
 }
@@ -461,6 +461,7 @@ fn transcribe_audio_local_job(args: TranscribeAudioArgs) -> Result<CaptionResult
 /// YouTube URLs are rejected. A missing model does not invent caption text.
 ///
 /// Off the UI thread, and serialized with other local tools inside `local_ai`.
+/// A camera or Calls clip must not freeze the window.
 #[tauri::command]
 pub async fn transcribe_media_local(
     args: TranscribeMediaArgs,
@@ -543,37 +544,6 @@ fn needs_model_captions(url: &str, _clip: &str) -> CaptionResult {
         status: "needs-model".into(),
         source_url: url.to_string(),
         segments: Vec::new(),
-        note: "Local AI is not installed. Settings → Local AI downloads Tiny English onto this computer. Audio stays here.".into(),
-        generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-    }
-}
-
-fn stub_captions(url: &str, clip: &str) -> CaptionResult {
-    let seed = clip.len() + url.len();
-    let lines = [
-        "Dispatch, unit responding.",
-        "Traffic holding on the main.",
-        "Copy, standing by.",
-        "Clear the last.",
-    ];
-    let segments = lines
-        .iter()
-        .enumerate()
-        .map(|(i, text)| {
-            let start = (i * 8 + seed % 3) as f64;
-            CaptionSegment {
-                id: format!("{clip}-seg-{i}"),
-                start_sec: start,
-                end_sec: start + 7.0,
-                text: (*text).to_string(),
-            }
-        })
-        .collect();
-    CaptionResult {
-        engine: "local-stub".into(),
-        status: "stub".into(),
-        source_url: url.to_string(),
-        segments,
         note: "Local AI is not installed. Settings → Local AI downloads Tiny English onto this computer. Audio stays here.".into(),
         generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     }
@@ -1067,18 +1037,31 @@ pub async fn list_audio_inputs() -> Vec<crate::safety::AudioInput> {
         })
 }
 
+/// Device listing and recording run off the UI thread. ffmpeg can take the
+/// whole 12 second window, and a DirectShow list can sit forever.
 #[tauri::command]
-pub fn list_local_audio_inputs() -> Vec<crate::local_audio::LocalAudioInput> {
-    crate::local_audio::list_inputs()
+pub async fn list_local_audio_inputs() -> Vec<crate::local_audio::LocalAudioInput> {
+    tauri::async_runtime::spawn_blocking(crate::local_audio::list_inputs)
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
-pub fn listen_local_audio(
+pub async fn listen_local_audio(
     args: crate::local_audio::ListenRequest,
 ) -> Result<crate::local_audio::LocalAudioWindow, CommandError> {
-    let paths = config::resolve_paths()?;
-    crate::local_audio::listen(std::path::Path::new(&paths.root), args)
-        .map_err(|message| CommandError { message })
+    match tauri::async_runtime::spawn_blocking(move || {
+        let paths = config::resolve_paths()?;
+        crate::local_audio::listen(std::path::Path::new(&paths.root), args)
+            .map_err(|message| CommandError { message })
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(err) => Err(CommandError {
+            message: format!("That work stopped: {err}"),
+        }),
+    }
 }
 
 #[tauri::command]
