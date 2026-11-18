@@ -35,6 +35,13 @@ webpki-roots = "1"
 symphonia = { version = "0.5", features = ["aac", "isomp4", "mp3", "wav"] }
 mdns-sd = "0.21.7"
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
 [profile.release]
 codegen-units = 1
 lto = true

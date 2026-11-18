@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::process::{Command, Output, Stdio};
+use std::process::{Output, Stdio};
 use std::time::Duration;
 
 const UA: &str =
@@ -398,7 +398,7 @@ fn command_text(program: &str, output: &Output) -> Result<String, String> {
 }
 
 fn run_cmd(program: &str, args: &[&str], timeout: Duration) -> Result<Output, String> {
-    let child = Command::new(program)
+    let child = crate::local_job::command(program)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -426,16 +426,7 @@ fn run_cmd(program: &str, args: &[&str], timeout: Duration) -> Result<Output, St
 }
 
 fn kill_pid(pid: u32) {
-    #[cfg(unix)]
-    {
-        let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
-    }
-    #[cfg(windows)]
-    {
-        let _ = Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
-            .status();
-    }
+    crate::local_job::stop_pid(pid);
 }
 
 fn http_client() -> Result<reqwest::blocking::Client, String> {

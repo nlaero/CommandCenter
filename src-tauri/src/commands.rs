@@ -406,8 +406,17 @@ pub struct TranscribeMediaArgs {
 
 /// Transcribe on this computer. Uses the installed model when Settings has one.
 /// Otherwise returns a short placeholder so the caption UI still has something to show.
+///
+/// Runs off the UI thread. whisper-cli and ffmpeg block for seconds, and a
+/// synchronous command would freeze the window, including taskbar restore.
 #[tauri::command]
-pub fn transcribe_audio_local(args: TranscribeAudioArgs) -> Result<CaptionResult, CommandError> {
+pub async fn transcribe_audio_local(
+    args: TranscribeAudioArgs,
+) -> Result<CaptionResult, CommandError> {
+    spawn_blocking(move || transcribe_audio_local_job(args)).await?
+}
+
+fn transcribe_audio_local_job(args: TranscribeAudioArgs) -> Result<CaptionResult, CommandError> {
     let url = args.source_url.trim();
     if url.is_empty() {
         return Err(CommandError {
@@ -450,8 +459,16 @@ pub fn transcribe_audio_local(args: TranscribeAudioArgs) -> Result<CaptionResult
 
 /// Transcribe a short camera or file slice on this computer.
 /// YouTube URLs are rejected. A missing model does not invent caption text.
+///
+/// Off the UI thread, and serialized with other local tools inside `local_ai`.
 #[tauri::command]
-pub fn transcribe_media_local(args: TranscribeMediaArgs) -> Result<CaptionResult, CommandError> {
+pub async fn transcribe_media_local(
+    args: TranscribeMediaArgs,
+) -> Result<CaptionResult, CommandError> {
+    spawn_blocking(move || transcribe_media_local_job(args)).await?
+}
+
+fn transcribe_media_local_job(args: TranscribeMediaArgs) -> Result<CaptionResult, CommandError> {
     let url = args.source_url.trim();
     if url.is_empty() {
         return Err(CommandError {
@@ -1039,8 +1056,15 @@ pub fn display_work_area(window: tauri::WebviewWindow) -> Result<DisplayWorkArea
 }
 
 #[tauri::command]
-pub fn list_audio_inputs() -> Vec<crate::safety::AudioInput> {
-    crate::safety::list_inputs()
+pub async fn list_audio_inputs() -> Vec<crate::safety::AudioInput> {
+    spawn_blocking(crate::safety::list_inputs)
+        .await
+        .unwrap_or_else(|_| {
+            vec![crate::safety::AudioInput {
+                id: "default".into(),
+                label: "Default input".into(),
+            }]
+        })
 }
 
 #[tauri::command]
@@ -1058,12 +1082,27 @@ pub fn listen_local_audio(
 }
 
 #[tauri::command]
-pub fn listen_safety_feed(
+pub async fn listen_safety_feed(
     args: crate::safety::ListenRequest,
 ) -> Result<crate::safety::ListenResult, CommandError> {
-    let paths = config::resolve_paths()?;
-    crate::safety::listen(std::path::Path::new(&paths.root), args)
-        .map_err(|message| CommandError { message })
+    spawn_blocking(move || {
+        let paths = config::resolve_paths()?;
+        crate::safety::listen(std::path::Path::new(&paths.root), args)
+            .map_err(|message| CommandError { message })
+    })
+    .await?
+}
+
+fn spawn_blocking<T: Send + 'static>(
+    job: impl FnOnce() -> T + Send + 'static,
+) -> impl std::future::Future<Output = Result<T, CommandError>> {
+    async move {
+        tauri::async_runtime::spawn_blocking(job)
+            .await
+            .map_err(|err| CommandError {
+                message: format!("That work stopped: {err}"),
+            })
+    }
 }
 
 #[tauri::command]
