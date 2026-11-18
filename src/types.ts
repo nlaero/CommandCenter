@@ -453,6 +453,25 @@ export type TrafficFeedReport = {
   detail?: string;
 };
 
+/** One direction of a PennDOT camera still. */
+export type TrafficCameraView = {
+  id: string;
+  label: string;
+  imageUrl: string;
+};
+
+/** A PennDOT camera inside the saved radius. Stills do not need a data-feed key. */
+export type TrafficCamera = {
+  id: string;
+  name: string;
+  road?: string;
+  county?: string;
+  lat: number;
+  lon: number;
+  miles: number;
+  views: TrafficCameraView[];
+};
+
 /** One road incident, closure, delay, or driving condition inside the region. */
 export type TrafficEvent = {
   id: string;
@@ -481,6 +500,10 @@ export type TrafficPayload = {
   events: TrafficEvent[];
   /** Clear or wet segments counted and left off the list. */
   routineOmitted: number;
+  /** PennDOT cameras inside the radius, nearest first. */
+  cameras: TrafficCamera[];
+  /** Cameras inside the radius that were past the list cap. */
+  camerasOmitted: number;
 };
 
 export type NewsStory = {

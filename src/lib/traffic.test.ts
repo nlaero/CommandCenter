@@ -206,9 +206,11 @@ assert.ok(!alerts.some((alert) => alert.id === "src::ohgo-delay:delay-small"));
 
 const needsCreds = collectTraffic({ ...pennHills });
 assert.ok(needsCreds.traffic.feeds.some((feed) => feed.id === "penndot" && feed.status === "needs-credentials"));
-assert.ok(needsCreds.traffic.feeds.some((feed) => feed.id === "ohgo" && feed.status === "needs-credentials"));
+assert.ok(!needsCreds.traffic.feeds.some((feed) => feed.id === "ohgo"));
 assert.match(needsCreds.note, /PennDOT username/);
-assert.match(needsCreds.note, /OHGO/);
+assert.doesNotMatch(needsCreds.note, /OHGO/);
+assert.match(needsCreds.note, /80-mile radius/);
+assert.deepEqual(needsCreds.traffic.cameras, []);
 assert.equal(needsCreds.traffic.events.length, 0);
 
 const none = collectTraffic({ lat: 39.74, lon: -104.99 });
@@ -421,5 +423,69 @@ const refused = collectTraffic({
 assert.equal(refused.traffic.feeds.find((feed) => feed.id === "penndot")?.status, "error");
 assert.match(refused.traffic.feeds.find((feed) => feed.id === "penndot")?.detail ?? "", /refused/);
 assert.doesNotMatch(refused.note, /nope/);
+
+const nearEvent = {
+  EventID: 581,
+  EventType: "roadwork",
+  Facility: "HITE RD",
+  FromLocLatLong: "40.566278,-79.795637",
+  LaneStatus: "lane restriction",
+  Description: "Roadwork on HITE RD.",
+};
+const farEvent = {
+  EventID: 9,
+  EventType: "crash",
+  Facility: "I-76",
+  FromLocLatLong: "41.900000,-77.000000",
+  LaneStatus: "closed",
+  Description: "Too far east to be in a short radius.",
+};
+const tight = collectTraffic({
+  ...pennHills,
+  radiusMi: 5,
+  secrets: { penndotUser: "road", penndotPassword: "secret" },
+  bodies: { penndotEvents: { json: { Values: [nearEvent, farEvent] } } },
+});
+assert.equal(tight.traffic.radiusMi, 5);
+assert.equal(tight.traffic.events.find((event) => event.id === "penndot:581"), undefined);
+assert.match(tight.note, /5-mile radius/);
+const wide = collectTraffic({
+  ...pennHills,
+  radiusMi: 200,
+  secrets: { penndotUser: "road", penndotPassword: "secret" },
+  bodies: {
+    penndotEvents: { json: { Values: [nearEvent, farEvent] } },
+    penndotCameras: {
+      json: {
+        data: [
+          {
+            id: 100,
+            visible: true,
+            location: "I-376 @ Penn Hills",
+            roadway: "I-376",
+            county: "Allegheny",
+            latLng: { geography: { wellKnownText: "POINT (-79.835 40.475)" } },
+            images: [{ id: 55, imageUrl: "/map/Cctv/55", description: "Eastbound", blocked: false }],
+          },
+          {
+            id: 101,
+            visible: true,
+            location: "Far camera",
+            latLng: { geography: { wellKnownText: "POINT (-78.9 41.3)" } },
+            images: [{ id: 57, imageUrl: "/map/Cctv/57", blocked: false }],
+          },
+        ],
+      },
+    },
+  },
+});
+assert.equal(wide.traffic.radiusMi, 200);
+assert.ok(wide.traffic.events.some((event) => event.id === "penndot:581"));
+assert.ok(wide.traffic.events.some((event) => event.id === "penndot:9"));
+assert.equal(wide.traffic.cameras.length, 2);
+assert.equal(wide.traffic.cameras[0]?.id, "penndot-cam:100");
+assert.equal(wide.traffic.cameras[0]?.views[0]?.imageUrl, "https://www.511pa.com/map/Cctv/55");
+assert.match(wide.note, /opened from the list/);
+assert.ok(wide.attribution.includes("511PA cameras"));
 
 console.log("traffic.test.ts ok");

@@ -37,6 +37,7 @@ export function sourceGroup(typeId: string): string {
     case "nuclear.nrc":
       return "Water and hazards";
     case "traffic.roads":
+    case "camera.penndot":
     case "transit.gtfs":
       return "Travel";
     case "adsb.exchange":
@@ -87,6 +88,9 @@ export const SOURCE_GROUP_ORDER = [
 export function liveFeedRefusal(typeId: string): string | null {
   if (typeId === "weather.openmeteo") {
     return "Weather stays in its own panel. Choose which maps it shows, how many are on screen, and whether those maps rotate inside the weather panel. Weather cannot be added to a rolling panel.";
+  }
+  if (typeId === "camera.penndot") {
+    return "PennDOT cameras stay in their own panel. Choose how many show at once and whether that view rotates. They cannot be added to a rolling panel.";
   }
   if (sourceScrolls(typeId)) return null;
   const name = getAdapter(typeId)?.name ?? "This source";

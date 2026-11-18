@@ -22,6 +22,8 @@ const RADIUS: Record<string, { min: number; max: number; fallback: number }> = {
   "lightning.glm": { min: 5, max: 200, fallback: 30 },
   "tfr.faa": { min: 10, max: 400, fallback: 80 },
   "spills.uscg": { min: 5, max: 200, fallback: 40 },
+  "traffic.roads": { min: 5, max: 200, fallback: 80 },
+  "camera.penndot": { min: 5, max: 200, fallback: 80 },
 };
 
 export function inPrtArea(lat: number, lon: number): boolean {
@@ -80,6 +82,11 @@ export function initialParams(typeId: string): Record<string, unknown> {
     initial.outlets = [];
   }
   if (typeId === "camera.private") initial.brand = "custom";
+  if (typeId === "camera.penndot") {
+    initial.cameraCount = 1;
+    initial.rotateCameras = false;
+    initial.cameraRotateSec = 30;
+  }
   const radius = RADIUS[typeId];
   if (radius) initial.radiusMi = radius.fallback;
   if (typeId === "disease.who") initial.limit = 12;
@@ -122,6 +129,15 @@ export function editParams(typeId: string, params: Record<string, unknown>): Rec
     if (next.rotateMaps === undefined) next.rotateMaps = false;
     if (next.mapRotateSec === undefined || next.mapRotateSec === "") next.mapRotateSec = 30;
   }
+  if (typeId === "traffic.roads" && (next.radiusMi === undefined || next.radiusMi === "")) {
+    next.radiusMi = 80;
+  }
+  if (typeId === "camera.penndot") {
+    if (next.radiusMi === undefined || next.radiusMi === "") next.radiusMi = 80;
+    if (next.cameraCount === undefined || next.cameraCount === "") next.cameraCount = 1;
+    if (next.rotateCameras === undefined) next.rotateCameras = false;
+    if (next.cameraRotateSec === undefined || next.cameraRotateSec === "") next.cameraRotateSec = 30;
+  }
   if (typeId === "alarms.home") {
     if (!next.link) next.link = "homeassistant";
     if (!next.topic) next.topic = "homeassistant/#";
@@ -145,6 +161,10 @@ export function sourceHint(typeId: string): string | null {
       return "Point this at a Home Assistant hub or a broker on this network. Smoke, gas, and carbon monoxide trip as alerts. Water, doors, and gates warn.";
     case "lightning.glm":
       return "NOAA GOES-East lightning. Flashes outside the radius are dropped.";
+    case "traffic.roads":
+      return "The distance is how far from the confirmed place the map and monitoring reach. PennDOT cameras inside that distance open from the panel.";
+    case "camera.penndot":
+      return "These stills come from the public 511PA list, so a PennDOT key is not required. The view holds the number of cameras you pick and can rotate through the rest inside the distance.";
     case "disease.who":
       return "A short global list from WHO. It is not a local case map.";
     default:
@@ -246,6 +266,13 @@ export async function prepareSource(args: {
   if (args.typeId === "camera.private") {
     const linkError = streamLinkError(params.url);
     if (linkError) return { ok: false, message: linkError };
+  }
+  if (args.typeId === "camera.penndot") {
+    const count = Number(params.cameraCount);
+    const seconds = Number(params.cameraRotateSec);
+    params.cameraCount = Math.min(8, Math.max(1, Number.isFinite(count) ? Math.round(count) : 1));
+    params.rotateCameras = params.rotateCameras === true;
+    params.cameraRotateSec = Math.min(3600, Math.max(5, Number.isFinite(seconds) ? Math.round(seconds) : 30));
   }
   if (args.typeId === "weather.openmeteo") {
     const mapsError = weatherMapsSaveError(params);

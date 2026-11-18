@@ -1,8 +1,29 @@
-import type { TrafficBounds, TrafficEvent, TrafficFeedReport, TrafficKind, TrafficPayload, TrafficSeverity } from "../types.ts";
+import type {
+  TrafficBounds,
+  TrafficCamera,
+  TrafficCameraView,
+  TrafficEvent,
+  TrafficFeedReport,
+  TrafficKind,
+  TrafficPayload,
+  TrafficSeverity,
+} from "../types.ts";
 
-/** Driving region around the confirmed place. The map frames this whole circle. */
+/** Default distance from the confirmed place. The map frames this circle, and monitoring uses it. */
 export const REGION_MILES = 80;
+export const MIN_RADIUS_MILES = 5;
+export const MAX_RADIUS_MILES = 200;
 export const MAX_TRAFFIC_EVENTS = 120;
+export const MAX_LISTED_CAMERAS = 80;
+
+/** Radius for one request. Parsers read it so a custom distance applies without a second filter. */
+let activeRadius = REGION_MILES;
+
+export function trafficRadius(value: unknown): number {
+  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  const raw = Number.isFinite(n) ? n : REGION_MILES;
+  return Math.min(MAX_RADIUS_MILES, Math.max(MIN_RADIUS_MILES, Math.round(raw)));
+}
 
 const MILES_PER_DEG_LAT = 69.172;
 
@@ -31,6 +52,7 @@ export type TrafficBodies = {
   iowaConditions?: FeedBody;
   open511?: FeedBody;
   compass?: FeedBody;
+  penndotCameras?: FeedBody;
 };
 
 type Box = TrafficBounds;
@@ -55,8 +77,6 @@ const FEED_NAME: Record<TrafficFeedId, string> = {
 
 const PENNDOT_NOTE =
   "Pennsylvania's free 511 feed needs the PennDOT username and password on this source before live incidents and winter road conditions can load.";
-const OHGO_NOTE =
-  "Ohio's free OHGO feed needs an API key on this source before live incidents and travel delays can load.";
 
 type ParseResult = {
   events: TrafficEvent[];
@@ -161,10 +181,31 @@ export function collectTraffic(input: {
   lat: number;
   lon: number;
   label?: string;
+  radiusMi?: number;
   secrets?: TrafficSecrets;
   bodies?: TrafficBodies;
 }): { traffic: TrafficPayload; attribution: string; note: string } {
-  const bounds = regionBounds(input.lat, input.lon);
+  const radiusMi = trafficRadius(input.radiusMi);
+  const previousRadius = activeRadius;
+  activeRadius = radiusMi;
+  try {
+    return collectTrafficAt(input, radiusMi);
+  } finally {
+    activeRadius = previousRadius;
+  }
+}
+
+function collectTrafficAt(
+  input: {
+    lat: number;
+    lon: number;
+    label?: string;
+    secrets?: TrafficSecrets;
+    bodies?: TrafficBodies;
+  },
+  radiusMi: number,
+): { traffic: TrafficPayload; attribution: string; note: string } {
+  const bounds = regionBounds(input.lat, input.lon, radiusMi);
   const secrets = input.secrets ?? {};
   const bodies = input.bodies ?? {};
   const needed = feedsFor(bounds);
@@ -180,7 +221,6 @@ export function collectTraffic(input: {
       continue;
     }
     if (id === "ohgo" && !hasSecret(secrets.ohgoKey)) {
-      reports.push({ id, name, status: "needs-credentials", detail: OHGO_NOTE });
       continue;
     }
     const parts = bodiesFor(id, bodies);
@@ -195,30 +235,35 @@ export function collectTraffic(input: {
   }
 
   const limited = limitEvents(events);
+  const cameraList = needed.includes("penndot") ? readCameras(bodies.penndotCameras, input.lat, input.lon, radiusMi) : emptyCameras();
+  if (cameraList.cameras.length > 0) liveNames.push("511PA cameras");
   const traffic: TrafficPayload = {
     lat: input.lat,
     lon: input.lon,
     label: input.label?.trim() || undefined,
-    radiusMi: REGION_MILES,
+    radiusMi,
     bounds,
     feeds: reports,
     events: limited,
     routineOmitted,
+    cameras: cameraList.cameras,
+    camerasOmitted: cameraList.omitted,
   };
   const attribution = [...liveNames, "Esri basemap"].join(" · ");
-  return { traffic, attribution, note: trafficNote(traffic) };
+  return { traffic, attribution, note: trafficNote(traffic, cameraList.note) };
 }
 
 export async function fetchTrafficPayload(
   place: { lat: number; lon: number; label?: string },
   secrets: Record<string, string>,
   get: (url: string, init?: RequestInit) => Promise<Response> = (url, init) => fetch(url, init),
+  radiusInput?: unknown,
 ): Promise<{ traffic: TrafficPayload; attribution: string; note: string }> {
-  const bounds = regionBounds(place.lat, place.lon);
+  const radiusMi = trafficRadius(radiusInput);
+  const bounds = regionBounds(place.lat, place.lon, radiusMi);
   const needed = new Set(feedsFor(bounds));
   const penndotUser = secrets["penndot.username"]?.trim() ?? "";
   const penndotPassword = secrets["penndot.password"]?.trim() ?? "";
-  const ohgoKey = secrets["ohgo.api_key"]?.trim() ?? "";
   const bodies: TrafficBodies = {};
 
   const jobs: Array<Promise<void>> = [];
@@ -232,19 +277,6 @@ export async function fetchTrafficPayload(
     jobs.push(
       readJson(get, "/proxy/penndot/RCRS_Event_Data/api/RCRS/winterConditions", { headers }).then((body) => {
         bodies.penndotWinter = body;
-      }),
-    );
-  }
-  if (needed.has("ohgo") && ohgoKey) {
-    const headers = { authorization: `APIKEY ${ohgoKey}` };
-    jobs.push(
-      readJson(get, "/proxy/ohgo/api/v1/incidents", { headers }).then((body) => {
-        bodies.ohgoIncidents = body;
-      }),
-    );
-    jobs.push(
-      readJson(get, "/proxy/ohgo/api/v1/travel-delays", { headers }).then((body) => {
-        bodies.ohgoDelays = body;
       }),
     );
   }
@@ -304,20 +336,69 @@ export async function fetchTrafficPayload(
       })(),
     );
   }
+  if (needed.has("penndot")) {
+    jobs.push(
+      loadPenndotCameraRecords(get).then((body) => {
+        bodies.penndotCameras = body;
+      }),
+    );
+  }
   await Promise.all(jobs);
   return collectTraffic({
     lat: place.lat,
     lon: place.lon,
     label: place.label,
-    secrets: { penndotUser, penndotPassword, ohgoKey },
+    radiusMi,
+    secrets: { penndotUser, penndotPassword },
     bodies,
   });
 }
 
-function trafficNote(traffic: TrafficPayload): string {
+/** Camera stills only. Incidents stay on the traffic source, and this path does not ask for a key. */
+export async function fetchPenndotCameraPayload(
+  place: { lat: number; lon: number; label?: string },
+  radiusInput: unknown,
+  get: (url: string, init?: RequestInit) => Promise<Response> = (url, init) => fetch(url, init),
+): Promise<{ traffic: TrafficPayload; attribution: string; note: string }> {
+  const radiusMi = trafficRadius(radiusInput);
+  const bounds = regionBounds(place.lat, place.lon, radiusMi);
+  const reaches = feedsFor(bounds).includes("penndot");
+  const bodies: TrafficBodies = {};
+  if (reaches) bodies.penndotCameras = await loadPenndotCameraRecords(get);
+  const listed = readCameras(bodies.penndotCameras, place.lat, place.lon, radiusMi);
+  const traffic: TrafficPayload = {
+    lat: place.lat,
+    lon: place.lon,
+    label: place.label?.trim() || undefined,
+    radiusMi,
+    bounds,
+    feeds: [],
+    events: [],
+    routineOmitted: 0,
+    cameras: listed.cameras,
+    camerasOmitted: listed.omitted,
+  };
+  const note = reaches
+    ? listed.note ??
+      (listed.cameras.length
+        ? `${listed.cameras.length} PennDOT cameras inside ${radiusMi} miles. The view can show up to 8 at once.`
+        : "No PennDOT cameras are inside this radius.")
+    : "This radius does not reach Pennsylvania, so there are no PennDOT cameras to open.";
+  return {
+    traffic,
+    attribution: listed.cameras.length ? "511PA cameras · Esri basemap" : "511PA cameras",
+    note,
+  };
+}
+
+function trafficNote(traffic: TrafficPayload, cameraNote?: string): string {
   const parts = [
-    `Map shows the whole ${REGION_MILES}-mile region around the confirmed place.`,
+    `Map and monitoring use the ${traffic.radiusMi}-mile radius around the confirmed place.`,
   ];
+  if (cameraNote) parts.push(cameraNote);
+  else if (traffic.cameras.length > 0) {
+    parts.push("PennDOT cameras inside this radius can be opened from the list.");
+  }
   for (const feed of traffic.feeds) {
     if (feed.detail && (feed.status === "needs-credentials" || feed.status === "error")) {
       parts.push(feed.detail);
@@ -330,6 +411,108 @@ function trafficNote(traffic: TrafficPayload): string {
     parts.push("Clear and wet road reports are left off the list.");
   }
   return parts.join(" ");
+}
+
+type CameraList = { cameras: TrafficCamera[]; omitted: number; note?: string };
+
+function emptyCameras(): CameraList {
+  return { cameras: [], omitted: 0 };
+}
+
+function readCameras(body: FeedBody | undefined, lat: number, lon: number, radiusMi: number): CameraList {
+  if (!body) return emptyCameras();
+  if (body.error && body.json === undefined) {
+    return { cameras: [], omitted: 0, note: `PennDOT cameras ${body.error}` };
+  }
+  const parsed = parsePenndotCameras(body.json, lat, lon, radiusMi);
+  if (parsed.unreadable && parsed.cameras.length === 0) {
+    return { cameras: [], omitted: 0, note: "PennDOT cameras returned data this app could not read." };
+  }
+  let note: string | undefined;
+  if (parsed.cameras.length === 0) note = "No PennDOT cameras are inside this radius.";
+  else if (parsed.omitted > 0) {
+    note = `Showing the nearest ${parsed.cameras.length} of ${parsed.cameras.length + parsed.omitted} PennDOT cameras inside this radius.`;
+  }
+  return { cameras: parsed.cameras, omitted: parsed.omitted, note };
+}
+
+const SNAPSHOT_PATH = /^\/map\/Cctv\/(\d+)$/;
+
+export function parsePenndotCameras(
+  body: unknown,
+  lat: number,
+  lon: number,
+  radiusMi: number,
+): { cameras: TrafficCamera[]; omitted: number; unreadable: boolean } {
+  const root = record(body);
+  const rows = Array.isArray(body) ? body : root && Array.isArray(root.data) ? root.data : null;
+  if (!rows) return { cameras: [], omitted: 0, unreadable: true };
+  const found: TrafficCamera[] = [];
+  for (const item of rows) {
+    const row = record(item);
+    if (!row || row.visible === false) continue;
+    const point = wktPoint(nestedText(row, ["latLng", "geography", "wellKnownText"]));
+    if (!point) continue;
+    const miles = milesBetween(lat, lon, point.lat, point.lon);
+    if (miles > radiusMi) continue;
+    const views = cameraViews(row.images);
+    if (!views.length) continue;
+    const id = text(row.id) ?? views[0].id;
+    found.push({
+      id: `penndot-cam:${id}`,
+      name: text(row.location) || text(row.cameraName) || `PennDOT camera ${id}`,
+      road: text(row.roadway),
+      county: text(row.county),
+      lat: point.lat,
+      lon: point.lon,
+      miles: Math.round(miles * 10) / 10,
+      views,
+    });
+  }
+  found.sort((a, b) => a.miles - b.miles || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  return {
+    cameras: found.slice(0, MAX_LISTED_CAMERAS),
+    omitted: Math.max(0, found.length - MAX_LISTED_CAMERAS),
+    unreadable: false,
+  };
+}
+
+function cameraViews(value: unknown): TrafficCameraView[] {
+  if (!Array.isArray(value)) return [];
+  const views: TrafficCameraView[] = [];
+  for (const item of value) {
+    const row = record(item);
+    if (!row || row.blocked === true || row.disabled === true) continue;
+    const path = text(row.imageUrl);
+    const match = path?.match(SNAPSHOT_PATH);
+    if (!match) continue;
+    views.push({
+      id: match[1],
+      label: text(row.description) || `View ${views.length + 1}`,
+      imageUrl: `https://www.511pa.com/map/Cctv/${match[1]}`,
+    });
+  }
+  return views;
+}
+
+function nestedText(row: Record<string, unknown>, keys: string[]): string | undefined {
+  let current: unknown = row;
+  for (const key of keys) {
+    const next = record(current);
+    if (!next) return undefined;
+    current = next[key];
+  }
+  return text(current);
+}
+
+function wktPoint(value: string | undefined): { lat: number; lon: number } | null {
+  if (!value) return null;
+  const match = value.match(/POINT\s*\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)/i);
+  if (!match) return null;
+  const lon = Number(match[1]);
+  const lat = Number(match[2]);
+  if (!inWorld(lat, lon)) return null;
+  return { lat, lon };
 }
 
 function limitEvents(events: TrafficEvent[]): TrafficEvent[] {
@@ -971,7 +1154,7 @@ function inCircle(
   for (const point of points) {
     if (!point || !inWorld(point.lat, point.lon)) continue;
     const miles = milesBetween(lat, lon, point.lat, point.lon);
-    if (miles <= REGION_MILES && miles < bestMiles) {
+    if (miles <= activeRadius && miles < bestMiles) {
       best = point;
       bestMiles = miles;
     }
@@ -1190,6 +1373,62 @@ async function readText(
   } catch {
     return { error: "did not respond." };
   }
+}
+
+const CAMERA_PAGE = 100;
+const CAMERA_CACHE_MS = 15 * 60 * 1000;
+let cameraCache: { at: number; records: unknown[] } | null = null;
+
+function cameraPageUrl(start: number): string {
+  const query = {
+    columns: [
+      { data: null, name: "" },
+      { name: "sortOrder", s: true },
+      { name: "dotDistrict", s: true },
+      { name: "county", s: true },
+      { name: "roadway", s: true },
+      { name: "turnpikeOnly" },
+      { name: "location" },
+      { name: "cameraName" },
+      { name: "district" },
+      { data: 9, name: "" },
+    ],
+    order: [{ column: 1, dir: "asc" }],
+    start,
+    length: CAMERA_PAGE,
+    search: { value: "" },
+  };
+  const params = new URLSearchParams({ query: JSON.stringify(query), lang: "en-US" });
+  return `/proxy/511pa/List/GetData/Cameras?${params.toString()}`;
+}
+
+export async function loadPenndotCameraRecords(
+  get: (url: string, init?: RequestInit) => Promise<Response>,
+): Promise<FeedBody> {
+  if (cameraCache && Date.now() - cameraCache.at < CAMERA_CACHE_MS) {
+    return { json: { data: cameraCache.records } };
+  }
+  const headers = { "x-requested-with": "XMLHttpRequest" };
+  const first = await readJson(get, cameraPageUrl(0), { headers });
+  if (first.error && first.json === undefined) return first;
+  const root = record(first.json);
+  if (!root || !Array.isArray(root.data)) return { error: "returned data this app could not read." };
+  const rows = root.data;
+  const total = finite(root.recordsTotal) ?? rows.length;
+  const records = [...rows];
+  const starts: number[] = [];
+  for (let start = CAMERA_PAGE; start < total && start < 2000; start += CAMERA_PAGE) starts.push(start);
+  for (let index = 0; index < starts.length; index += 4) {
+    const pages = await Promise.all(
+      starts.slice(index, index + 4).map((start) => readJson(get, cameraPageUrl(start), { headers })),
+    );
+    for (const page of pages) {
+      const data = record(page.json);
+      if (data && Array.isArray(data.data)) records.push(...data.data);
+    }
+  }
+  cameraCache = { at: Date.now(), records };
+  return { json: { data: records } };
 }
 
 function basicAuth(user: string, pass: string): string {

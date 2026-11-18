@@ -232,6 +232,25 @@ pub fn fetch_source(
                 watch: None,
             })
         }
+        "camera.penndot" => {
+            let result = traffic::fetch_cameras(source)?;
+            Ok(SourcePayload {
+                source_id: source_id.to_string(),
+                type_id: source.type_id.clone(),
+                fetched_at: result.fetched_at,
+                attribution: Some(result.attribution),
+                note: result.note,
+                incidents: vec![],
+                feed: None,
+                weather: None,
+                quake: None,
+                space: None,
+                x_feed: None,
+                traffic: Some(result.traffic),
+                news: None,
+                watch: None,
+            })
+        }
         "news.rss" => {
             let result = news::fetch(source)?;
             Ok(SourcePayload {

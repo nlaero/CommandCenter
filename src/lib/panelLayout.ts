@@ -31,7 +31,13 @@ export function panelTitleFor(
     const city = place?.split(",")[0]?.trim() ?? "";
     if (city && !/^-?\d/.test(city)) return `News · ${city}`;
   }
-  if (adapter.typeId === "rivers.nwps" || adapter.typeId === "storms.spc" || adapter.typeId === "lightning.glm") {
+  if (
+    adapter.typeId === "rivers.nwps" ||
+    adapter.typeId === "storms.spc" ||
+    adapter.typeId === "lightning.glm" ||
+    adapter.typeId === "traffic.roads" ||
+    adapter.typeId === "camera.penndot"
+  ) {
     const place = confirmedPlaceLabel(params);
     const city = place?.split(",")[0]?.trim() ?? "";
     if (city && !/^-?\d/.test(city)) return `${adapter.name} · ${city}`;
@@ -47,7 +53,7 @@ export function panelLayoutFor(
   if (typeId === "weather.openmeteo") {
     return { i: panelId, x: 0, y: yMax, w: 28, h: 32, minW: 16, minH: 18 };
   }
-  if (typeId === "usgs.earthquake" || typeId === "traffic.roads") {
+  if (typeId === "usgs.earthquake" || typeId === "traffic.roads" || typeId === "camera.penndot") {
     return { i: panelId, x: 0, y: yMax, w: 32, h: 34, minW: 18, minH: 18 };
   }
   if (typeId === "noaa.space") {

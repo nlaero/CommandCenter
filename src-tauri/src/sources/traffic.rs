@@ -5,19 +5,35 @@
 use crate::config::SourceConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::cell::Cell;
 use std::f64::consts::PI;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 const REGION_MILES: f64 = 80.0;
+const MIN_RADIUS_MILES: f64 = 5.0;
+const MAX_RADIUS_MILES: f64 = 200.0;
 const MAX_EVENTS: usize = 120;
+const MAX_LISTED_CAMERAS: usize = 80;
 const MILES_PER_DEG_LAT: f64 = 69.172;
+const CAMERA_PAGE: usize = 100;
+const CAMERA_CACHE: Duration = Duration::from_secs(15 * 60);
+
+thread_local! {
+    static ACTIVE_RADIUS: Cell<f64> = Cell::new(REGION_MILES);
+}
 
 const PENNDOT_NOTE: &str = "Pennsylvania's free 511 feed needs the PennDOT username and password on this source before live incidents and winter road conditions can load.";
+#[allow(dead_code)]
 const OHGO_NOTE: &str = "Ohio's free OHGO feed needs an API key on this source before live incidents and travel delays can load.";
 
 const PENNDOT_LIVE: &str = "https://gisdata.penndot.pa.gov/RCRS_Event_Data/api/RCRS/liveEvents";
 const PENNDOT_WINTER: &str = "https://gisdata.penndot.pa.gov/RCRS_Event_Data/api/RCRS/winterConditions";
+#[allow(dead_code)]
 const OHGO_INCIDENTS: &str = "https://publicapi.ohgo.com/api/v1/incidents";
+#[allow(dead_code)]
 const OHGO_DELAYS: &str = "https://publicapi.ohgo.com/api/v1/travel-delays";
+const PENNDOT_CAMERAS: &str = "https://www.511pa.com/List/GetData/Cameras";
 const CHART_EVENTS: &str =
     "https://chartexp1.sha.maryland.gov/CHARTExportClientService/getEventMapDataJSON.do";
 const CHART_CLOSURES: &str =
@@ -132,6 +148,31 @@ pub struct TrafficPayload {
     pub feeds: Vec<TrafficFeedReport>,
     pub events: Vec<TrafficEvent>,
     pub routine_omitted: usize,
+    pub cameras: Vec<TrafficCamera>,
+    pub cameras_omitted: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrafficCameraView {
+    pub id: String,
+    pub label: String,
+    pub image_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrafficCamera {
+    pub id: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub road: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub county: Option<String>,
+    pub lat: f64,
+    pub lon: f64,
+    pub miles: f64,
+    pub views: Vec<TrafficCameraView>,
 }
 
 pub struct FetchResult {
@@ -171,11 +212,11 @@ pub fn fetch(
             "Confirm a location before traffic can load.".into(),
         ));
     }
-    let bounds = region_bounds(lat, lon);
+    let radius_mi = traffic_radius(source.params.get("radiusMi"));
+    let bounds = region_bounds(lat, lon, radius_mi);
     let needed = feeds_for(&bounds);
     let user = secret(secrets, "penndot.username");
     let pass = secret(secrets, "penndot.password");
-    let ohgo = secret(secrets, "ohgo.api_key");
     let client = reqwest::blocking::Client::builder()
         .user_agent("CommandCenter/0.1 (personal traffic; +https://github.com/nlaero/CommandCenter)")
         .timeout(std::time::Duration::from_secs(25))
@@ -183,8 +224,7 @@ pub fn fetch(
 
     let mut penndot_events = None;
     let mut penndot_winter = None;
-    let mut ohgo_incidents = None;
-    let mut ohgo_delays = None;
+    let mut penndot_cameras = None;
     let mut chart_events = None;
     let mut chart_closures = None;
     let mut iowa_events = None;
@@ -197,12 +237,7 @@ pub fn fetch(
             penndot_events = Some(get_json(&client, PENNDOT_LIVE, Auth::Basic { user, pass }));
             penndot_winter = Some(get_json(&client, PENNDOT_WINTER, Auth::Basic { user, pass }));
         }
-    }
-    if needed.contains(&FeedId::Ohgo) {
-        if let Some(key) = ohgo.as_deref() {
-            ohgo_incidents = Some(get_json(&client, OHGO_INCIDENTS, Auth::Ohgo(key)));
-            ohgo_delays = Some(get_json(&client, OHGO_DELAYS, Auth::Ohgo(key)));
-        }
+        penndot_cameras = Some(load_penndot_cameras(&client));
     }
     if needed.contains(&FeedId::Chart) {
         chart_events = Some(get_json(&client, CHART_EVENTS, Auth::None));
@@ -240,12 +275,14 @@ pub fn fetch(
         lat,
         lon,
         label: place_label(&source.params),
+        radius_mi,
         penndot: user.is_some() && pass.is_some(),
-        ohgo: ohgo.is_some(),
+        ohgo: false,
         penndot_events: penndot_events.as_ref(),
         penndot_winter: penndot_winter.as_ref(),
-        ohgo_incidents: ohgo_incidents.as_ref(),
-        ohgo_delays: ohgo_delays.as_ref(),
+        penndot_cameras: penndot_cameras.as_ref(),
+        ohgo_incidents: None,
+        ohgo_delays: None,
         chart_events: chart_events.as_ref(),
         chart_closures: chart_closures.as_ref(),
         iowa_events: iowa_events.as_ref(),
@@ -261,14 +298,86 @@ pub fn fetch(
     })
 }
 
+/// Camera stills only. Incidents stay on the traffic source, and this path does not ask for a key.
+pub fn fetch_cameras(source: &SourceConfig) -> Result<FetchResult, super::SourceError> {
+    let (lat, lon) = crate::location::lookup_coords(&source.params, "lat", "lon").ok_or_else(|| {
+        super::SourceError::Message("Confirm a location before PennDOT cameras can load.".into())
+    })?;
+    if !in_world(lat, lon) {
+        return Err(super::SourceError::Message(
+            "Confirm a location before PennDOT cameras can load.".into(),
+        ));
+    }
+    let radius_mi = traffic_radius(source.params.get("radiusMi"));
+    let bounds = region_bounds(lat, lon, radius_mi);
+    let reaches = feeds_for(&bounds).contains(&FeedId::Penndot);
+    let loaded = if reaches {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("CommandCenter/0.1 (personal traffic; +https://github.com/nlaero/CommandCenter)")
+            .timeout(Duration::from_secs(25))
+            .build()?;
+        Some(load_penndot_cameras(&client))
+    } else {
+        None
+    };
+    let listed = read_cameras(loaded.as_ref(), lat, lon, radius_mi);
+    let note = if reaches {
+        listed.note.clone().unwrap_or_else(|| {
+            if listed.cameras.is_empty() {
+                "No PennDOT cameras are inside this radius.".into()
+            } else {
+                format!(
+                    "{} PennDOT cameras inside {:.0} miles. The view can show up to 8 at once.",
+                    listed.cameras.len(),
+                    radius_mi
+                )
+            }
+        })
+    } else {
+        "This radius does not reach Pennsylvania, so there are no PennDOT cameras to open.".into()
+    };
+    let label = place_label(&source.params).and_then(|label| {
+        let trimmed = label.trim().to_string();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
+    });
+    Ok(FetchResult {
+        traffic: TrafficPayload {
+            lat,
+            lon,
+            label,
+            radius_mi,
+            bounds: TrafficBounds {
+                south: bounds.south,
+                west: bounds.west,
+                north: bounds.north,
+                east: bounds.east,
+            },
+            feeds: Vec::new(),
+            events: Vec::new(),
+            routine_omitted: 0,
+            cameras: listed.cameras.clone(),
+            cameras_omitted: listed.omitted,
+        },
+        attribution: if listed.cameras.is_empty() {
+            "511PA cameras".into()
+        } else {
+            "511PA cameras · Esri basemap".into()
+        },
+        fetched_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        note: Some(note),
+    })
+}
+
 struct CollectArgs<'a> {
     lat: f64,
     lon: f64,
     label: Option<String>,
+    radius_mi: f64,
     penndot: bool,
     ohgo: bool,
     penndot_events: Option<&'a Result<Value, String>>,
     penndot_winter: Option<&'a Result<Value, String>>,
+    penndot_cameras: Option<&'a Result<Value, String>>,
     ohgo_incidents: Option<&'a Result<Value, String>>,
     ohgo_delays: Option<&'a Result<Value, String>>,
     chart_events: Option<&'a Result<Value, String>>,
@@ -280,7 +389,8 @@ struct CollectArgs<'a> {
 }
 
 fn collect_traffic(args: CollectArgs<'_>) -> Collected {
-    let bounds = region_bounds(args.lat, args.lon);
+    let _radius = RadiusGuard::set(args.radius_mi);
+    let bounds = region_bounds(args.lat, args.lon, args.radius_mi);
     let mut reports = Vec::new();
     let mut events = Vec::new();
     let mut routine_omitted = 0;
@@ -291,7 +401,6 @@ fn collect_traffic(args: CollectArgs<'_>) -> Collected {
             continue;
         }
         if id == FeedId::Ohgo && !args.ohgo {
-            reports.push(report(id, "needs-credentials", Some(OHGO_NOTE.into())));
             continue;
         }
         let parts = parts_for(id, &args);
@@ -308,6 +417,14 @@ fn collect_traffic(args: CollectArgs<'_>) -> Collected {
         routine_omitted += merged.routine_omitted;
         reports.push(report(id, merged.status, merged.detail));
     }
+    let camera_list = if feeds_for(&bounds).contains(&FeedId::Penndot) {
+        read_cameras(args.penndot_cameras, args.lat, args.lon, args.radius_mi)
+    } else {
+        CameraList::empty()
+    };
+    if !camera_list.cameras.is_empty() {
+        live_names.push("511PA cameras");
+    }
     let traffic = TrafficPayload {
         lat: args.lat,
         lon: args.lon,
@@ -315,7 +432,7 @@ fn collect_traffic(args: CollectArgs<'_>) -> Collected {
             let trimmed = label.trim();
             if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
         }),
-        radius_mi: REGION_MILES,
+        radius_mi: args.radius_mi,
         bounds: TrafficBounds {
             south: bounds.south,
             west: bounds.west,
@@ -325,8 +442,10 @@ fn collect_traffic(args: CollectArgs<'_>) -> Collected {
         feeds: reports,
         events: limit_events(events),
         routine_omitted,
+        cameras: camera_list.cameras,
+        cameras_omitted: camera_list.omitted,
     };
-    let note = traffic_note(&traffic);
+    let note = traffic_note(&traffic, camera_list.note.as_deref());
     let mut names = live_names.into_iter().map(|name| name.to_string()).collect::<Vec<_>>();
     names.push("Esri basemap".into());
     Collected {
@@ -336,10 +455,16 @@ fn collect_traffic(args: CollectArgs<'_>) -> Collected {
     }
 }
 
-fn traffic_note(traffic: &TrafficPayload) -> String {
+fn traffic_note(traffic: &TrafficPayload, camera_note: Option<&str>) -> String {
     let mut parts = vec![format!(
-        "Map shows the whole {REGION_MILES:.0}-mile region around the confirmed place."
+        "Map and monitoring use the {:.0}-mile radius around the confirmed place.",
+        traffic.radius_mi
     )];
+    if let Some(note) = camera_note {
+        parts.push(note.to_string());
+    } else if !traffic.cameras.is_empty() {
+        parts.push("PennDOT cameras inside this radius can be opened from the list.".into());
+    }
     for feed in &traffic.feeds {
         if let Some(detail) = &feed.detail {
             if feed.status == "needs-credentials" || feed.status == "error" {
@@ -1166,7 +1291,7 @@ fn in_circle(lat: f64, lon: f64, points: &[Option<(f64, f64)>]) -> Option<(f64, 
             continue;
         }
         let miles = miles_between(lat, lon, point.0, point.1);
-        if miles <= REGION_MILES && miles < best_miles {
+        if miles <= active_radius() && miles < best_miles {
             best = Some(*point);
             best_miles = miles;
         }
@@ -1320,11 +1445,11 @@ fn severity_rank(severity: &str) -> u8 {
     }
 }
 
-fn region_bounds(lat: f64, lon: f64) -> Box {
-    let d_lat = REGION_MILES / MILES_PER_DEG_LAT;
+fn region_bounds(lat: f64, lon: f64, miles: f64) -> Box {
+    let d_lat = miles / MILES_PER_DEG_LAT;
     let cos = (lat * PI / 180.0).cos();
     let miles_per_deg_lon = (MILES_PER_DEG_LAT * cos.abs()).max(1.0);
-    let d_lon = REGION_MILES / miles_per_deg_lon;
+    let d_lon = miles / miles_per_deg_lon;
     Box {
         south: (lat - d_lat).clamp(-90.0, 90.0),
         north: (lat + d_lat).clamp(-90.0, 90.0),
@@ -1368,6 +1493,257 @@ fn miles_between(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     2.0 * r * h.sqrt().min(1.0).asin()
 }
 
+struct RadiusGuard {
+    previous: f64,
+}
+
+impl RadiusGuard {
+    fn set(miles: f64) -> Self {
+        let previous = ACTIVE_RADIUS.with(|cell| cell.replace(miles));
+        Self { previous }
+    }
+}
+
+impl Drop for RadiusGuard {
+    fn drop(&mut self) {
+        let previous = self.previous;
+        ACTIVE_RADIUS.with(|cell| cell.set(previous));
+    }
+}
+
+fn active_radius() -> f64 {
+    ACTIVE_RADIUS.with(|cell| cell.get())
+}
+
+fn traffic_radius(value: Option<&Value>) -> f64 {
+    let raw = value
+        .and_then(num_of)
+        .filter(|number| number.is_finite())
+        .unwrap_or(REGION_MILES);
+    raw.round().clamp(MIN_RADIUS_MILES, MAX_RADIUS_MILES)
+}
+
+struct CameraList {
+    cameras: Vec<TrafficCamera>,
+    omitted: usize,
+    note: Option<String>,
+}
+
+impl CameraList {
+    fn empty() -> Self {
+        Self { cameras: Vec::new(), omitted: 0, note: None }
+    }
+}
+
+fn read_cameras(
+    body: Option<&Result<Value, String>>,
+    lat: f64,
+    lon: f64,
+    radius_mi: f64,
+) -> CameraList {
+    let Some(body) = body else {
+        return CameraList::empty();
+    };
+    match body {
+        Err(error) => CameraList {
+            cameras: Vec::new(),
+            omitted: 0,
+            note: Some(format!("PennDOT cameras {error}")),
+        },
+        Ok(value) => {
+            let parsed = parse_penndot_cameras(value, lat, lon, radius_mi);
+            if parsed.unreadable && parsed.cameras.is_empty() {
+                return CameraList {
+                    cameras: Vec::new(),
+                    omitted: 0,
+                    note: Some("PennDOT cameras returned data this app could not read.".into()),
+                };
+            }
+            let note = if parsed.cameras.is_empty() {
+                Some("No PennDOT cameras are inside this radius.".into())
+            } else if parsed.omitted > 0 {
+                Some(format!(
+                    "Showing the nearest {} of {} PennDOT cameras inside this radius.",
+                    parsed.cameras.len(),
+                    parsed.cameras.len() + parsed.omitted
+                ))
+            } else {
+                None
+            };
+            CameraList { cameras: parsed.cameras, omitted: parsed.omitted, note }
+        }
+    }
+}
+
+struct ParsedCameras {
+    cameras: Vec<TrafficCamera>,
+    omitted: usize,
+    unreadable: bool,
+}
+
+fn parse_penndot_cameras(body: &Value, lat: f64, lon: f64, radius_mi: f64) -> ParsedCameras {
+    let rows = body.as_array().or_else(|| body.get("data").and_then(Value::as_array));
+    let Some(rows) = rows else {
+        return ParsedCameras { cameras: Vec::new(), omitted: 0, unreadable: true };
+    };
+    let mut found = Vec::new();
+    for row in rows {
+        if row.get("visible").and_then(Value::as_bool) == Some(false) {
+            continue;
+        }
+        let point = row
+            .pointer("/latLng/geography/wellKnownText")
+            .and_then(Value::as_str)
+            .and_then(wkt_point);
+        let Some((point_lat, point_lon)) = point else { continue };
+        let miles = miles_between(lat, lon, point_lat, point_lon);
+        if miles > radius_mi {
+            continue;
+        }
+        let views = camera_views(row.get("images"));
+        if views.is_empty() {
+            continue;
+        }
+        let id = field(row, &["id"]).unwrap_or_else(|| views[0].id.clone());
+        found.push(TrafficCamera {
+            id: format!("penndot-cam:{id}"),
+            name: field(row, &["location", "cameraName"]).unwrap_or_else(|| format!("PennDOT camera {id}")),
+            road: field(row, &["roadway"]),
+            county: field(row, &["county"]),
+            lat: point_lat,
+            lon: point_lon,
+            miles: (miles * 10.0).round() / 10.0,
+            views,
+        });
+    }
+    found.sort_by(|a, b| {
+        a.miles
+            .partial_cmp(&b.miles)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    let omitted = found.len().saturating_sub(MAX_LISTED_CAMERAS);
+    found.truncate(MAX_LISTED_CAMERAS);
+    ParsedCameras { cameras: found, omitted, unreadable: false }
+}
+
+fn camera_views(value: Option<&Value>) -> Vec<TrafficCameraView> {
+    let Some(rows) = value.and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut views = Vec::new();
+    for row in rows {
+        if row.get("blocked").and_then(Value::as_bool) == Some(true)
+            || row.get("disabled").and_then(Value::as_bool) == Some(true)
+        {
+            continue;
+        }
+        let Some(id) = row.get("imageUrl").and_then(Value::as_str).and_then(snapshot_id) else {
+            continue;
+        };
+        let label = field(row, &["description"]).unwrap_or_else(|| format!("View {}", views.len() + 1));
+        views.push(TrafficCameraView {
+            id: id.to_string(),
+            label,
+            image_url: format!("https://www.511pa.com/map/Cctv/{id}"),
+        });
+    }
+    views
+}
+
+fn snapshot_id(path: &str) -> Option<&str> {
+    let rest = path.strip_prefix("/map/Cctv/")?;
+    if !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_digit()) {
+        Some(rest)
+    } else {
+        None
+    }
+}
+
+fn wkt_point(value: &str) -> Option<(f64, f64)> {
+    let upper = value.to_ascii_uppercase();
+    let start = upper.find("POINT")?;
+    let open = value[start..].find('(')?;
+    let close = value[start + open..].find(')')?;
+    let inner = &value[start + open + 1..start + open + close];
+    let mut parts = inner.split_whitespace();
+    let lon: f64 = parts.next()?.parse().ok()?;
+    let lat: f64 = parts.next()?.parse().ok()?;
+    if in_world(lat, lon) { Some((lat, lon)) } else { None }
+}
+
+static CAMERA_RECORDS: Mutex<Option<(Instant, Vec<Value>)>> = Mutex::new(None);
+
+fn load_penndot_cameras(client: &reqwest::blocking::Client) -> Result<Value, String> {
+    if let Ok(guard) = CAMERA_RECORDS.lock() {
+        if let Some((at, records)) = guard.as_ref() {
+            if at.elapsed() < CAMERA_CACHE {
+                return Ok(serde_json::json!({ "data": records }));
+            }
+        }
+    }
+    let first = get_camera_page(client, 0)?;
+    let rows = first
+        .get("data")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| "returned data this app could not read.".to_string())?;
+    let total = first.get("recordsTotal").and_then(num_of).unwrap_or(rows.len() as f64) as usize;
+    let mut records = rows;
+    let mut start = CAMERA_PAGE;
+    while start < total && start < 2000 {
+        if let Ok(page) = get_camera_page(client, start) {
+            if let Some(data) = page.get("data").and_then(Value::as_array) {
+                records.extend(data.iter().cloned());
+            }
+        }
+        start += CAMERA_PAGE;
+    }
+    if let Ok(mut guard) = CAMERA_RECORDS.lock() {
+        *guard = Some((Instant::now(), records.clone()));
+    }
+    Ok(serde_json::json!({ "data": records }))
+}
+
+fn camera_page_url(start: usize) -> String {
+    let query = serde_json::json!({
+        "columns": [
+            {"data": null, "name": ""},
+            {"name": "sortOrder", "s": true},
+            {"name": "dotDistrict", "s": true},
+            {"name": "county", "s": true},
+            {"name": "roadway", "s": true},
+            {"name": "turnpikeOnly"},
+            {"name": "location"},
+            {"name": "cameraName"},
+            {"name": "district"},
+            {"data": 9, "name": ""}
+        ],
+        "order": [{"column": 1, "dir": "asc"}],
+        "start": start,
+        "length": CAMERA_PAGE,
+        "search": {"value": ""}
+    });
+    let mut url = url::Url::parse(PENNDOT_CAMERAS).expect("511pa cameras");
+    url.query_pairs_mut()
+        .append_pair("query", &query.to_string())
+        .append_pair("lang", "en-US");
+    url.to_string()
+}
+
+fn get_camera_page(client: &reqwest::blocking::Client, start: usize) -> Result<Value, String> {
+    let response = client
+        .get(camera_page_url(start))
+        .header("x-requested-with", "XMLHttpRequest")
+        .send()
+        .map_err(|_| "did not respond.".to_string())?;
+    if !response.status().is_success() {
+        return Err("did not respond.".into());
+    }
+    response.json().map_err(|_| "returned data this app could not read.".into())
+}
+
 fn report(id: FeedId, status: &str, detail: Option<String>) -> TrafficFeedReport {
     TrafficFeedReport { id: id.as_str().into(), name: id.name().into(), status: status.into(), detail }
 }
@@ -1388,6 +1764,7 @@ fn secret(secrets: &std::collections::BTreeMap<String, String>, key: &str) -> Op
 enum Auth<'a> {
     None,
     Basic { user: &'a str, pass: &'a str },
+    #[allow(dead_code)]
     Ohgo(&'a str),
 }
 
@@ -1526,6 +1903,8 @@ mod tests {
             iowa_conditions: None,
             open511: None,
             compass: None,
+            radius_mi: 80.0,
+            penndot_cameras: None,
         });
         let events = &collected.traffic.events;
         assert_eq!(event_by(events, "penndot:581").unwrap().severity, "warn");
@@ -1562,10 +1941,13 @@ mod tests {
             iowa_conditions: None,
             open511: None,
             compass: None,
+            radius_mi: 80.0,
+            penndot_cameras: None,
         });
         assert!(home.traffic.feeds.iter().any(|feed| feed.id == "penndot" && feed.status == "needs-credentials"));
-        assert!(home.traffic.feeds.iter().any(|feed| feed.id == "ohgo" && feed.status == "needs-credentials"));
+        assert!(!home.traffic.feeds.iter().any(|feed| feed.id == "ohgo"));
         assert!(home.note.contains("PennDOT username"));
+        assert!(home.note.contains("80-mile radius"));
         let denver = collect_traffic(CollectArgs {
             lat: 39.74,
             lon: -104.99,
@@ -1582,6 +1964,8 @@ mod tests {
             iowa_conditions: None,
             open511: None,
             compass: None,
+            radius_mi: 80.0,
+            penndot_cameras: None,
         });
         assert!(denver.traffic.feeds.is_empty());
         assert!(denver.note.contains("No free real-time incident feed"));
@@ -1613,6 +1997,8 @@ mod tests {
             iowa_conditions: None,
             open511: None,
             compass: None,
+            radius_mi: 80.0,
+            penndot_cameras: None,
         });
         assert!(event_by(&chart.traffic.events, "chart:signal").is_none());
         assert!(event_by(&chart.traffic.events, "chart:crash").unwrap().affects_travel);
@@ -1643,6 +2029,8 @@ mod tests {
             iowa_conditions: Some(&Ok(iowa_roads)),
             open511: None,
             compass: None,
+            radius_mi: 80.0,
+            penndot_cameras: None,
         });
         assert_eq!(event_by(&iowa.traffic.events, "iowa:IA-1").unwrap().detail_url.as_deref(), Some("https://511ia.org/event/IA-1"));
         assert!(event_by(&iowa.traffic.events, "iowa:IA-later").is_none());
@@ -1670,6 +2058,8 @@ mod tests {
             iowa_conditions: None,
             open511: Some(&Ok(open511)),
             compass: None,
+            radius_mi: 80.0,
+            penndot_cameras: None,
         });
         assert!(!event_by(&bc.traffic.events, "open511:drivebc.ca/rest").unwrap().affects_travel);
         assert_eq!(event_by(&bc.traffic.events, "open511:drivebc.ca/shut").unwrap().severity, "alert");
@@ -1692,10 +2082,76 @@ mod tests {
             iowa_conditions: None,
             open511: None,
             compass: Some(&Ok(xml.into())),
+            radius_mi: 80.0,
+            penndot_cameras: None,
         });
         let lane = event_by(&maine.traffic.events, "compass:ME26-003760").unwrap();
         assert!(lane.affects_travel);
         assert!((lane.lat - 43.813515).abs() < 0.0001);
         assert!(event_by(&maine.traffic.events, "compass:ME-cleared").is_none());
+    }
+
+    #[test]
+    fn radius_keeps_nearby_roads_and_lists_penndot_cameras() {
+        let near = json!({"Values": [
+            {"EventID": 581, "EventType": "roadwork", "Facility": "HITE RD", "FromLocLatLong": "40.566278,-79.795637", "LaneStatus": "lane restriction", "Description": "Roadwork on HITE RD."},
+            {"EventID": 9, "EventType": "crash", "Facility": "I-76", "FromLocLatLong": "41.900000,-77.000000", "LaneStatus": "closed", "Description": "Too far east to be in a short radius."}
+        ]});
+        let tight = collect_traffic(CollectArgs {
+            lat: 40.475,
+            lon: -79.835,
+            label: None,
+            radius_mi: 5.0,
+            penndot: true,
+            ohgo: false,
+            penndot_events: Some(&Ok(near.clone())),
+            penndot_winter: None,
+            penndot_cameras: None,
+            ohgo_incidents: None,
+            ohgo_delays: None,
+            chart_events: None,
+            chart_closures: None,
+            iowa_events: None,
+            iowa_conditions: None,
+            open511: None,
+            compass: None,
+        });
+        assert_eq!(tight.traffic.radius_mi, 5.0);
+        assert!(event_by(&tight.traffic.events, "penndot:581").is_none());
+        assert!(tight.note.contains("5-mile radius"));
+
+        let cameras = json!({"data": [
+            {"id": 100, "visible": true, "location": "I-376 @ Penn Hills", "roadway": "I-376", "county": "Allegheny", "latLng": {"geography": {"wellKnownText": "POINT (-79.835 40.475)"}}, "images": [{"id": 55, "imageUrl": "/map/Cctv/55", "description": "Eastbound", "blocked": false}]},
+            {"id": 101, "visible": true, "location": "Far camera", "latLng": {"geography": {"wellKnownText": "POINT (-78.9 41.3)"}}, "images": [{"id": 57, "imageUrl": "/map/Cctv/57", "blocked": false}]},
+            {"id": 102, "visible": false, "location": "Hidden", "latLng": {"geography": {"wellKnownText": "POINT (-79.835 40.475)"}}, "images": [{"imageUrl": "/map/Cctv/58"}]},
+            {"id": 103, "visible": true, "location": "Blocked", "latLng": {"geography": {"wellKnownText": "POINT (-79.835 40.475)"}}, "images": [{"imageUrl": "https://evil.example/map/Cctv/59", "blocked": true}]}
+        ]});
+        let wide = collect_traffic(CollectArgs {
+            lat: 40.475,
+            lon: -79.835,
+            label: None,
+            radius_mi: 200.0,
+            penndot: true,
+            ohgo: false,
+            penndot_events: Some(&Ok(near)),
+            penndot_winter: None,
+            penndot_cameras: Some(&Ok(cameras)),
+            ohgo_incidents: None,
+            ohgo_delays: None,
+            chart_events: None,
+            chart_closures: None,
+            iowa_events: None,
+            iowa_conditions: None,
+            open511: None,
+            compass: None,
+        });
+        assert_eq!(wide.traffic.radius_mi, 200.0);
+        assert!(event_by(&wide.traffic.events, "penndot:581").is_some());
+        assert!(event_by(&wide.traffic.events, "penndot:9").is_some());
+        assert_eq!(wide.traffic.cameras.len(), 2);
+        assert_eq!(wide.traffic.cameras[0].id, "penndot-cam:100");
+        assert_eq!(wide.traffic.cameras[0].views[0].image_url, "https://www.511pa.com/map/Cctv/55");
+        assert!(wide.note.contains("opened from the list"));
+        assert!(wide.attribution.contains("511PA cameras"));
     }
 }
