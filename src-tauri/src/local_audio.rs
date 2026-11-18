@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant, SystemTime};
 
 const WINDOW_SECONDS: u32 = 12;
@@ -40,6 +40,13 @@ pub struct LocalAudioInput {
 #[serde(rename_all = "camelCase")]
 pub struct ListenRequest {
     pub device_id: String,
+    /// When false, the window is recorded for playback and Tiny English is not run.
+    #[serde(default = "captions_default")]
+    pub captions: bool,
+}
+
+fn captions_default() -> bool {
+    true
 }
 
 #[derive(Debug, Serialize)]
@@ -86,6 +93,12 @@ pub fn list_inputs() -> Vec<LocalAudioInput> {
 }
 
 pub fn listen(root: &Path, request: ListenRequest) -> Result<LocalAudioWindow, String> {
+    // Holds the Whisper lock for this window, including the recording.
+    // transcribe_heard must not take the lock again.
+    crate::local_job::one_at_a_time(|| listen_held(root, request))
+}
+
+fn listen_held(root: &Path, request: ListenRequest) -> Result<LocalAudioWindow, String> {
     let id = normalize_device(&request.device_id)?;
     if classify(&id, &id).is_none() {
         return Err("That input is not a jack or Bluetooth device.".into());
@@ -111,12 +124,24 @@ pub fn listen(root: &Path, request: ListenRequest) -> Result<LocalAudioWindow, S
             return Err(format!("Could not read the recording. {err}"));
         }
     };
+    let audio_base64 = encode_base64(&bytes);
+    let duration_sec = f64::from(WINDOW_SECONDS);
+    if !request.captions {
+        let _ = fs::remove_file(&dest);
+        return Ok(LocalAudioWindow {
+            engine: "local-whisper".into(),
+            status: "off".into(),
+            note: "Captions are off for this source.".into(),
+            duration_sec,
+            segments: Vec::new(),
+            mime: "audio/wav".into(),
+            audio_base64,
+        });
+    }
     let file_url = url::Url::from_file_path(&dest)
         .map_err(|_| "Could not read the recorded window.".to_string())?;
     let transcribed = local_ai::transcribe_heard(root, file_url.as_str());
     let _ = fs::remove_file(&dest);
-    let audio_base64 = encode_base64(&bytes);
-    let duration_sec = f64::from(WINDOW_SECONDS);
     match transcribed {
         Ok((segments, note)) => {
             let heard = segments
@@ -326,7 +351,7 @@ fn input_ffmpeg_args_for(device_id: &str, seconds: u32, dest: &Path, windows: bo
 }
 
 fn run_ffmpeg(args: &[String], limit: Duration) -> Result<(), String> {
-    let mut child = Command::new("ffmpeg")
+    let mut child = crate::local_job::command("ffmpeg")
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -379,18 +404,33 @@ fn redact_ffmpeg(err: &str) -> String {
 }
 
 fn command_text(program: &str, args: &[&str]) -> String {
-    match Command::new(program)
+    let child = match crate::local_job::command(program)
         .args(args)
         .stdin(Stdio::null())
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
     {
-        Ok(output) => {
-            let mut text = String::from_utf8_lossy(&output.stdout).to_string();
-            text.push_str(&String::from_utf8_lossy(&output.stderr));
-            text
+        Ok(child) => child,
+        Err(_) => return String::new(),
+    };
+    let pid = child.id();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+    // DirectShow device listing can sit forever. Don't hold the UI on it.
+    let output = match rx.recv_timeout(Duration::from_secs(8)) {
+        Ok(Ok(output)) => output,
+        Ok(Err(_)) => return String::new(),
+        Err(_) => {
+            crate::local_job::stop_pid(pid);
+            return String::new();
         }
-        Err(_) => String::new(),
-    }
+    };
+    let mut text = String::from_utf8_lossy(&output.stdout).to_string();
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    text
 }
 
 fn quoted(line: &str) -> Option<String> {
@@ -555,6 +595,16 @@ DirectShow audio devices
         let dshow_input = dshow.iter().position(|arg| arg == "-i").unwrap();
         assert_eq!(dshow[dshow_input + 1], "audio=Microphone (Realtek Audio)");
         assert!(dshow.iter().all(|arg| !arg.contains("ffmpeg")));
+    }
+
+    #[test]
+    fn captions_stay_on_unless_the_source_turns_them_off() {
+        let on: ListenRequest =
+            serde_json::from_str(r#"{"deviceId":"bluez_input.AA_BB"}"#).unwrap();
+        assert!(on.captions);
+        let off: ListenRequest =
+            serde_json::from_str(r#"{"deviceId":"bluez_input.AA_BB","captions":false}"#).unwrap();
+        assert!(!off.captions);
     }
 
     #[test]

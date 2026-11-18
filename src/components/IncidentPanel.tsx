@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAlerts } from "../lib/alerts";
+import { applyCorrections, readLocalMemory, type AiMemory } from "../lib/aiMemory";
 import { incidentsToBoardAlerts } from "../lib/boardAlerts";
 import { fetchSourcePayload } from "../lib/api";
+import { transcribeMediaLocal } from "../lib/captions";
+import { captionsVisible } from "../lib/streamCaptions";
 import type { Incident, SourceConfig, SourcePayload } from "../types";
+import { CaptionCorrection } from "./LocalAiPanel";
 
 type Props = {
   sourceId: string;
@@ -257,6 +261,66 @@ export function IncidentPanel({ sourceId, source, configRevision = 0 }: Props) {
 }
 
 function IncidentDetail({ item }: { item: Incident }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [muted, setMuted] = useState(true);
+  const [ccOn, setCcOn] = useState(false);
+  const [caption, setCaption] = useState<string | null>(null);
+  const [sourceText, setSourceText] = useState<string | null>(null);
+  const [captionNote, setCaptionNote] = useState<string | null>(null);
+  const showCaptions = Boolean(item.audioUrl) && captionsVisible(muted, ccOn);
+
+  useEffect(() => {
+    setMuted(true);
+    setCcOn(false);
+    setCaption(null);
+    setSourceText(null);
+    setCaptionNote(null);
+    const el = audioRef.current;
+    if (el) {
+      el.muted = true;
+      el.pause();
+    }
+  }, [item.id, item.audioUrl]);
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.muted = muted;
+  }, [muted]);
+
+  useEffect(() => {
+    if (!showCaptions || !item.audioUrl) return;
+    let cancelled = false;
+    setCaptionNote("Creating captions on this device…");
+    void transcribeMediaLocal({
+      sourceUrl: item.audioUrl,
+      clipId: item.id,
+      durationSec: 30,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.status === "needs-model" || result.status === "stub") {
+          setCaption(null);
+          setSourceText(null);
+          setCaptionNote(result.note || "Local AI is not installed.");
+          return;
+        }
+        const raw = result.segments
+          .map((segment) => segment.text.trim())
+          .filter(Boolean)
+          .join(" ");
+        setSourceText(raw || null);
+        setCaption(raw ? applyCorrections(raw, readLocalMemory()) : null);
+        setCaptionNote(raw ? null : result.note || "No speech in that clip.");
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setCaption(null);
+        setCaptionNote(err instanceof Error ? err.message : "Couldn't caption that clip.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showCaptions, item.audioUrl, item.id]);
+
   return (
     <div>
       <div className={`incident-sev ${severityClass(item.severity)}`}>
@@ -304,16 +368,50 @@ function IncidentDetail({ item }: { item: Incident }) {
           <div className="section-label" style={{ marginBottom: 6 }}>
             Audio
           </div>
-          {/* Global product rule: audio sources start muted on open. */}
-          <audio controls preload="none" muted src={item.audioUrl}>
+          <div className="bcfy-audio-head">
+            <button
+              type="button"
+              className={`btn btn-ghost bcfy-mute${muted ? " is-muted" : ""}`}
+              onClick={() => setMuted((value) => !value)}
+              aria-pressed={muted}
+            >
+              {muted ? "Muted" : "Sound on"}
+            </button>
+            <label className="bcfy-cc-toggle" title="Keep captions up after the sound is turned on">
+              <input type="checkbox" checked={ccOn} onChange={(event) => setCcOn(event.target.checked)} />
+              <span className={`bcfy-cc-badge${ccOn ? " on" : ""}`}>CC</span>
+            </label>
+          </div>
+          <audio
+            ref={audioRef}
+            controls
+            preload="none"
+            muted={muted}
+            src={item.audioUrl}
+            onVolumeChange={(event) => {
+              setMuted(event.currentTarget.muted || event.currentTarget.volume === 0);
+            }}
+          >
             <a href={item.audioUrl} target="_blank" rel="noreferrer">
               Open audio
             </a>
           </audio>
-          <p className="bcfy-audio-hint">
-            Starts muted. Closed captions for open-data audio clips are not wired yet — required for
-            any future audio-playing source.
-          </p>
+          <p className="bcfy-audio-hint">Starts muted. Captions show while the sound is off.</p>
+          {showCaptions ? (
+            <div className="bcfy-captions" aria-label="Captions">
+              <p className={`bcfy-caption-live${caption ? "" : " is-empty"}`}>
+                {caption || captionNote || "Creating captions on this device…"}
+              </p>
+              {caption ? (
+                <CaptionCorrection
+                  suggestion={caption}
+                  onSaved={(memory: AiMemory) => {
+                    if (sourceText) setCaption(applyCorrections(sourceText, memory));
+                  }}
+                />
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {item.detailUrl ? (

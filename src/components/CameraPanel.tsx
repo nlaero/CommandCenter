@@ -15,6 +15,7 @@ import {
   mediaByteRange,
   playbackHasAudio,
   isYoutubeUrl,
+  looksLikeContainer,
   looksLikeImage,
   looksLikePlaylist,
   looksLikeVideoFile,
@@ -193,11 +194,11 @@ async function probeKind(url: string, signal: AbortSignal): Promise<PlaybackKind
     const peeked = await fetchMedia(url, { range: "bytes=0-2047", signal });
     if (looksLikePlaylist(peeked.data, peeked.contentType)) return "hls";
     if (looksLikeImage(peeked.data, peeked.contentType)) return "image";
-    if (looksLikeVideoFile(peeked.contentType)) return "file";
+    if (looksLikeVideoFile(peeked.contentType) || looksLikeContainer(peeked.data)) return "file";
     if (peeked.contentType.toLowerCase().includes("mp2t")) {
       throw new Error("That link is a raw transport stream. Paste the HLS playlist (.m3u8).");
     }
-    return "file";
+    return "unknown";
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") throw err;
     const text = err instanceof Error ? err.message : "";
@@ -273,6 +274,11 @@ export function CameraPanel({ source }: Props) {
         }
         const resolved = hinted === "unknown" ? await probeKind(rawUrl, controller.signal) : hinted;
         if (controller.signal.aborted) return;
+        if (resolved === "unknown") {
+          setPhase("error");
+          setStatus("Couldn't tell what that link plays. Use an image, an MP4, or an HLS playlist.");
+          return;
+        }
         setKind(resolved);
       } catch (err) {
         if (controller.signal.aborted) return;

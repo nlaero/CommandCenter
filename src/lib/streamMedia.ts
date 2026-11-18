@@ -287,6 +287,22 @@ export function looksLikeVideoFile(contentType: string): boolean {
   );
 }
 
+/** Container magic. Desktop fetches do not include a content type, so an extensionless
+ * MP4 or WebM is recognized here. Anything else stays unknown and is not sent to Whisper. */
+export function looksLikeContainer(data: ArrayBuffer): boolean {
+  const bytes = new Uint8Array(data.slice(0, 12));
+  if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+    return true;
+  }
+  if (bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
+    return true;
+  }
+  if (bytes.length >= 4 && bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
+    return true;
+  }
+  return false;
+}
+
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
