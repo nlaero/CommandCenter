@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import {
   GridLayout,
   noCompactor,
@@ -8,6 +8,7 @@ import {
 import "react-grid-layout/css/styles.css";
 import { tvGridChrome } from "../lib/cast";
 import { boardGridMetrics, useBoardDensity } from "../lib/display";
+import { settleCoveredPanels } from "../lib/panelBump";
 import type { AppState, Board, GridItem } from "../types";
 import { EmptyBoard } from "./EmptyBoard";
 import { PanelCard } from "./PanelCard";
@@ -57,6 +58,19 @@ function fromLayout(layout: Layout): GridItem[] {
   }));
 }
 
+/**
+ * Free placement. Overlap stays allowed so the grid does not drop a covered
+ * panel by a full panel height; the drag handlers bump it clear instead.
+ */
+const editLayoutCompactor = {
+  ...noCompactor,
+  allowOverlap: true,
+};
+
+function draggedId(started: LayoutItem | null, current: LayoutItem | null): string | null {
+  return current?.i ?? started?.i ?? null;
+}
+
 export function BoardView({
   state,
   board,
@@ -70,6 +84,7 @@ export function BoardView({
   wallEditing = false,
 }: Props) {
   const density = useBoardDensity();
+  const dragBaseline = useRef<Layout | null>(null);
   const metrics = boardGridMetrics(state.layout, density);
   const television = rowHeight != null;
   const tvChrome = television ? tvGridChrome(density) : null;
@@ -143,8 +158,21 @@ export function BoardView({
           enabled: state.editMode && !displayOnly,
           handles: ["se", "e", "s"],
         }}
-        compactor={noCompactor}
-        onDragStop={(next) => onLayoutChange(fromLayout(next))}
+        compactor={state.editMode && !displayOnly ? editLayoutCompactor : noCompactor}
+        onDragStart={(next) => {
+          dragBaseline.current = next.map((item) => ({ ...item }));
+        }}
+        onDrag={(next, started, current) => {
+          const id = draggedId(started, current);
+          if (!id) return;
+          settleCoveredPanels(next, dragBaseline.current, id);
+        }}
+        onDragStop={(next, started, current) => {
+          const id = draggedId(started, current);
+          if (id) settleCoveredPanels(next, dragBaseline.current, id);
+          dragBaseline.current = null;
+          onLayoutChange(fromLayout(next));
+        }}
         onResizeStop={(next) => onLayoutChange(fromLayout(next))}
       >
         {visible.map((panel) => (
