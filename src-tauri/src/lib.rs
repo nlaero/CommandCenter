@@ -4,6 +4,7 @@ mod cast;
 mod commands;
 mod config;
 mod local_ai;
+mod local_audio;
 mod local_job;
 mod local_server;
 mod location;
@@ -46,6 +47,10 @@ pub fn run() {
             commands::upsert_source,
             commands::store_secrets,
             commands::fetch_source_payload,
+            commands::x_account,
+            commands::x_begin_sign_in,
+            commands::x_poll_sign_in,
+            commands::x_sign_out,
             commands::fetch_media_url,
             commands::add_panel_to_board,
             commands::create_board,
@@ -56,6 +61,8 @@ pub fn run() {
             commands::transcribe_audio_local,
             commands::transcribe_media_local,
             commands::list_audio_inputs,
+            commands::list_local_audio_inputs,
+            commands::listen_local_audio,
             commands::listen_safety_feed,
             commands::safety_clip,
             commands::auth_session,
@@ -72,6 +79,9 @@ pub fn run() {
             cast::cast_start,
             cast::cast_stop,
             cast::cast_status,
+            cast::cast_split,
+            cast::span_show,
+            cast::span_hide,
             cast::cast_preview,
             cast::cast_close_preview,
             commands::local_server_status,

@@ -120,8 +120,12 @@ export type FieldKind =
   | "secret"
   | "boolean"
   | "select"
+  | "checklist"
   | "location"
-  | "feeds";
+  | "feeds"
+  | "audio"
+  | "publicCameras"
+  | "privateCamera";
 
 export type AdapterField = {
   key: string;
@@ -335,6 +339,180 @@ export type QuakePayload = {
   notModified: boolean;
 };
 
+export type Hemisphere = "north" | "south" | "both";
+
+export type SpaceScale = {
+  level: number;
+  text: string;
+};
+
+/** Current NOAA R / S / G scales (key "0" on noaa-scales.json). */
+export type SpaceScales = {
+  observedAt?: string;
+  radio: SpaceScale;
+  solar: SpaceScale;
+  geomagnetic: SpaceScale;
+};
+
+export type SpaceAlert = {
+  id: string;
+  code: string;
+  title: string;
+  summary?: string;
+  body?: string;
+  issuedAt?: string;
+  validUntil?: string;
+  severity: IncidentSeverity;
+  /** Watches, warnings, and storm-scale alerts. The pane also requires a current window. */
+  notable: boolean;
+  detailUrl?: string;
+};
+
+/** One OVATION grid sample kept for the map. */
+export type AuroraPoint = {
+  lon: number;
+  lat: number;
+  chance: number;
+};
+
+export type SpacePayload = {
+  lat: number;
+  lon: number;
+  hemisphere: Hemisphere;
+  /** Official 3-hour planetary Kp. */
+  kp?: number;
+  kpTime?: string;
+  /** 1-minute estimated Kp. */
+  estimatedKp?: number;
+  estimatedKpTime?: string;
+  /** Penticton 10.7 cm flux, solar flux units. */
+  solarFlux?: number;
+  solarFluxTime?: string;
+  /** GOES 0.1–0.8 nm class, for example B5.6. */
+  xrayClass?: string;
+  xrayTime?: string;
+  /** OVATION visible-aurora chance at the nearest grid point, 0–100. */
+  auroraChance?: number;
+  auroraObservedAt?: string;
+  auroraForecastAt?: string;
+  auroraPoints: AuroraPoint[];
+  scales?: SpaceScales;
+  alerts: SpaceAlert[];
+  /** Milliseconds until the next SWPC request is allowed. */
+  pollAfterMs: number;
+};
+
+export type XMediaKind = "photo" | "video" | "animated_gif" | "audio";
+
+export type XMedia = {
+  kind: XMediaKind;
+  url?: string;
+  previewUrl?: string;
+  alt?: string;
+};
+
+/** One post from accounts the signed-in user follows. */
+export type XPost = {
+  id: string;
+  text: string;
+  createdAt?: string;
+  authorName?: string;
+  authorHandle?: string;
+  repostedBy?: string;
+  url: string;
+  media: XMedia[];
+};
+
+export type XFeed = {
+  username?: string;
+  posts: XPost[];
+};
+
+export type XAccount = {
+  signedIn: boolean;
+  username?: string | null;
+  name?: string | null;
+};
+
+export type TrafficSeverity = "info" | "warn" | "alert";
+
+export type TrafficKind = "incident" | "closure" | "roadwork" | "condition" | "delay";
+
+export type TrafficBounds = {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+};
+
+export type TrafficFeedReport = {
+  id: string;
+  name: string;
+  status: "live" | "needs-credentials" | "error";
+  detail?: string;
+};
+
+/** One road incident, closure, delay, or driving condition inside the region. */
+export type TrafficEvent = {
+  id: string;
+  title: string;
+  kind: TrafficKind;
+  severity: TrafficSeverity;
+  /** Closure, crash, lane restriction, delay, or a surface that slows a trip. */
+  affectsTravel: boolean;
+  summary?: string;
+  road?: string;
+  direction?: string;
+  lat: number;
+  lon: number;
+  updatedAt?: string;
+  detailUrl?: string;
+  feedName: string;
+};
+
+export type TrafficPayload = {
+  lat: number;
+  lon: number;
+  label?: string;
+  radiusMi: number;
+  bounds: TrafficBounds;
+  feeds: TrafficFeedReport[];
+  events: TrafficEvent[];
+  /** Clear or wet segments counted and left off the list. */
+  routineOmitted: number;
+};
+
+export type NewsStory = {
+  id: string;
+  title: string;
+  outletId: string;
+  outlet: string;
+  scope: "national" | "local";
+  summary?: string;
+  url?: string;
+  publishedAt?: string;
+};
+
+export type NewsFeedState = {
+  id: string;
+  name: string;
+  scope: "national" | "local";
+  /** Milliseconds until this feed may be requested again. */
+  pollAfterMs: number;
+  fromCache: boolean;
+  notModified: boolean;
+  error?: string;
+  itemCount: number;
+};
+
+export type NewsPayload = {
+  placeLabel?: string;
+  stories: NewsStory[];
+  feeds: NewsFeedState[];
+  /** Soonest next request across the selected feeds. */
+  pollAfterMs: number;
+};
+
 export type SourcePayload = {
   sourceId: string;
   typeId: string;
@@ -345,4 +523,9 @@ export type SourcePayload = {
   feed?: FeedStatus;
   weather?: WeatherPayload;
   quake?: QuakePayload;
+  space?: SpacePayload;
+  /** Present for `x.follow`. */
+  xFeed?: XFeed;
+  traffic?: TrafficPayload;
+  news?: NewsPayload;
 };

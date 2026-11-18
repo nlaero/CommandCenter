@@ -1,8 +1,12 @@
 pub mod broadcastify;
 pub mod calls;
 pub mod incident;
+pub mod news;
 pub mod quake;
+pub mod space;
+pub mod traffic;
 pub mod weather;
+pub mod x;
 
 use crate::config::SourceConfig;
 use crate::secrets;
@@ -27,6 +31,18 @@ pub struct SourcePayload {
     /// Present for `usgs.earthquake`. Map, poll interval, and full event list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quake: Option<quake::QuakePayload>,
+    /// Present for `noaa.space`. Alerts, scales, indices, and the OVATION aurora grid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space: Option<space::SpacePayload>,
+    /// Present for `x.follow`. Posts from accounts the signed-in user follows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x_feed: Option<x::FollowFeed>,
+    /// Present for `traffic.roads`. Regional map plus road incidents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traffic: Option<traffic::TrafficPayload>,
+    /// Present for `news.rss`. Headlines and the per-feed poll schedule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub news: Option<news::NewsPayload>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -64,6 +80,10 @@ pub fn fetch_source(
                 feed: None,
                 weather: None,
                 quake: None,
+                space: None,
+                x_feed: None,
+                traffic: None,
+                news: None,
             })
         }
         "broadcastify.calls" => {
@@ -79,6 +99,10 @@ pub fn fetch_source(
                 feed: None,
                 weather: None,
                 quake: None,
+                space: None,
+                x_feed: None,
+                traffic: None,
+                news: None,
             })
         }
         "broadcastify.owner" => {
@@ -94,6 +118,10 @@ pub fn fetch_source(
                 feed: Some(result.feed),
                 weather: None,
                 quake: None,
+                space: None,
+                x_feed: None,
+                traffic: None,
+                news: None,
             })
         }
         "weather.openmeteo" => {
@@ -109,6 +137,10 @@ pub fn fetch_source(
                 feed: None,
                 weather: Some(result.weather),
                 quake: None,
+                space: None,
+                x_feed: None,
+                traffic: None,
+                news: None,
             })
         }
         "usgs.earthquake" => {
@@ -123,6 +155,83 @@ pub fn fetch_source(
                 feed: None,
                 weather: None,
                 quake: Some(result.quake),
+                space: None,
+                x_feed: None,
+                traffic: None,
+                news: None,
+            })
+        }
+        "noaa.space" => {
+            let result = space::fetch(source)?;
+            Ok(SourcePayload {
+                source_id: source_id.to_string(),
+                type_id: source.type_id.clone(),
+                fetched_at: result.fetched_at,
+                attribution: Some(result.attribution),
+                note: result.note,
+                incidents: vec![],
+                feed: None,
+                weather: None,
+                quake: None,
+                space: Some(result.space),
+                x_feed: None,
+                traffic: None,
+                news: None,
+            })
+        }
+        "x.follow" => {
+            let result = x::fetch(source)?;
+            Ok(SourcePayload {
+                source_id: source_id.to_string(),
+                type_id: source.type_id.clone(),
+                fetched_at: result.fetched_at,
+                attribution: Some(result.attribution),
+                note: result.note,
+                incidents: vec![],
+                feed: None,
+                weather: None,
+                quake: None,
+                space: None,
+                x_feed: Some(result.feed),
+                traffic: None,
+                news: None,
+            })
+        }
+        "traffic.roads" => {
+            let secrets = resolve_secrets(&source.secrets)?;
+            let result = traffic::fetch(source, &secrets)?;
+            Ok(SourcePayload {
+                source_id: source_id.to_string(),
+                type_id: source.type_id.clone(),
+                fetched_at: result.fetched_at,
+                attribution: Some(result.attribution),
+                note: result.note,
+                incidents: vec![],
+                feed: None,
+                weather: None,
+                quake: None,
+                space: None,
+                x_feed: None,
+                traffic: Some(result.traffic),
+                news: None,
+            })
+        }
+        "news.rss" => {
+            let result = news::fetch(source)?;
+            Ok(SourcePayload {
+                source_id: source_id.to_string(),
+                type_id: source.type_id.clone(),
+                fetched_at: result.fetched_at,
+                attribution: Some(result.attribution),
+                note: result.note,
+                incidents: vec![],
+                feed: None,
+                weather: None,
+                quake: None,
+                space: None,
+                x_feed: None,
+                traffic: None,
+                news: Some(result.news),
             })
         }
         other => Err(SourceError::Message(format!(

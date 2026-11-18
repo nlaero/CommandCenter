@@ -6,6 +6,7 @@ import {
   applyBroadcastifyPreset,
   isPennHillsPreset,
 } from "../lib/broadcastifyPreset";
+import { xClientIdError, xPostLimitError } from "../lib/xFollow";
 import { AUTH_IN_APP } from "../lib/authFeature";
 import { booleanFieldChecked } from "../lib/formFields";
 import { AccountSettings } from "./AuthScreen";
@@ -13,6 +14,11 @@ import { LocalAiPanel } from "./LocalAiPanel";
 import { ServerSetup } from "./ServerSetup";
 import { UpdatesBody, useUpdates } from "./UpdatesPanel";
 import { clampAutoHideSec, useAlerts } from "../lib/alerts";
+import {
+  applyDisplayWall,
+  listCastScreens,
+  type CastScreen,
+} from "../lib/cast";
 import {
   BOARD_DENSITIES,
   DISPLAY_PRESETS,
@@ -23,15 +29,25 @@ import {
   subscribeDisplayPrefs,
   type DisplayPrefs,
 } from "../lib/display";
+import { displayWallSummary } from "../lib/span";
 import {
   addPanelToBoard,
   newId,
   upsertSource,
   validateSourceFields,
 } from "../lib/api";
-import { ensureLocationParams, locationSaveError } from "../lib/location";
+import { confirmedPlaceLabel, ensureLocationParams, locationSaveError } from "../lib/location";
+import { localAudioSaveError } from "../lib/localAudio";
+import { newsSaveError } from "../lib/news";
+import { brandId, canonicalStreamUrl, streamLinkError } from "../lib/privateCameras";
+import { sealPublicCamera } from "../lib/publicCameras";
+import { normalizeWebScannerUrl, webScannerUrlError } from "../lib/webScanner";
 import { blankFeed, feedsSaveError, normalizeSafetyParams } from "../lib/safety";
+import { LocalAudioField } from "./LocalAudioField";
 import { LocationField } from "./LocationField";
+import { NewsOutletsField } from "./NewsOutletsField";
+import { PrivateCameraField } from "./PrivateCameraField";
+import { PublicCamerasField } from "./PublicCamerasField";
 import { SafetyFeedsField } from "./SafetyFeedsField";
 import { TelevisionSettings } from "./TelevisionSettings";
 import { useSourceRefresh } from "../lib/sourceRefresh";
@@ -205,10 +221,30 @@ export function SettingsView({
       initial.notableMinMag = 4.5;
       initial.autoPan = true;
     }
+    if (typeId === "noaa.space") {
+      initial.hemisphere = "auto";
+      initial.showAurora = true;
+    }
     if (typeId === "safety.nearby") {
       initial.radiusMi = 10;
       initial.enableCaptions = true;
       initial.feeds = [blankFeed()];
+    }
+    if (typeId === "scanner.web") {
+      initial.enableCaptions = true;
+    }
+    if (typeId === "x.follow") {
+      initial.limit = 20;
+    }
+    if (typeId === "audio.local") {
+      initial.enableCaptions = true;
+    }
+    if (typeId === "news.rss") {
+      initial.limit = 40;
+      initial.outlets = [];
+    }
+    if (typeId === "camera.private") {
+      initial.brand = "custom";
     }
     setParams(initial);
     setSecrets(
@@ -249,7 +285,47 @@ export function SettingsView({
                       kind: "warn",
                       text: "Nearby alerts use sources already set up, including Broadcastify Feed Owner. Each one keeps the county and state it covers. Audio starts muted, and captions stay on while the sound is off.",
                     }
-                  : null,
+                  : typeId === "noaa.space"
+                    ? {
+                        kind: "warn",
+                        text: "NOAA SWPC alerts, scales, and the OVATION aurora forecast. No API key. The panel waits at least 5 minutes between polls. When Ham propagation / solar is saved, its bands are paired with these indices.",
+                      }
+                  : typeId === "scanner.web"
+                    ? {
+                        kind: "warn",
+                        text: "Plays a direct audio stream you are allowed to use. It starts muted. Captions are written on this computer while the sound is off. This is not the Feed Owner panel, and nearby alerts do not read it. A Broadcastify listen page or relay stays in Feed Owner.",
+                      }
+                  : typeId === "x.follow"
+                    ? {
+                        kind: "warn",
+                        text: "Sign in from the panel. The access token and refresh token stay in the OS keyring. A client secret, if the X app has one, stays there too. Video and audio start muted.",
+                      }
+                  : typeId === "audio.local"
+                    ? {
+                        kind: "warn",
+                        text: "A jack or Bluetooth input on this computer. Playback starts muted. Captions roll from Tiny English here. Scroll the list and it stays put until Latest. A fix stays on this computer.",
+                      }
+                  : typeId === "traffic.roads"
+                    ? {
+                        kind: "warn",
+                        text: "The map shows the whole 80-mile region around the confirmed place. Incidents that can slow a trip go to the alerts pane when a free feed covers that region. Pennsylvania and Ohio need the free credentials on this source. Maryland, Iowa, British Columbia, and Maine, New Hampshire, and Vermont load without a key.",
+                      }
+                  : typeId === "news.rss"
+                    ? {
+                        kind: "warn",
+                        text: "Pick the national outlets you want. Local outlets are filled in from the confirmed place. Each feed waits for its own schedule, and not faster than once a minute.",
+                      }
+                  : typeId === "camera.public"
+                    ? {
+                        kind: "warn",
+                        text: "Search published traffic cameras, or confirm a place and the nearest ones come first. Picking one fills in the link. A still has no captions. Video starts muted.",
+                      }
+                    : typeId === "camera.private"
+                      ? {
+                          kind: "warn",
+                          text: "Pick the brand or system for the steps, then paste the stream link. HLS, a video file, a still, and YouTube play here. A still has no captions. Sound starts muted. UDP and RTSP stay on the camera system.",
+                        }
+                      : null,
     );
   }
 
@@ -274,6 +350,9 @@ export function SettingsView({
       if (nextParams.enableCaptions === undefined) {
         nextParams.enableCaptions = true;
       }
+    }
+    if (source.type === "audio.local" && nextParams.enableCaptions === undefined) {
+      nextParams.enableCaptions = true;
     }
     if (source.type === "broadcastify.owner") {
       const feedId = String(nextParams.feedId ?? "").trim();
@@ -419,6 +498,50 @@ export function SettingsView({
           return;
         }
       }
+      if (adapter.typeId === "scanner.web") {
+        const scannerError = webScannerUrlError(String(params.url ?? ""));
+        if (scannerError) {
+          setMessage({ kind: "error", text: scannerError });
+          return;
+        }
+      }
+      if (adapter.typeId === "x.follow") {
+        const clientError = xClientIdError(String(params.clientId ?? ""));
+        const limitError = xPostLimitError(params.limit);
+        const xError = clientError ?? limitError;
+        if (xError) {
+          setMessage({ kind: "error", text: xError });
+          return;
+        }
+      }
+      if (adapter.typeId === "audio.local") {
+        const audioError = localAudioSaveError(params);
+        if (audioError) {
+          setMessage({ kind: "error", text: audioError });
+          return;
+        }
+      }
+      if (adapter.typeId === "news.rss") {
+        const newsError = newsSaveError(params);
+        if (newsError) {
+          setMessage({ kind: "error", text: newsError });
+          return;
+        }
+      }
+      if (adapter.typeId === "camera.public") {
+        const sealed = sealPublicCamera(params);
+        if (!sealed.ok) {
+          setMessage({ kind: "error", text: sealed.message });
+          return;
+        }
+      }
+      if (adapter.typeId === "camera.private") {
+        const linkError = streamLinkError(params.url);
+        if (linkError) {
+          setMessage({ kind: "error", text: linkError });
+          return;
+        }
+      }
       const readyParams = ensureLocationParams(adapter.fields, params);
       const validation = await validateSourceFields(required, readyParams, secretsProvided);
       if (!validation.ok) {
@@ -448,10 +571,28 @@ export function SettingsView({
       if (adapter.typeId === "safety.nearby") {
         Object.assign(cleanedParams, normalizeSafetyParams(cleanedParams));
       }
+      let refresh = existing?.refresh ?? adapter.defaultRefresh;
+      if (adapter.typeId === "scanner.web") {
+        cleanedParams.url = normalizeWebScannerUrl(String(cleanedParams.url ?? ""));
+        if (cleanedParams.enableCaptions === undefined) cleanedParams.enableCaptions = true;
+      }
+      if (adapter.typeId === "camera.public") {
+        const sealed = sealPublicCamera(cleanedParams);
+        if (!sealed.ok) {
+          setMessage({ kind: "error", text: sealed.message });
+          return;
+        }
+        Object.assign(cleanedParams, sealed.params);
+        refresh = sealed.refresh;
+      }
+      if (adapter.typeId === "camera.private") {
+        cleanedParams.url = canonicalStreamUrl(cleanedParams.url);
+        cleanedParams.brand = brandId(cleanedParams.brand);
+      }
       const source: SourceConfig = {
         type: adapter.typeId,
         params: cleanedParams,
-        refresh: existing?.refresh ?? adapter.defaultRefresh,
+        refresh,
         secrets: secretRefs,
         enabled: true,
         draft: false,
@@ -550,6 +691,7 @@ export function SettingsView({
       const primaryId = rotateSourceIds[0];
       const memberTypes = rotateSourceIds.map((id) => state.sources[id]?.type);
       const hasQuake = memberTypes.includes("usgs.earthquake");
+      const hasTraffic = memberTypes.includes("traffic.roads");
       const hasWeather = memberTypes.includes("weather.openmeteo");
       const hasRichPanel = memberTypes.some(
         (type) =>
@@ -557,11 +699,15 @@ export function SettingsView({
           type === "broadcastify.owner" ||
           type === "broadcastify.calls" ||
           type === "camera.http_image" ||
+          type === "camera.public" ||
+          type === "camera.private" ||
           type === "video.youtube" ||
-          type === "safety.nearby",
+          type === "safety.nearby" ||
+          type === "scanner.web" ||
+          type === "audio.local",
       );
       // Match the single-source panel size so a weather or quake slot is not crushed.
-      const layoutSize = hasQuake
+      const layoutSize = hasQuake || hasTraffic
         ? { w: 32, h: 34, minW: 18, minH: 18 }
         : hasWeather
           ? { w: 28, h: 32, minW: 16, minH: 18 }
@@ -1114,9 +1260,29 @@ function panelTitleFor(
     const label = typeof params.label === "string" ? params.label.trim() : "";
     if (label) return label;
   }
-  if (adapter.typeId === "camera.http_image" || adapter.typeId === "video.youtube") {
+  if (
+    adapter.typeId === "camera.http_image" ||
+    adapter.typeId === "camera.public" ||
+    adapter.typeId === "camera.private" ||
+    adapter.typeId === "video.youtube" ||
+    adapter.typeId === "scanner.web"
+  ) {
     const label = typeof params.label === "string" ? params.label.trim() : "";
     if (label) return label;
+  }
+  if (adapter.typeId === "x.follow") {
+    const label = typeof params.label === "string" ? params.label.trim() : "";
+    if (label) return label;
+    return "X";
+  }
+  if (adapter.typeId === "audio.local") {
+    const label = typeof params.label === "string" ? params.label.trim() : "";
+    if (label) return label;
+  }
+  if (adapter.typeId === "news.rss") {
+    const place = confirmedPlaceLabel(params);
+    const city = place?.split(",")[0]?.trim() ?? "";
+    if (city && !/^-?\d/.test(city)) return `News · ${city}`;
   }
   return adapter.name;
 }
@@ -1137,13 +1303,24 @@ function panelLayoutFor(
       minH: 18,
     };
   }
-  if (typeId === "usgs.earthquake") {
+  if (typeId === "usgs.earthquake" || typeId === "traffic.roads") {
     return {
       i: panelId,
       x: 0,
       y: yMax,
       w: 32,
       h: 34,
+      minW: 18,
+      minH: 18,
+    };
+  }
+  if (typeId === "noaa.space") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 32,
+      h: 36,
       minW: 18,
       minH: 18,
     };
@@ -1159,6 +1336,17 @@ function panelLayoutFor(
       minH: 24,
     };
   }
+  if (typeId === "audio.local") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 28,
+      h: 32,
+      minW: 16,
+      minH: 18,
+    };
+  }
   if (typeId === "broadcastify.owner" || typeId === "broadcastify.calls") {
     return {
       i: panelId,
@@ -1168,6 +1356,17 @@ function panelLayoutFor(
       h: 28,
       minW: 16,
       minH: 16,
+    };
+  }
+  if (typeId === "x.follow") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 26,
+      h: 32,
+      minW: 16,
+      minH: 18,
     };
   }
   if (typeId === "incident.opendata") {
@@ -1181,7 +1380,23 @@ function panelLayoutFor(
       minH: 12,
     };
   }
-  if (typeId === "camera.http_image" || typeId === "video.youtube") {
+  if (typeId === "scanner.web" || typeId === "news.rss") {
+    return {
+      i: panelId,
+      x: 0,
+      y: yMax,
+      w: 28,
+      h: 28,
+      minW: 16,
+      minH: 16,
+    };
+  }
+  if (
+    typeId === "camera.http_image" ||
+    typeId === "camera.public" ||
+    typeId === "camera.private" ||
+    typeId === "video.youtube"
+  ) {
     return {
       i: panelId,
       x: 0,
@@ -1268,6 +1483,22 @@ function SourceForm({
       </p>
       <div className="form-grid">
         {adapter.fields.map((field) => {
+          if (field.kind === "checklist") {
+            return (
+              <div className="field" key={field.key}>
+                <label>
+                  {field.label}
+                  {field.required ? <span className="req"> *</span> : null}
+                </label>
+                <NewsOutletsField
+                  params={params}
+                  disabled={busy}
+                  help={field.help}
+                  onChange={onParams}
+                />
+              </div>
+            );
+          }
           if (field.kind === "feeds") {
             return (
               <div className="field" key={field.key}>
@@ -1276,6 +1507,34 @@ function SourceForm({
                   {field.required ? <span className="req"> *</span> : null}
                 </label>
                 <SafetyFeedsField params={params} sources={sources} disabled={busy} onChange={onParams} />
+                {field.help ? <div className="help">{field.help}</div> : null}
+              </div>
+            );
+          }
+          if (field.kind === "audio") {
+            return (
+              <div className="field" key={field.key}>
+                <label htmlFor={field.key}>
+                  {field.label}
+                  {field.required ? <span className="req"> *</span> : null}
+                </label>
+                <LocalAudioField params={params} disabled={busy} onChange={onParams} />
+                {field.help ? <div className="help">{field.help}</div> : null}
+              </div>
+            );
+          }
+          if (field.kind === "publicCameras" || field.kind === "privateCamera") {
+            return (
+              <div className="field" key={field.key}>
+                <label>
+                  {field.label}
+                  {field.required ? <span className="req"> *</span> : null}
+                </label>
+                {field.kind === "publicCameras" ? (
+                  <PublicCamerasField params={params} disabled={busy} onChange={onParams} />
+                ) : (
+                  <PrivateCameraField params={params} disabled={busy} onChange={onParams} />
+                )}
                 {field.help ? <div className="help">{field.help}</div> : null}
               </div>
             );
@@ -1438,13 +1697,48 @@ function DisplaySettings({
   const [customW, setCustomW] = useState(() => String(readDisplayPrefs().width));
   const [customH, setCustomH] = useState(() => String(readDisplayPrefs().height));
   const [busy, setBusy] = useState(false);
+  const [available, setAvailable] = useState<CastScreen[]>([]);
+  const [picked, setPicked] = useState<string[]>(() => readDisplayPrefs().screens);
 
-  useEffect(() => subscribeDisplayPrefs(() => setPrefs(readDisplayPrefs())), []);
+  useEffect(
+    () =>
+      subscribeDisplayPrefs(() => {
+        const next = readDisplayPrefs();
+        setPrefs((current) => {
+          const sameScreens =
+            current.screens.length === next.screens.length &&
+            current.screens.every((id, index) => id === next.screens[index]);
+          if (!sameScreens) setPicked(next.screens);
+          return next;
+        });
+      }),
+    [],
+  );
 
-  async function apply(next: Omit<DisplayPrefs, "density">) {
+  useEffect(() => {
+    let cancelled = false;
+    void listCastScreens()
+      .then((screens) => {
+        if (!cancelled) setAvailable(screens);
+      })
+      .catch((err) => {
+        if (!cancelled) onMessage(err instanceof Error ? err.message : String(err), "error");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // The settings alert is owned by the parent. Report the first load once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function apply(next: Omit<DisplayPrefs, "density" | "screens">) {
     setBusy(true);
     try {
-      const saved = await applyDisplayPrefs({ ...next, density: readDisplayPrefs().density });
+      const saved = await applyDisplayPrefs({
+        ...next,
+        density: readDisplayPrefs().density,
+        screens: readDisplayPrefs().screens,
+      });
       setPrefs(saved);
       setCustomW(String(saved.width));
       setCustomH(String(saved.height));
@@ -1486,6 +1780,41 @@ function DisplaySettings({
     prefs.mode === "auto"
       ? "Following the window"
       : `${prefs.label} · ${prefs.width} × ${prefs.height}`;
+  const livePicked = available.filter((screen) => picked.includes(screen.id));
+  const wallSummary =
+    picked.length >= 2 && livePicked.length < 2
+      ? "Those screens are not connected. Refresh, then use them."
+      : displayWallSummary(livePicked);
+
+  function toggleScreen(id: string) {
+    setPicked((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id].slice(0, 8),
+    );
+  }
+
+  async function refreshScreens() {
+    setBusy(true);
+    try {
+      setAvailable(await listCastScreens());
+    } catch (err) {
+      onMessage(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function useScreens(ids: string[]) {
+    setBusy(true);
+    try {
+      const text = await applyDisplayWall(ids);
+      setPicked(readDisplayPrefs().screens);
+      onMessage(text, "ok");
+    } catch (err) {
+      onMessage(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <>
@@ -1596,6 +1925,75 @@ function DisplaySettings({
         </button>
         <button type="button" className="btn" disabled={busy} onClick={() => void matchScreen()}>
           Match this screen
+        </button>
+      </div>
+
+      <p className="section-label" style={{ marginTop: 22 }}>
+        Screens
+      </p>
+      <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
+        The board can use more than one screen. Setup stays on this computer. Checked screens
+        each show their part of the board, at that screen's own size. A 58-inch or larger
+        television stays sharp at 3840 × 2160 or higher. Pick a television under Television when
+        it has to refuse a smaller picture.
+      </p>
+      <p className="display-current">{wallSummary}</p>
+      {available.length === 0 ? (
+        <p style={{ margin: "0 0 12px", color: "var(--cc-text-muted)", fontSize: "0.85rem" }}>
+          No screens reported yet.
+        </p>
+      ) : (
+        <div className="source-list">
+          {available.map((screen) => {
+            const active = picked.includes(screen.id);
+            const badge = screen.current ? "this computer" : screen.sharp ? "4K" : "below 4K";
+            return (
+              <button
+                key={screen.id}
+                type="button"
+                aria-pressed={active}
+                className={`source-row display-preset${active ? " is-checked" : ""}`}
+                disabled={busy}
+                onClick={() => toggleScreen(screen.id)}
+              >
+                <div>
+                  <h3>
+                    {screen.name}
+                    <span className="badge">{badge}</span>
+                  </h3>
+                  <p>
+                    {screen.width} × {screen.height}
+                    {screen.current
+                      ? ". Setup stays here. Check it to show this screen's part of the board."
+                      : screen.sharp
+                        ? ". Sharp on a 58-inch or larger television."
+                        : ". This screen's own size. Soft on a 58-inch or larger television until it is set to 4K."}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div className="form-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={busy}
+          onClick={() => void useScreens(picked)}
+        >
+          Use these screens
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={busy || prefs.screens.length === 0}
+          onClick={() => void useScreens([])}
+        >
+          This window only
+        </button>
+        <button type="button" className="btn" disabled={busy} onClick={() => void refreshScreens()}>
+          Refresh screens
         </button>
       </div>
     </>

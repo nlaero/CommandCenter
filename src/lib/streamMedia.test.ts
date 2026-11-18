@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   absolutizePlaylist,
   classifyPlayback,
+  mediaByteRange,
   looksLikeImage,
   playbackHasAudio,
   prefersChannelLive,
@@ -93,5 +94,9 @@ const livePage = youtubeFromPage(
   `"videoId":"aaaaaaaaaaa" watch?v=bbbbbbbbbbb "videoId":"FX6GYpj-PnA" "isLive":true "channelId":"UCLA_DiR1FfKNvjuUpBHmylQ"`,
 );
 assert.equal(livePage.videoId, "FX6GYpj-PnA");
+
+assert.equal(mediaByteRange(0, 0), undefined);
+assert.equal(mediaByteRange(undefined, undefined), undefined);
+assert.equal(mediaByteRange(0, 188), "bytes=0-187");
 
 console.log("stream media checks ok");

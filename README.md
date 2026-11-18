@@ -4,7 +4,7 @@
 
 [`multi-user`](https://github.com/nlaero/CommandCenter/tree/multi-user) is the future server version, branched from `main`. A server there can run on this computer or on another machine. Shared caption memory belongs on that branch. `main` keeps caption fixes on this computer.
 
-Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), USGS earthquakes, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), public camera links (image, video file, or HLS), YouTube Live, and nearby public-safety alerts from online streams and audio inputs. Mounted source windows publish into the right-side alerts pane.
+Tauri 2 shell, React/TypeScript UI, config on disk. First launch is an empty board. You add sources from Settings. Live so far: weather (conditions + radar/satellite + local NWS alerts), NOAA space weather and aurora, traffic and road conditions for the region around a confirmed place, USGS earthquakes, news RSS, crime/incident open data, Broadcastify Feed Owner (personal feed status + archives), Broadcastify Calls, public cameras (search and recommendations), a private camera link, pasted image / video / HLS links, YouTube Live, a web scanner stream, X following (posts from accounts you follow), nearby public-safety alerts from online streams and audio inputs, and local audio captions from a jack or Bluetooth input. Mounted source windows publish into the right-side alerts pane. X posts stay in their own panel. Headlines stay in the news panel.
 
 ## Audio rule
 
@@ -13,7 +13,7 @@ Anything that plays audio:
 1. Starts **muted** (user unmutes).
 2. Supports closed captions. They show on their own while the sound is muted. CC is a separate control that keeps them up after you turn the sound on.
 
-Broadcastify Feed Owner plays muted. While the live feed is playing, captions show on their own, including while the sound is off. CC keeps them up after you turn the sound on. Earlier lines stay in a scrolling list, and a wrong line can be corrected on this computer. Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. An audio input there can be a Feed Owner source already on this computer, which reads that panel's caption history instead of the microphone. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public camera links and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Do not ship new audio playback without both mute-default and CC.
+Broadcastify Feed Owner plays muted. While the live feed is playing, captions show on their own, including while the sound is off. CC keeps them up after you turn the sound on. Earlier lines stay in a scrolling list, and a wrong line can be corrected on this computer. Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. An X post with video or audio starts muted, and captions show while the sound is off. An audio input there can be a Feed Owner source already on this computer, which reads that panel's caption history instead of the microphone. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public cameras, a private camera, pasted camera links, and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Web scanner is its own window: a direct audio stream, muted until you turn sound on, with captions written on this computer while the sound is muted. It is not the Feed Owner panel and it does not feed nearby alerts. A jack or Bluetooth input starts muted and rolls captions from Tiny English on this computer. Scroll that list and it stays put until you jump to the latest line. A correction stays on this computer and is used the next time those words appear. Do not ship new audio playback without both mute-default and CC.
 
 ## Requirements
 
@@ -102,11 +102,30 @@ Add more Weather sources if you want separate panels per scope instead of a comb
 
 ## Location
 
-Weather and ADS-B Exchange take a place in source settings. The choices are GPS, network location, other location services on this computer, or an address you type.
+Weather, traffic, and ADS-B Exchange take a place in source settings. The choices are GPS, network location, other location services on this computer, or an address you type.
 
 GPS asks the device for a high-accuracy satellite fix. Network location uses a Wi-Fi or cell reading when the operating system has one, and otherwise this computer's public IP address. Other device sources are the OS location service (GeoClue on Linux, or the browser's location service). An address is looked up through Photon, then Nominatim, then Open-Meteo. If several places match, pick one.
 
 Command Center will not save the source until that lookup returns a real place. The form then shows the name, the coordinates, and which input produced them. Older sources that already have latitude and longitude still open; those coordinates count as already found.
+
+## Traffic / road conditions
+
+One source, centered on the same confirmed place as weather. The map opens on the whole 80-mile region around that place. Selecting a row highlights it. The Region control puts the map back on that circle.
+
+A row that can change travel time (a closure, crash, lane restriction, meaningful delay, or an icy, snow-covered, or impassable road) also shows in the alerts pane while the window is on the board. Clear and wet road reports stay off the list. The map still draws when a feed is missing.
+
+| Region | Feed | Auth |
+|--------|------|------|
+| Pennsylvania | PennDOT RCRS live incidents and winter conditions (`gisdata.penndot.pa.gov`) | Free username and password, secrets `penndot.username` and `penndot.password` |
+| Ohio | [OHGO](https://publicapi.ohgo.com/api/v1/incidents) incidents and travel delays | Free API key, secret `ohgo.api_key`. Public-domain data. Header `Authorization: APIKEY …` |
+| Maryland | CHART event and closure JSON (`chartexp1.sha.maryland.gov`) | None |
+| Iowa | [511ia](https://511ia.org/) ArcGIS events and road conditions | None |
+| British Columbia | [DriveBC Open511](https://api.open511.gov.bc.ca/events) | None. Open Government License - BC |
+| Maine, New Hampshire, Vermont | New England Compass incident XML (`nec-por.ne-compass.com`) | None |
+
+The app asks a feed only when the 80-mile circle meets that feed's coverage. A place with no free feed still shows the map, and the note says so. Credentials stay in the OS keyring. The basemap is Esri Dark Gray.
+
+**In the app:** Settings → Source catalog → Traffic / road conditions → Configure. Confirm a place the same way as weather. Save the PennDOT or OHGO credentials only if this region reaches Pennsylvania or Ohio. Save, or Save & add to board.
 
 ## USGS earthquakes
 
@@ -124,6 +143,48 @@ USGS updates these about once a minute and sends `Cache-Control: max-age=60` plu
 **In the app:** Settings → Source catalog → USGS earthquakes → Configure. Pick a feed. Save, or Save & add to board. The map opens on the newest event. Later polls move it to each new earthquake, tsunami flag, or other event. Drag to look around; +/- zooms. Basemap is Esri Dark Gray (CARTO's keyless raster tiles now ask for an API key). Credit Esri / OSM on the map; USGS stays in the footer.
 
 While that window is on the board, notable rows (tsunami flag, PAGER yellow or higher, magnitude at or above the threshold, landslides, volcanic eruptions) show in the right-side alerts pane. Taking the window off the board removes them. Click a row in the pane for the USGS detail link.
+
+## Space weather and aurora
+
+[NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/). No key. The panel waits at least 5 minutes between polls.
+
+| Product | Path |
+|---------|------|
+| Alerts | `/products/alerts.json` |
+| R, S, and G scales | `/products/noaa-scales.json` |
+| Planetary Kp | `/products/noaa-planetary-k-index.json` |
+| Estimated Kp | `/json/planetary_k_index_1m.json` |
+| 10.7 cm flux | `/json/f107_cm_flux.json` |
+| GOES X-ray | `/json/goes/primary/xrays-6-hour.json` |
+| Aurora | `/json/ovation_aurora_latest.json` |
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Location | yes | Same choices as weather. The aurora chance is the OVATION point nearest that place. |
+| Aurora map | yes | Auto, northern, or southern hemisphere |
+| Show aurora map | no | Default on. The chance number stays when the map is off |
+
+**Ham pairing.** Ham propagation / solar (`ham.swpc`) is already in the catalog. When that source is saved, this panel reads its bands and marks each one quiet, fair, poor, or aurora from the current G and R scales. That is storm impact. The ham source itself stays as it is.
+
+While this window is on the board, a current G, S, or R of 1 or higher goes to the alerts pane, along with watches, warnings, and K-index alerts of 5 or higher from the last 72 hours (or still inside their valid-until time). Taking the window off the board removes them.
+
+**In the app:** Settings → Source catalog → Space weather / aurora → Configure. Confirm a place. Save, or Save & add to board.
+
+## News
+
+Free RSS. No key. You pick the national outlets. Local outlets come from the same confirmed place as weather: up to three catalog feeds inside their radius, nearest first. If none cover that place, the local feed is a Google News search for the place name. Google publishes that search RSS for a personal reader.
+
+Each feed is polled on its own schedule. The wait is the shortest hint the feed states — RSS `ttl`, the syndication update period, or the remaining `Cache-Control` max-age — and never shorter than a minute. A few-second CDN max-age does not override a longer ttl. If the feed states nothing, the panel waits 15 minutes. `Retry-After` can only make the wait longer. Refresh does not skip the wait. Repeat requests send `If-None-Match` and `If-Modified-Since` and keep the previous body on 304.
+
+Headlines stay in the news panel. They are not copied to the alerts pane.
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Location | yes | Same confirmation as weather. Local outlets follow this place. |
+| National outlets | yes | At least one |
+| Max stories | yes | Newest first (default 40, max 100) |
+
+**In the app:** Settings → Source catalog → News → Configure. Confirm the place, check the national outlets, and save. The window title uses the city. New stories flash in the list. Click a row for the summary and the story link.
 
 ## Crime / incident
 
@@ -198,6 +259,43 @@ Players start muted. Unmute a clip to hear it. Each refresh is a metered read, s
 
 Live Calls requests need the Tauri app. The browser preview shows two sample clips after the secret field is filled and does not call the API.
 
+## Web scanner
+
+A direct audio stream in its own panel. Icecast, Shoutcast, an MP3, AAC, or Ogg link, or an HLS playlist (`.m3u8`). Paste a stream you are allowed to play.
+
+A Broadcastify listen page, relay, or Calls link is refused. Your uploaded feed stays in Feed Owner. Calls stays in that source. Nearby alerts do not read this window.
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Name | yes | Panel title |
+| Stream | yes | http or https. No password in the link — it is saved in the board file |
+| Captions | no | Default on. Written on this computer. Shown while the sound is muted. CC keeps them after you turn the sound on |
+
+Playback starts muted. The mute control turns the sound on and off. While the sound is muted, a short window of the stream is transcribed here with Tiny English when that model is installed. The newest line stays up, and earlier lines stay in a scrolling list. Scroll up and the list stays put until Latest. A wrong line can be corrected on this computer. If Tiny English is not installed, the line says so. The line stays empty of invented words. Audio is not uploaded.
+
+**In the app:** Settings → Source catalog → Web scanner → Configure. Name the stream, paste the link, Save & add to board.
+
+The browser preview plays the link too. Captions still run on this computer when Tiny English is installed.
+
+## X following
+
+Posts from accounts you follow, newest first. Sign in from the panel. Command Center does not ship an access token. The access token and refresh token stay in the OS keyring (`x.session.access_token`, `x.session.refresh_token`). A client secret, if the X app has one, is `x.client_secret` in the keyring. The client ID is the app id from the [developer portal](https://developer.x.com/), not a token, and it is the only X value saved in the board file.
+
+The X app callback URL has to be `http://127.0.0.1:8737/callback`. Sign-in asks for `tweet.read`, `users.read`, and `offline.access`. The panel calls `GET /2/users/:id/timelines/reverse_chronological`.
+
+Video and audio start muted. Captions show while the sound is off. CC keeps them up after you turn the sound on. Spoken words are transcribed on this computer with Tiny English when that model is installed. A still image has no audio line.
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Label | no | Panel title |
+| Client ID | yes | X app client ID. Not an access token |
+| Client secret | no | Keyring only, for a confidential app |
+| Max posts | yes | Newest first, 5–100 |
+
+**In the app:** Settings → Source catalog → X → Configure. Enter the client ID. Save & add to board. Sign in on the panel. The list scrolls. Posts that show up after the first load are marked.
+
+The browser preview signs in locally and shows sample posts. It does not call X, and it does not use a real token. Live posts need the desktop app.
+
 ## Nearby public safety
 
 Online streams and audio inputs (a jack, Bluetooth, or the sound card). Each feed stores the county and state it covers. There is no zip code list. A short window is recorded on this computer and transcribed with Tiny English when that model is installed. Those captions are the input. The reader takes a dispatch type and a street from the words, then looks the street up in that county and state. If the point sits inside the radius around your confirmed location, it shows on this panel and in the alerts pane.
@@ -219,11 +317,37 @@ ffmpeg has to be on PATH for a real recording. The desktop app records the feed.
 
 **In the app:** Settings → Source catalog → Nearby public safety → Configure. Find your location, set the radius, add each feed with its county and state. Save & add to board.
 
+## Local audio
+
+A jack or a Bluetooth input on this computer, such as a scanner on the line-in. This window is not the Broadcastify panel and it is not nearby alerts.
+
+Playback starts muted. Unmute on the panel to hear the latest recorded window. Captions run while the sound is off. CC keeps them up after the sound is turned on.
+
+Tiny English on this computer writes the lines. They roll in a list. Scroll that list and it stays where you left it until you jump to the latest line. Fix caption stores the correction on this computer. The next time those words show up, the line uses the fix.
+
+ffmpeg has to be on PATH to record the input. Audio is not uploaded. The browser preview does not record. It rolls sample lines so the list can be tried, and it says so.
+
+| Setting | Required | Notes |
+|---------|----------|--------|
+| Label | no | Panel title |
+| Audio input | yes | A jack or Bluetooth device on this computer |
+| Captions | no | Default on. Tiny English from Settings → Local AI |
+
+**In the app:** Settings → Source catalog → Local audio → Configure. Pick the input. Save & add to board.
+
 ## Cameras and YouTube
 
-Public / HTTP camera plays the link in the panel. A still image refreshes on the source interval. It has no audio, so the panel does not generate captions and does not show a caption line. An MP4 or WebM file plays in the video element. An HLS playlist (`.m3u8`), including a master playlist, is decoded in the panel. The window shows the picture and the camera label. It does not print the saved fields.
+Public cameras, a private camera, a pasted camera link, and YouTube Live all use the same panel. It plays an HLS playlist (`.m3u8`, including a master playlist), an MP4 or WebM file, a still image, or a YouTube link. The window shows the picture and the camera label. A public camera also shows the agency credit. It does not print the rest of the saved fields.
 
-YouTube Live is its own source. Paste a watch link, a youtu.be link, a `/live/…` link, or a channel live URL (`/@name/live` or `/channel/UC…/live`). Same panel: picture, label, muted until you turn sound on.
+**Public cameras.** Search the cameras shipped with the app, or confirm a place and the nearest ones come first. A search for a city also checks the published catalog for New York City, Caltrans, or Maryland when that place matches. Picking a camera fills in the link, the label, and how often a still refreshes. Those are New York City DOT stills, Caltrans stills, and Maryland CHART playlists. PennDOT video is not in the list.
+
+**Private camera.** Pick a brand or system (Frigate, go2rtc, Blue Iris, Scrypted, Synology, UniFi Protect, Reolink, Hikvision / Amcrest / Dahua, Axis, or Ring / Nest / Arlo) and follow the steps, then paste the stream link. A UDP or RTSP address does not play in this panel. The camera system has to give you an HLS playlist, a video file, a still, or a YouTube link. The link is saved with the board on this computer, so leave a password out of it when you can. Ring, Nest, and Arlo do not hand over a stream link; use Scrypted or Home Assistant on this network and paste the local link that bridge shows.
+
+**Camera link.** Paste a still, a video file, or an HLS playlist you are allowed to view. Same panel as the two sources above.
+
+A still image refreshes on the source interval. It has no audio, so the panel does not generate captions and does not show a caption line.
+
+YouTube Live is its own source, and a YouTube link pasted on a camera plays the same way. Paste a watch link, a youtu.be link, a `/live/…` link, or a channel live URL (`/@name/live` or `/channel/UC…/live`). Picture, label, muted until you turn sound on.
 
 Captions are only for a source that has sound. HLS WebVTT or CEA-708 is used when the playlist already has it, and YouTube uses its own captions. An HLS stream or video file with no caption track is transcribed here with Tiny English from Settings → Local AI. Music and a repeated non-speech phrase are not shown; if the audio has no speech the caption line stays empty. The lines show while the panel is muted. Turn the sound on and they hide, unless CC is on. CC does not have to be pressed for the muted case. A still image never takes this path. YouTube audio is not downloaded for this. Preparing the audio for the local model uses ffmpeg when it is on the computer, and otherwise decodes AAC, MP3, and MP4 here. RTSP and USB cameras still need a native player.
 
@@ -241,17 +365,25 @@ Toolbar shows slot, active source, countdown, pause/prev/next. Config lives on t
 ## Shell behavior
 
 - Empty board on first launch
-- Settings → Source catalog: weather, USGS earthquakes, ADS-B, cameras (HTTP image / HLS / file, plus YouTube Live), ham, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
+- Settings → Source catalog: weather, traffic / road conditions, USGS earthquakes, news RSS, ADS-B, cameras (public list, private link, pasted image / HLS / file, plus YouTube Live), web scanner, ham, NOAA space weather and aurora, crime/incident, Broadcastify Feed Owner, Broadcastify Calls, X following, local audio, nearby public safety, plus file / HTTP / SQLite / system-metrics stubs
 - Configure → Save or Save & add to board
 - Settings → Panel rotation for any mix of configured sources in one panel
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
-- Settings → Display sets the window size (1280×720 through 4K, this screen, or a custom size). Saved on this computer.
-- Settings → Television sends the board to a TV with AirPlay or screen mirroring. The TV is display-only. The picture has to be 3840×2160 or higher so a 58-inch or larger set stays sharp.
+- Settings → Display sets the window size (1280×720 through 4K, this screen, or a custom size) and which screens the board uses. More than one screen splits the board. Saved on this computer.
+- Settings → Television sends the board to one TV, or splits it across more than one. The TV is display-only. Each picture has to be 3840×2160 or higher so a 58-inch or larger set stays sharp. Setup stays on the computer.
 - Edit layout (toolbar or `Ctrl/Cmd+E`): 48-column fine grid; persists on drag/resize stop
 - Board switcher in the chrome (+ for another empty board)
 - Help → Check for updates… (also the toolbar button, and Settings → Updates) asks GitHub if this copy is behind a published release. Nothing is downloaded until you choose it.
 
 Other catalog entries stay stubs until their adapters land.
+
+## Screens
+
+Settings → Display lists the screens on this computer. Check more than one and the board is divided across them, using where those screens sit. Two side by side split it left and right. Screens stacked on top of each other split it top and bottom.
+
+This computer keeps the toolbar and settings. Check this screen when it should show its own part of the board. Leave it unchecked and the whole board stays here while the other screens show their parts. Those other screens have no settings and no layout editing.
+
+Each screen is drawn at its own size. A 3840×2160 screen stays sharp on a 58-inch or larger television. A smaller screen is not stretched, and it will look soft on a 58-inch set until that display is set to 4K. Edit layout on the computer shows the whole board, so a source can be moved onto another screen.
 
 ## Television
 
@@ -264,6 +396,8 @@ Settings → Television.
 **AirPlay.** Command Center looks for AirPlay receivers on the local network. Pick one and show the board. When that receiver is already connected as a display — its name shows up as a screen — the board opens there. If it is not a display yet, connect it from this computer (HDMI, or the system's own AirPlay display) and try again. Nothing is configured on the television.
 
 A 58-inch or larger television stays sharp at 3840×2160 or higher. A 1080p output is refused until that display is set to 4K. Apple TV HD and earlier top out at 1080p, so they are listed and refused. Apple TV 4K (1st, 2nd, and 3rd generation) is 3840×2160. The board fills that screen. Text stays vector-sharp. It is not a scaled-up screenshot.
+
+Pick one television and it shows the whole board. Pick more than one and the board splits across them, at each screen's own 3840×2160 or higher. The computer is not one of those screens. Setup stays here.
 
 Check the picture opens a preview on this computer. That preview is not the television.
 
@@ -308,9 +442,18 @@ Checking does not publish a release. Installers stay unpublished until asked.
 
 ```bash
 npm run test:rust
+node --experimental-strip-types src/lib/news.test.ts
 node --experimental-strip-types src/lib/safety.test.ts
+node --experimental-strip-types src/lib/spaceWeather.test.ts
+node --experimental-strip-types src/lib/traffic.test.ts
 node --experimental-strip-types src/lib/feedCaptions.test.ts
+node --experimental-strip-types src/lib/localAudio.test.ts
 node --experimental-strip-types src/lib/formFields.test.ts
+node --experimental-strip-types src/lib/webScanner.test.ts
+node --experimental-strip-types src/lib/xFollow.test.ts
+node --experimental-strip-types src/lib/publicCameras.test.ts
+node --experimental-strip-types src/lib/privateCameras.test.ts
+node --experimental-strip-types src/lib/streamMedia.test.ts
 npm run build
 node scripts/fetch-tiny-en.test.mjs
 ```

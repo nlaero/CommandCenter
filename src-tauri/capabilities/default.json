@@ -2,7 +2,27 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "tv", "tv-preview"],
+  "windows": [
+    "main",
+    "tv",
+    "tv-preview",
+    "tv-1",
+    "tv-2",
+    "tv-3",
+    "tv-4",
+    "tv-5",
+    "tv-6",
+    "tv-7",
+    "tv-8",
+    "span-1",
+    "span-2",
+    "span-3",
+    "span-4",
+    "span-5",
+    "span-6",
+    "span-7",
+    "span-8"
+  ],
   "permissions": [
     "core:default",
     "opener:default"

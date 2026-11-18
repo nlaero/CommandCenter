@@ -8,8 +8,17 @@ import { AuthScreen } from "./components/AuthScreen";
 import { AlertsProvider } from "./lib/alerts";
 import { authLogout, loadAuthSession } from "./lib/auth";
 import { AUTH_IN_APP } from "./lib/authFeature";
-import { onCastSession, readCastSession, readCastView, type CastSession } from "./lib/cast";
-import { applyDisplayPrefs, readDisplayPrefs } from "./lib/display";
+import {
+  applyDisplayWall,
+  listCastScreens,
+  onCastSession,
+  readCastSession,
+  readCastView,
+  type CastScreen,
+  type CastSession,
+} from "./lib/cast";
+import { applyDisplayPrefs, readDisplayPrefs, useBoardScreens } from "./lib/display";
+import { spanRows, splitPanels } from "./lib/span";
 import { syncAiMemory } from "./lib/aiMemory";
 import { syncBoard } from "./lib/sync";
 import {
@@ -25,10 +34,14 @@ import type { AppState, AuthSession, ConfigPaths, GridItem } from "./types";
 
 export default function App() {
   const view = readCastView();
-  if (view.tv) {
+  if (view.tv || view.span) {
     return (
       <SourceRefreshProvider>
-        <TvStage preview={view.preview} />
+        <TvStage
+          preview={view.preview}
+          screenId={view.screenId}
+          wall={view.span ? "display" : view.screenId ? "television" : null}
+        />
       </SourceRefreshProvider>
     );
   }
@@ -48,6 +61,8 @@ function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>();
   const [castSession, setCastSession] = useState<CastSession | null>(null);
+  const [monitors, setMonitors] = useState<CastScreen[]>([]);
+  const screenIds = useBoardScreens();
   const [error, setError] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const syncedFor = useRef<string | null>(null);
@@ -58,7 +73,28 @@ function AppShell() {
 
   useEffect(() => {
     void applyDisplayPrefs(readDisplayPrefs()).catch(() => undefined);
+    if (readDisplayPrefs().screens.length >= 2) {
+      void applyDisplayWall(readDisplayPrefs().screens).catch(() => undefined);
+    }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pull = () => {
+      void listCastScreens()
+        .then((list) => {
+          if (cancelled) return;
+          setMonitors((current) => (sameMonitors(current, list) ? current : list));
+        })
+        .catch(() => undefined);
+    };
+    pull();
+    const timer = window.setInterval(pull, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [screenIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -167,6 +203,26 @@ function AppShell() {
     () => state?.boards.find((b) => b.id === state.activeBoardId) ?? state?.boards[0],
     [state],
   );
+  const wallMonitors = monitors.filter((screen) => screenIds.includes(screen.id));
+  const currentMonitor = monitors.find((screen) => screen.current);
+  const wall =
+    state && activeBoard && wallMonitors.length >= 2
+      ? splitPanels(
+          activeBoard.panels.map((panel) => panel.layout),
+          wallMonitors,
+          state.layout.cols,
+          spanRows(activeBoard.panels.map((panel) => panel.layout)),
+        )
+      : null;
+  const showSlice = Boolean(
+    wall && currentMonitor && screenIds.includes(currentMonitor.id) && state && !state.editMode,
+  );
+  const placed = showSlice
+    ? (wall?.panels.find((entry) => entry.id === currentMonitor?.id)?.items ?? [])
+    : null;
+  const gridCols = showSlice
+    ? wall?.slices.find((entry) => entry.id === currentMonitor?.id)?.colCount
+    : undefined;
 
   const toggleEdit = useCallback(async () => {
     if (!state) return;
@@ -288,9 +344,28 @@ function AppShell() {
                 setSettingsTab("television");
                 setSettingsOpen(true);
               }}
-              title={`${castSession.targetName} · ${castSession.width} × ${castSession.height}`}
+              title={
+                castSession.split && castSession.split.length > 1
+                  ? castSession.split
+                      .map((screen) => `${screen.name} ${screen.width} × ${screen.height}`)
+                      .join(" · ")
+                  : `${castSession.targetName} · ${castSession.width} × ${castSession.height}`
+              }
             >
               On the TV
+            </button>
+          ) : null}
+          {screenIds.length >= 2 ? (
+            <button
+              type="button"
+              className="btn active"
+              onClick={() => {
+                setSettingsTab("display");
+                setSettingsOpen(true);
+              }}
+              title="The board is split across these screens. Setup stays on this computer."
+            >
+              Across screens
             </button>
           ) : null}
           <button
@@ -339,6 +414,9 @@ function AppShell() {
                 state={state}
                 board={activeBoard}
                 width={width}
+                placed={placed}
+                gridCols={gridCols}
+                wallEditing={Boolean(wall && state.editMode)}
                 onOpenSettings={() => {
                   setSettingsTab(undefined);
                   setSettingsOpen(true);
@@ -366,6 +444,22 @@ function AppShell() {
       </div>
     </AlertsProvider>
   );
+}
+
+function sameMonitors(left: CastScreen[], right: CastScreen[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((screen, index) => {
+    const other = right[index];
+    return (
+      screen.id === other.id &&
+      screen.current === other.current &&
+      screen.sharp === other.sharp &&
+      screen.x === other.x &&
+      screen.y === other.y &&
+      screen.width === other.width &&
+      screen.height === other.height
+    );
+  });
 }
 
 function UpdateButton() {

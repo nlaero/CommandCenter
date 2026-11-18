@@ -210,6 +210,51 @@ pub fn fetch_source_payload(args: FetchSourceArgs) -> Result<SourcePayload, Comm
 }
 
 #[tauri::command]
+pub fn x_account() -> Result<sources::x::Account, CommandError> {
+    Ok(sources::x::account()?)
+}
+
+#[tauri::command]
+pub fn x_sign_out() -> Result<sources::x::Account, CommandError> {
+    Ok(sources::x::sign_out()?)
+}
+
+/// Opens the system browser for X sign-in. Tokens are stored in the OS keyring.
+#[tauri::command]
+pub fn x_begin_sign_in(
+    app: tauri::AppHandle,
+    source_id: String,
+) -> Result<sources::x::SignInStart, CommandError> {
+    let loaded = config::load_or_create()?;
+    let source = loaded
+        .state
+        .sources
+        .get(&source_id)
+        .ok_or_else(|| CommandError {
+            message: format!("source not found: {source_id}"),
+        })?;
+    if source.type_id != "x.follow" {
+        return Err(CommandError {
+            message: "This source is not an X follow feed.".into(),
+        });
+    }
+    let url = sources::x::begin_sign_in(source, |url| {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_url(url, None::<&str>)
+            .map_err(|err| err.to_string())
+    })?;
+    Ok(sources::x::SignInStart {
+        authorize_url: url,
+    })
+}
+
+#[tauri::command]
+pub fn x_poll_sign_in() -> Result<Option<sources::x::Account>, CommandError> {
+    Ok(sources::x::poll_sign_in()?)
+}
+
+#[tauri::command]
 pub async fn fetch_media_url(
     url: String,
     range: Option<String>,
@@ -1020,6 +1065,20 @@ pub async fn list_audio_inputs() -> Vec<crate::safety::AudioInput> {
                 label: "Default input".into(),
             }]
         })
+}
+
+#[tauri::command]
+pub fn list_local_audio_inputs() -> Vec<crate::local_audio::LocalAudioInput> {
+    crate::local_audio::list_inputs()
+}
+
+#[tauri::command]
+pub fn listen_local_audio(
+    args: crate::local_audio::ListenRequest,
+) -> Result<crate::local_audio::LocalAudioWindow, CommandError> {
+    let paths = config::resolve_paths()?;
+    crate::local_audio::listen(std::path::Path::new(&paths.root), args)
+        .map_err(|message| CommandError { message })
 }
 
 #[tauri::command]

@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import process from "node:process";
 import { captionFailureText, transcribeClip } from "./scripts/local-captions.mjs";
+import { isAllowedNewsUrl, NEWS_USER_AGENT } from "./src/lib/news.ts";
 
 const host = process.env.TAURI_DEV_HOST;
 
@@ -15,10 +16,17 @@ function browserProxy(): Plugin {
     "/proxy/goes": "https://cdn.star.nesdis.noaa.gov",
     "/proxy/nws": "https://api.weather.gov",
     "/proxy/usgs": "https://earthquake.usgs.gov",
+    "/proxy/swpc": "https://services.swpc.noaa.gov",
     "/proxy/photon": "https://photon.komoot.io",
     "/proxy/nominatim": "https://nominatim.openstreetmap.org",
     "/proxy/geocode": "https://geocoding-api.open-meteo.com",
     "/proxy/ipwho": "https://ipwho.is",
+    "/proxy/penndot": "https://gisdata.penndot.pa.gov",
+    "/proxy/ohgo": "https://publicapi.ohgo.com",
+    "/proxy/chart": "https://chartexp1.sha.maryland.gov",
+    "/proxy/arcgis": "https://services.arcgis.com",
+    "/proxy/open511": "https://api.open511.gov.bc.ca",
+    "/proxy/compass": "https://nec-por.ne-compass.com",
   };
 
   return {
@@ -38,6 +46,8 @@ function browserProxy(): Plugin {
             "user-agent":
               prefix === "/proxy/usgs"
                 ? "CommandCenter/0.1 (personal USGS earthquake feed; +https://github.com/nlaero/CommandCenter)"
+                : prefix === "/proxy/swpc"
+                  ? "CommandCenter/0.1 (personal space weather; +https://github.com/nlaero/CommandCenter)"
                 : prefix === "/proxy/nominatim" || prefix === "/proxy/photon"
                   ? "CommandCenter/0.1 (personal location lookup; +https://github.com/nlaero/CommandCenter)"
                   : "CommandCenter-browser-mock/0.1",
@@ -47,6 +57,12 @@ function browserProxy(): Plugin {
           const ifModifiedSince = req.headers["if-modified-since"];
           if (typeof ifNoneMatch === "string") headers["if-none-match"] = ifNoneMatch;
           if (typeof ifModifiedSince === "string") headers["if-modified-since"] = ifModifiedSince;
+          if (prefix === "/proxy/penndot" || prefix === "/proxy/ohgo") {
+            const authorization = req.headers.authorization;
+            if (typeof authorization === "string" && authorization.trim()) {
+              headers.authorization = authorization;
+            }
+          }
           const upstreamRes = await fetch(upstream, { headers });
           res.statusCode = upstreamRes.status;
           for (const name of [
@@ -328,9 +344,115 @@ async function proxyMedia(req: IncomingMessage, res: ServerResponse): Promise<vo
   res.end(Buffer.concat(chunks));
 }
 
+const RSS_MAX_BYTES = 2_000_000;
+
+/** Browser UI mock only. Catalog feeds and a Google News place search. Not an open proxy. */
+function rssProxy(): Plugin {
+  return {
+    name: "news-rss-proxy",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const url = req.url ?? "";
+        if (!url.startsWith("/proxy/rss")) {
+          next();
+          return;
+        }
+        const target = new URL(url, "http://127.0.0.1").searchParams.get("u") ?? "";
+        if (!isAllowedNewsUrl(target)) {
+          res.statusCode = 403;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ error: "that feed is not polled" }));
+          return;
+        }
+        try {
+          const upstream = await fetchAllowedFeed(target, req);
+          res.statusCode = upstream.status;
+          for (const name of [
+            "content-type",
+            "cache-control",
+            "etag",
+            "expires",
+            "last-modified",
+            "retry-after",
+            "age",
+          ]) {
+            const value = upstream.headers.get(name);
+            if (value) res.setHeader(name, value);
+          }
+          if (upstream.status === 304) {
+            res.end();
+            return;
+          }
+          const body = await readCapped(upstream, RSS_MAX_BYTES);
+          res.end(body);
+        } catch (err) {
+          res.statusCode = 502;
+          res.setHeader("content-type", "application/json");
+          res.end(
+            JSON.stringify({
+              error: "proxy fetch failed",
+              message: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        }
+      });
+    },
+  };
+}
+
+async function fetchAllowedFeed(start: string, req: IncomingMessage): Promise<Response> {
+  let current = start;
+  const headers: Record<string, string> = {
+    "user-agent": NEWS_USER_AGENT,
+    accept:
+      typeof req.headers.accept === "string"
+        ? req.headers.accept
+        : "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1",
+    "accept-encoding": "identity",
+  };
+  const ifNoneMatch = req.headers["if-none-match"];
+  const ifModifiedSince = req.headers["if-modified-since"];
+  if (typeof ifNoneMatch === "string") headers["if-none-match"] = ifNoneMatch;
+  if (typeof ifModifiedSince === "string") headers["if-modified-since"] = ifModifiedSince;
+
+  for (let hop = 0; hop <= 5; hop += 1) {
+    const upstream = await fetch(current, { headers, redirect: "manual" });
+    const location = upstream.headers.get("location");
+    const redirected = [301, 302, 303, 307, 308].includes(upstream.status) && Boolean(location);
+    if (!redirected || !location) return upstream;
+    const nextUrl = new URL(location, current);
+    if (nextUrl.protocol !== "https:") return upstream;
+    if (hop === 5) throw new Error("too many redirects");
+    current = nextUrl.toString();
+    delete headers["if-none-match"];
+    delete headers["if-modified-since"];
+  }
+  throw new Error("too many redirects");
+}
+
+async function readCapped(upstream: Response, maxBytes: number): Promise<Buffer> {
+  const reader = upstream.body?.getReader();
+  if (!reader) return Buffer.alloc(0);
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const next = Buffer.from(value);
+    if (total + next.length > maxBytes) {
+      chunks.push(next.subarray(0, maxBytes - total));
+      await reader.cancel();
+      break;
+    }
+    chunks.push(next);
+    total += next.length;
+  }
+  return Buffer.concat(chunks);
+}
+
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react(), browserProxy(), authDevProxy(), mediaProxy(), captionProxy()],
+  plugins: [react(), browserProxy(), rssProxy(), authDevProxy(), mediaProxy(), captionProxy()],
   clearScreen: false,
   server: {
     port: 1420,

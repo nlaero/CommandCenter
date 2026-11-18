@@ -1,6 +1,8 @@
+import { NATIONAL_OUTLETS } from "../lib/news";
 import { USGS_FEED_OPTIONS } from "../lib/usgs";
 import { CALLS_APP } from "../lib/broadcastifyCallsPreset";
 import { PENN_HILLS_FEED } from "../lib/broadcastifyPreset";
+import { X_REDIRECT_URI } from "../lib/xFollow";
 import type { AdapterDefinition } from "../types";
 
 /** Built-in source types for the Settings catalog. */
@@ -110,6 +112,51 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     stubNote: "No live ADS-BX calls in MVP; respects license (no redistribute).",
   },
   {
+    typeId: "traffic.roads",
+    category: "product",
+    name: "Traffic / road conditions",
+    description:
+      "The whole region around a confirmed place. The map opens on that 80-mile circle. Real-time incidents, closures, travel delays, and road conditions that can slow a trip are listed and sent to the alerts pane when a free feed covers the region. Pennsylvania uses PennDOT's free 511 feed once those credentials are saved. Ohio uses a free OHGO key. Maryland, Iowa, British Columbia, and Maine, New Hampshire, and Vermont use public feeds that need no key.",
+    defaultWidget: "traffic",
+    defaultRefresh: "2m",
+    fields: [
+      {
+        key: "location",
+        label: "Location",
+        kind: "location",
+        required: true,
+        help: "GPS, network location, or another source on this device, or an address. Command Center confirms the place before you can save.",
+      },
+      {
+        key: "secret:penndot.username",
+        label: "PennDOT username",
+        kind: "string",
+        required: false,
+        secret: true,
+        placeholder: "Free 511 data-feed account",
+        help: "Only used when the region reaches Pennsylvania. PennDOT's live incidents and winter road conditions are free after you request the feed. Stored in the OS keyring, not in the board file.",
+      },
+      {
+        key: "secret:penndot.password",
+        label: "PennDOT password",
+        kind: "secret",
+        required: false,
+        secret: true,
+        placeholder: "PennDOT data-feed password",
+        help: "OS keyring only. Paired with the PennDOT username.",
+      },
+      {
+        key: "secret:ohgo.api_key",
+        label: "OHGO API key",
+        kind: "secret",
+        required: false,
+        secret: true,
+        placeholder: "Free key from publicapi.ohgo.com",
+        help: "Only used when the region reaches Ohio. ODOT publishes incidents and travel delays as public-domain data. The key stays in the OS keyring.",
+      },
+    ],
+  },
+  {
     typeId: "adsb.local",
     category: "product",
     name: "ADS-B local feeder",
@@ -127,11 +174,84 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     ],
   },
   {
+    typeId: "camera.public",
+    category: "product",
+    name: "Public cameras",
+    description:
+      "Published traffic cameras from New York City, Caltrans, and Maryland. Search the list, or confirm a place and the nearest ones come first. Picking a camera fills in the link, the label, and how often a still refreshes. A still has no captions. Video plays in the same panel as a pasted stream and starts muted.",
+    defaultWidget: "camera",
+    defaultRefresh: "30s",
+    fields: [
+      {
+        key: "location",
+        label: "Recommendations near",
+        kind: "location",
+        required: false,
+        latKey: "nearLat",
+        lonKey: "nearLon",
+        help: "Optional. GPS, network location, or another source on this device, or an address. Recommendations start near that place and move outward. Search works without it.",
+      },
+      {
+        key: "cameraId",
+        label: "Camera",
+        kind: "publicCameras",
+        required: true,
+        help: "Select one. The link and the still-image refresh are filled in from that camera.",
+      },
+      {
+        key: "label",
+        label: "Camera label",
+        kind: "string",
+        required: true,
+        placeholder: "Bay Bridge",
+      },
+      {
+        key: "recordLocal",
+        label: "Optional local recording",
+        kind: "boolean",
+        required: false,
+        help: "Saved with the camera. The panel does not record yet.",
+      },
+    ],
+  },
+  {
+    typeId: "camera.private",
+    category: "product",
+    name: "Private camera",
+    description:
+      "A camera or recorder you control. Pick the brand or system for the steps, then paste the stream link it gives you. The same panel plays an HLS playlist, a video file, a still image, or a YouTube link. A still has no captions. Sound starts muted.",
+    defaultWidget: "camera",
+    defaultRefresh: "30s",
+    fields: [
+      {
+        key: "url",
+        label: "Camera system",
+        kind: "privateCamera",
+        required: true,
+        help: "The link is saved with the board on this computer. Leave a password out of it when the camera system can give you a link without one.",
+      },
+      {
+        key: "label",
+        label: "Camera label",
+        kind: "string",
+        required: true,
+        placeholder: "Driveway",
+      },
+      {
+        key: "recordLocal",
+        label: "Optional local recording",
+        kind: "boolean",
+        required: false,
+        help: "Saved with the camera. The panel does not record yet.",
+      },
+    ],
+  },
+  {
     typeId: "camera.http_image",
     category: "product",
-    name: "Public / HTTP camera",
+    name: "Camera link",
     description:
-      "A still image, an MP4/WebM file, or an HLS playlist (.m3u8) you are allowed to view. A still refreshes on its interval and has no caption line. Video plays muted until you turn sound on. If that video has no captions, Command Center writes them on this computer and shows them while the sound is muted. The line stays empty when there is no speech.",
+      "Paste a still image, an MP4/WebM file, or an HLS playlist (.m3u8) you are allowed to view. Public cameras is the searchable list. Private camera is the guided link for a camera you own. A still refreshes on its interval and has no caption line. Video plays muted until you turn sound on. If that video has no captions, Command Center writes them on this computer and shows them while the sound is muted. The line stays empty when there is no speech.",
     defaultWidget: "camera",
     defaultRefresh: "30s",
     fields: [
@@ -235,6 +355,78 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         label: "Show gray-line map",
         kind: "boolean",
         required: false,
+      },
+    ],
+  },
+  {
+    typeId: "noaa.space",
+    category: "product",
+    name: "Space weather / aurora",
+    description:
+      "NOAA SWPC alerts, the current R, S, and G scales, Kp, 10.7 cm flux, GOES X-ray, and the OVATION aurora forecast for a place you confirm. Pairs with Ham propagation / solar when that source is saved: its bands are marked from these same NOAA indices.",
+    defaultWidget: "space",
+    defaultRefresh: "5m",
+    fields: [
+      {
+        key: "location",
+        label: "Location",
+        kind: "location",
+        required: true,
+        help: "GPS, network location, or another source on this device, or an address. The aurora chance is the OVATION point nearest this place.",
+      },
+      {
+        key: "hemisphere",
+        label: "Aurora map",
+        kind: "select",
+        required: true,
+        options: [
+          { value: "auto", label: "Auto from this place" },
+          { value: "north", label: "Northern hemisphere" },
+          { value: "south", label: "Southern hemisphere" },
+        ],
+        help: "Auto uses the hemisphere of the confirmed place. The chance number always uses that place, even if you pick the other map.",
+      },
+      {
+        key: "showAurora",
+        label: "Show aurora map",
+        kind: "boolean",
+        required: false,
+        defaultChecked: true,
+        help: "Draw the NOAA OVATION forecast. The chance at your place still shows when this is off.",
+      },
+    ],
+  },
+  {
+    typeId: "scanner.web",
+    category: "product",
+    name: "Web scanner",
+    description:
+      "A direct audio stream in its own window. Icecast, Shoutcast, an audio file, or an HLS playlist. Playback starts muted, with a mute toggle. While the sound is muted, captions are written on this computer. This is not the Broadcastify Feed Owner panel and it does not feed nearby alerts.",
+    defaultWidget: "scanner",
+    fields: [
+      {
+        key: "label",
+        label: "Name",
+        kind: "string",
+        required: true,
+        placeholder: "North scanner",
+        help: "Name on the panel.",
+      },
+      {
+        key: "url",
+        label: "Stream",
+        kind: "url",
+        required: true,
+        placeholder: "https://host/stream",
+        help: "A direct http or https audio stream you are allowed to play. Not a Broadcastify listen page, relay, or Calls link, and not a web page. A password in the link would be saved in the board file, so leave it out.",
+      },
+      {
+        key: "enableCaptions",
+        label: "Captions",
+        kind: "boolean",
+        required: false,
+        defaultChecked: true,
+        help: "On by default. Captions are written on this computer and show while the sound is muted. CC keeps them up after you turn the sound on. Nearby alerts do not read this window.",
       },
     ],
   },
@@ -383,6 +575,83 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     ],
   },
   {
+    typeId: "x.follow",
+    category: "product",
+    name: "X",
+    description:
+      "Sign in with X. The panel is a scrolling list of new posts from accounts you follow. Video and audio start muted, and captions show while the sound is off. The access token stays in the OS keyring.",
+    defaultWidget: "x",
+    defaultRefresh: "2m",
+    fields: [
+      {
+        key: "label",
+        label: "Label",
+        kind: "string",
+        required: false,
+        placeholder: "Following",
+        help: "Panel title. The list is posts from accounts you follow.",
+      },
+      {
+        key: "clientId",
+        label: "Client ID",
+        kind: "string",
+        required: true,
+        placeholder: "X app client ID",
+        help: `The app's client ID from the X developer portal. Not an access token. The board file stores this id. Set the app callback URL to ${X_REDIRECT_URI}.`,
+      },
+      {
+        key: "secret:x.client_secret",
+        label: "Client secret",
+        kind: "secret",
+        required: false,
+        secret: true,
+        placeholder: "Only for a confidential X app",
+        help: "OS keyring only. A public app using PKCE leaves this blank. Never written to the board file.",
+      },
+      {
+        key: "limit",
+        label: "Max posts",
+        kind: "number",
+        required: true,
+        placeholder: "20",
+        help: "Newest posts kept in the list. 5 to 100.",
+      },
+    ],
+  },
+  {
+    typeId: "audio.local",
+    category: "product",
+    name: "Local audio",
+    description:
+      "A jack or Bluetooth input on this computer. Playback starts muted. Rolling captions come from Tiny English on this computer. Scroll the list and it stays put until you jump to the latest line. A caption fix stays on this computer and is used the next time those words appear.",
+    defaultWidget: "audio",
+    fields: [
+      {
+        key: "label",
+        label: "Label",
+        kind: "string",
+        required: false,
+        placeholder: "Scanner",
+        help: "Panel title.",
+      },
+      {
+        key: "deviceId",
+        label: "Audio input",
+        kind: "audio",
+        required: true,
+        help: "A jack or Bluetooth radio on this computer. The sound starts muted. Captions run while it is muted.",
+      },
+      {
+        key: "enableCaptions",
+        label: "Captions",
+        kind: "boolean",
+        required: false,
+        defaultChecked: true,
+        help: "On by default. Tiny English writes the lines on this computer. A wrong line can be corrected here, and that fix stays on this computer.",
+      },
+    ],
+  },
+  {
     typeId: "safety.nearby",
     category: "product",
     name: "Nearby public safety",
@@ -518,6 +787,40 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         required: false,
         defaultChecked: true,
         help: "On each poll, move the map to every new earthquake, tsunami flag, or other event. Clicking a row always pans.",
+      },
+    ],
+  },
+  {
+    typeId: "news.rss",
+    category: "product",
+    name: "News",
+    description:
+      "Free RSS. Pick national outlets. Local outlets are filled in from the confirmed place. Each feed is polled on its own ttl, update period, or cache header, and not faster than once a minute.",
+    defaultWidget: "news",
+    defaultRefresh: "15m",
+    fields: [
+      {
+        key: "location",
+        label: "Location",
+        kind: "location",
+        required: true,
+        help: "GPS, network location, or another source on this device, or an address. Command Center confirms the place before you can save. Local outlets come from that place.",
+      },
+      {
+        key: "outlets",
+        label: "National outlets",
+        kind: "checklist",
+        required: true,
+        options: NATIONAL_OUTLETS.map((outlet) => ({ value: outlet.id, label: outlet.name })),
+        help: "At least one. Local outlets are not picked here — they follow the confirmed place.",
+      },
+      {
+        key: "limit",
+        label: "Max stories",
+        kind: "number",
+        required: true,
+        placeholder: "40",
+        help: "Newest first, across every feed. 1 to 100.",
       },
     ],
   },

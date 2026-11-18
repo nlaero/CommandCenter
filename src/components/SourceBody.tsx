@@ -3,20 +3,27 @@ import { getAdapter } from "../adapters/catalog";
 import { useSourceRevision } from "../lib/sourceRefresh";
 import type { SourceConfig } from "../types";
 import { BroadcastifyPanel } from "./BroadcastifyPanel";
+import { LocalAudioPanel } from "./LocalAudioPanel";
 import { CallsPanel } from "./CallsPanel";
 import { CameraPanel } from "./CameraPanel";
+import { WebScannerPanel } from "./WebScannerPanel";
 import { SafetyPanel } from "./SafetyPanel";
 import { IncidentPanel } from "./IncidentPanel";
+import { NewsPanel } from "./NewsPanel";
 import { QuakePanel } from "./QuakePanel";
+import { SpacePanel } from "./SpacePanel";
+import { TrafficPanel } from "./TrafficPanel";
 import { WeatherPanel } from "./WeatherPanel";
+import { XPanel } from "./XPanel";
 
 type Props = {
   sourceId: string;
   source: SourceConfig;
+  sources?: Record<string, SourceConfig>;
 };
 
 /** Renders the active source inside a panel (including rotating slots). */
-export function SourceBody({ sourceId, source }: Props) {
+export function SourceBody({ sourceId, source, sources = {} }: Props) {
   const adapter = getAdapter(source.type);
   const revision = useSourceRevision(sourceId);
   const syncedAt = useMemo(() => new Date(), [revision]);
@@ -45,6 +52,10 @@ export function SourceBody({ sourceId, source }: Props) {
     );
   }
 
+  if (source.type === "audio.local") {
+    return <LocalAudioPanel sourceId={sourceId} source={source} />;
+  }
+
   if (source.type === "weather.openmeteo") {
     return (
       <WeatherPanel sourceId={sourceId} source={source} configRevision={revision} />
@@ -57,8 +68,44 @@ export function SourceBody({ sourceId, source }: Props) {
     );
   }
 
-  if (source.type === "camera.http_image" || source.type === "video.youtube") {
+  if (source.type === "noaa.space") {
+    return (
+      <SpacePanel
+        sourceId={sourceId}
+        source={source}
+        sources={sources}
+        configRevision={revision}
+      />
+    );
+  }
+
+  if (source.type === "x.follow") {
+    return <XPanel sourceId={sourceId} source={source} configRevision={revision} />;
+  }
+
+  if (source.type === "traffic.roads") {
+    return (
+      <TrafficPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
+  }
+
+  if (source.type === "news.rss") {
+    return (
+      <NewsPanel sourceId={sourceId} source={source} configRevision={revision} />
+    );
+  }
+
+  if (
+    source.type === "camera.http_image" ||
+    source.type === "camera.public" ||
+    source.type === "camera.private" ||
+    source.type === "video.youtube"
+  ) {
     return <CameraPanel source={source} />;
+  }
+
+  if (source.type === "scanner.web") {
+    return <WebScannerPanel sourceId={sourceId} source={source} />;
   }
 
   return (
