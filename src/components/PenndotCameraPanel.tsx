@@ -8,6 +8,7 @@ import {
   visibleCameras,
 } from "../lib/penndotCameras";
 import type { SourceConfig, SourcePayload, TrafficCamera } from "../types";
+import { TrafficStill } from "./TrafficStill";
 
 type Props = {
   sourceId: string;
@@ -81,6 +82,7 @@ export function PenndotCameraPanel({ sourceId, source, configRevision = 0 }: Pro
 
   const visible = visibleCameras(cameras, count, index, rotate);
   const columns = cameraGridColumns(visible.length);
+  const rows = Math.max(1, Math.ceil(visible.length / columns));
   const radius = payload?.traffic?.radiusMi;
 
   return (
@@ -106,7 +108,10 @@ export function PenndotCameraPanel({ sourceId, source, configRevision = 0 }: Pro
         <div
           className="penndot-grid"
           data-count={visible.length}
-          style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+          style={{
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+          }}
         >
           {visible.map((camera) => (
             <CameraCell key={camera.id} camera={camera} stamp={stamp} />
@@ -130,13 +135,15 @@ function CameraCell({ camera, stamp }: { camera: TrafficCamera; stamp: number })
   return (
     <figure className="penndot-cell">
       {view && !broken ? (
-        <img
+        <TrafficStill
+          key={view.id}
           src={`${view.imageUrl}?t=${Math.floor(stamp / 60_000)}`}
-          alt=""
           onError={() => setBroken(true)}
         />
       ) : (
-        <div className="penndot-missing">This camera did not return a picture.</div>
+        <div className="traffic-video-fit">
+          <div className="penndot-missing">This camera did not return a picture.</div>
+        </div>
       )}
       <figcaption>
         <span className="penndot-name">{camera.name}</span>
