@@ -4,6 +4,7 @@ import { trafficEventsToBoardAlerts } from "../lib/boardAlerts";
 import { fetchSourcePayload } from "../lib/api";
 import { project, unproject, zoomToFit } from "../lib/traffic";
 import type { SourceConfig, SourcePayload, TrafficBounds, TrafficCamera, TrafficEvent, TrafficKind } from "../types";
+import { TrafficStill } from "./TrafficStill";
 
 type Props = {
   sourceId: string;
@@ -530,9 +531,15 @@ function CameraFrame({
   return (
     <div className="traffic-camera-frame" onPointerDown={(event) => event.stopPropagation()}>
       {view && !broken ? (
-        <img src={`${view.imageUrl}?t=${Math.floor(stamp / 60_000)}`} alt="" onError={() => setBroken(true)} />
+        <TrafficStill
+          key={view.id}
+          src={`${view.imageUrl}?t=${Math.floor(stamp / 60_000)}`}
+          onError={() => setBroken(true)}
+        />
       ) : (
-        <div className="penndot-missing">This camera did not return a picture.</div>
+        <div className="traffic-video-fit">
+          <div className="penndot-missing">This camera did not return a picture.</div>
+        </div>
       )}
       <div className="traffic-camera-copy">
         <strong>{camera.name}</strong>
