@@ -12,6 +12,7 @@ use crate::updates::{self, ApplyResult, UpdateReport};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{mpsc, OnceLock};
+use tauri::Manager;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
