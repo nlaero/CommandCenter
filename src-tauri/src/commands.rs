@@ -476,6 +476,41 @@ pub async fn transcribe_media_local(
     spawn_blocking(move || transcribe_media_local_job(args)).await?
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayWindowArgs {
+    pub source_url: String,
+    #[serde(default)]
+    pub duration_sec: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayWindow {
+    pub wav_base64: String,
+}
+
+/// Decode one short slice of a live relay into WAV the audio element can play.
+/// Runs off the UI thread. Does not transcribe and does not take the Whisper lock.
+#[tauri::command]
+pub async fn relay_playback_window(args: RelayWindowArgs) -> Result<RelayWindow, CommandError> {
+    spawn_blocking(move || relay_playback_window_job(args)).await?
+}
+
+fn relay_playback_window_job(args: RelayWindowArgs) -> Result<RelayWindow, CommandError> {
+    let url = args.source_url.trim();
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err(CommandError {
+            message: "Audio must be an http(s) URL.".into(),
+        });
+    }
+    let bytes = local_ai::relay_playback_wav(url, args.duration_sec)
+        .map_err(|message| CommandError { message })?;
+    Ok(RelayWindow {
+        wav_base64: crate::safety::encode_base64(&bytes),
+    })
+}
+
 fn transcribe_media_local_job(args: TranscribeMediaArgs) -> Result<CaptionResult, CommandError> {
     let url = args.source_url.trim();
     if url.is_empty() {

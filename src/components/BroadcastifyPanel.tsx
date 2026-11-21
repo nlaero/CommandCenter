@@ -6,7 +6,18 @@ import {
   type CaptionResult,
   type CaptionSegment,
 } from "../lib/captions";
-import type { FeedCaptionLine } from "../lib/feedCaptions";
+import { isContinuousAudioStream, type FeedCaptionLine } from "../lib/feedCaptions";
+import {
+  applyFeedSound,
+  desktopPlayback,
+  DIRECT_WAIT_MS,
+  nextFeedMute,
+  playDecodedWindows,
+  playbackErrorText,
+  readRelayWindow,
+  RELAY_WINDOW_SEC,
+  watchDirectPlayback,
+} from "../lib/feedPlayback";
 import { captionsVisible } from "../lib/streamCaptions";
 import { useLiveFeedCaptions } from "../lib/useLiveFeedCaptions";
 import { CaptionCorrection, withCorrections } from "./LocalAiPanel";
@@ -320,66 +331,28 @@ export function BroadcastifyPanel({ sourceId, source, configRevision = 0 }: Prop
         </div>
 
         <div className="incident-side">
-          <div className="incident-map bcfy-status" aria-label="Feed status">
-            {feed ? (
-              <div className="bcfy-status-card">
-                <div className={`bcfy-pill${feed.online ? " on" : " off"}`}>
-                  {feed.online ? "ONLINE" : "OFFLINE"}
-                </div>
-                <div className="bcfy-status-title">
-                  {feed.descr ?? `Feed ${feed.feedId}`}
-                </div>
-                <div className="bcfy-status-meta">
-                  <span>ID {feed.feedId}</span>
-                  {feed.genre ? <span>{feed.genre}</span> : null}
-                  {feed.bitrate != null ? <span>{feed.bitrate} kbps</span> : null}
-                  {feed.county || feed.state ? (
-                    <span>
-                      {[feed.county, feed.state].filter(Boolean).join(", ")}
-                    </span>
-                  ) : null}
-                  {feed.relay ? <span>{feed.relay}</span> : null}
-                  {captionsOn ? <span>captions on</span> : null}
-                </div>
-                {!feed.streamUrl ? (
-                  <p className="bcfy-audio-hint">
-                    Live audio uses the relay and mount from the Feed Owner API.
-                  </p>
-                ) : null}
-              </div>
-            ) : (
-              <div className="incident-map-empty">Awaiting feed status…</div>
-            )}
-          </div>
-
-          <div className="incident-detail">
-            {selected ? (
-              <ArchiveDetail
-                sourceId={sourceId}
-                feedLabel={
-                  isPennHillsPreset(source.params)
-                    ? PENN_HILLS_FEED.name
-                    : (feed?.descr ?? "Broadcastify")
-                }
-                feedId={feed?.feedId ?? ""}
-                item={selected}
-                feedOnline={feed?.online === true}
-                onPickDay={pickDayFromItem}
-                captionsEnabled={captionsOn}
-                ccOn={ccOn}
-                caption={captionCache[selected.id] ?? null}
-                onCaption={(next) =>
-                  setCaptionCache((cache) => ({ ...cache, [selected.id]: next }))
-                }
-                onTranscribe={() => void runCaptions(selected)}
-              />
-            ) : (
-              <p className="incident-empty">
-                Select a status or archive row
-                {day ? ` for ${day}` : " (or pick a day to load clips)"}.
-              </p>
-            )}
-          </div>
+          {selected ? (
+            <ArchiveDetail
+              sourceId={sourceId}
+              feedLabel={
+                isPennHillsPreset(source.params)
+                  ? PENN_HILLS_FEED.name
+                  : (feed?.descr ?? "Broadcastify")
+              }
+              feedId={feed?.feedId ?? ""}
+              item={selected}
+              feedOnline={feed?.online === true}
+              captionsEnabled={captionsOn}
+              ccOn={ccOn}
+              caption={captionCache[selected.id] ?? null}
+              onCaption={(next) =>
+                setCaptionCache((cache) => ({ ...cache, [selected.id]: next }))
+              }
+              onTranscribe={() => void runCaptions(selected)}
+            />
+          ) : (
+            <p className="incident-empty">Select the live feed or a clip.</p>
+          )}
         </div>
       </div>
 
@@ -399,7 +372,6 @@ function ArchiveDetail({
   feedId,
   item,
   feedOnline,
-  onPickDay,
   captionsEnabled,
   ccOn,
   caption,
@@ -411,124 +383,192 @@ function ArchiveDetail({
   feedId: string;
   item: Incident;
   feedOnline: boolean;
-  onPickDay: (item: Incident) => void;
   captionsEnabled: boolean;
   ccOn: boolean;
   caption: CaptionResult | null;
   onCaption: (caption: CaptionResult) => void;
   onTranscribe: () => void;
 }) {
-  const live = item.category === "feed-status" && feedOnline && Boolean(item.audioUrl);
+  const directUrl = item.audioUrl ?? "";
+  const live = item.category === "feed-status" && feedOnline && Boolean(directUrl);
+  const playable = Boolean(directUrl) && (item.category !== "feed-status" || feedOnline);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const blobRef = useRef<string | null>(null);
+  const holdRef = useRef(false);
+  const directErrorRef = useRef(false);
+  const wantSoundRef = useRef(false);
+  const relayTask = useRef(0);
   const [timeSec, setTimeSec] = useState(0);
   const [muted, setMuted] = useState(true);
-  const [playing, setPlaying] = useState(false);
+  const [playbackNote, setPlaybackNote] = useState<string | null>(null);
   const showCaptionUi = captionsEnabled && captionsVisible(muted, ccOn);
   const active = caption ? activeCaptionAt(caption.segments, timeSec) : null;
+  // Captions read the relay on this computer. They start even when the muted
+  // player has not produced sound yet.
   const liveCaptions = useLiveFeedCaptions({
     active: live && captionsEnabled,
-    playing,
+    playing: true,
     sourceId,
     label: feedLabel,
     feedId,
-    streamUrl: live ? (item.audioUrl ?? "") : "",
+    streamUrl: live ? directUrl : "",
     durationSec: () => audioRef.current?.duration,
   });
 
-  // Global product rule: audio starts muted on open (each clip selection).
   useEffect(() => {
+    return () => {
+      relayTask.current += 1;
+      if (blobRef.current) URL.revokeObjectURL(blobRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = audioRef.current;
+    relayTask.current += 1;
+    wantSoundRef.current = false;
+    holdRef.current = false;
+    directErrorRef.current = false;
     setMuted(true);
     setTimeSec(0);
-    setPlaying(false);
-    const el = audioRef.current;
-    if (!el) return;
+    setPlaybackNote(null);
+    if (blobRef.current) {
+      URL.revokeObjectURL(blobRef.current);
+      blobRef.current = null;
+    }
+    if (!el || !playable) return;
     el.muted = true;
-    if (live) {
-      // Captions read the relay URL on this computer. They still run when the
-      // muted player cannot start, which is the default until the user unmutes.
-      void el.play().then(() => setPlaying(true)).catch(() => setPlaying(true));
+    el.volume = 1;
+    el.src = directUrl;
+    if (live) void el.play().catch(() => undefined);
+    else {
+      el.pause();
+      try {
+        el.currentTime = 0;
+      } catch {
+        // The element may not have metadata yet.
+      }
+    }
+  }, [item.id, directUrl, live, playable]);
+
+  function playWindow(el: HTMLAudioElement, bytes: Uint8Array): Promise<void> {
+    const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+    const previous = blobRef.current;
+    blobRef.current = url;
+    holdRef.current = true;
+    el.src = url;
+    if (previous) URL.revokeObjectURL(previous);
+    if (wantSoundRef.current) {
+      if (el.volume === 0) el.volume = 1;
+      el.muted = false;
+    } else {
+      el.muted = true;
+    }
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (failed: boolean) => {
+        if (settled) return;
+        settled = true;
+        el.removeEventListener("ended", onEnded);
+        el.removeEventListener("error", onError);
+        el.removeEventListener("pause", onPause);
+        if (failed) reject(new Error("Couldn't play the relay."));
+        else resolve();
+      };
+      const onEnded = () => finish(false);
+      const onError = () => finish(true);
+      const onPause = () => {
+        if (!wantSoundRef.current) finish(false);
+      };
+      el.addEventListener("ended", onEnded);
+      el.addEventListener("error", onError);
+      el.addEventListener("pause", onPause);
+      void el.play().catch(() => finish(true));
+    });
+  }
+
+  function requestMute(el: HTMLAudioElement) {
+    wantSoundRef.current = false;
+    relayTask.current += 1;
+    applyFeedSound(el, false);
+    el.pause();
+    setMuted(true);
+  }
+
+  function requestSound(el: HTMLAudioElement) {
+    wantSoundRef.current = true;
+    directErrorRef.current = false;
+    applyFeedSound(el, true);
+    setMuted(false);
+    const task = ++relayTask.current;
+    if (!live || !isContinuousAudioStream(directUrl) || !desktopPlayback()) return;
+    const readWindow = async () => {
+      try {
+        const bytes = await readRelayWindow(directUrl, RELAY_WINDOW_SEC);
+        if (relayTask.current === task) setPlaybackNote(null);
+        return bytes;
+      } catch (err) {
+        if (relayTask.current === task) setPlaybackNote(playbackErrorText(err));
+        throw err;
+      }
+    };
+    const windows = () =>
+      playDecodedWindows({
+        read: readWindow,
+        play: (bytes) => playWindow(el, bytes),
+        live: () => relayTask.current === task && wantSoundRef.current,
+      });
+    if (holdRef.current) {
+      void windows();
       return;
     }
-    el.pause();
-    try {
-      el.currentTime = 0;
-    } catch {
-      // The element may not have metadata yet.
-    }
-  }, [item.id, item.audioUrl, live]);
+    void (async () => {
+      const outcome = await watchDirectPlayback({
+        sample: () => ({
+          currentTime: el.currentTime,
+          errored: directErrorRef.current,
+        }),
+        baseline: el.currentTime,
+        waitMs: DIRECT_WAIT_MS,
+        cancelled: () => relayTask.current !== task || !wantSoundRef.current,
+      });
+      if (outcome !== "failed" || relayTask.current !== task || !wantSoundRef.current) return;
+      await windows();
+    })();
+  }
 
-  useEffect(() => {
-    if (audioRef.current) audioRef.current.muted = muted;
-  }, [muted]);
+  function onVolume(el: HTMLAudioElement) {
+    if (!el.muted && el.volume === 0) {
+      el.volume = 1;
+      return;
+    }
+    const hear = !nextFeedMute(el).muted;
+    if (hear === wantSoundRef.current) {
+      setMuted(!hear);
+      return;
+    }
+    if (hear) requestSound(el);
+    else requestMute(el);
+  }
 
   return (
-    <div>
-      <div className={`incident-sev ${severityClass(item.severity)}`}>
-        {item.category ?? item.severity ?? "info"}
-      </div>
-      <h4 className="incident-detail-title">{item.title}</h4>
-      <dl className="incident-dl">
-        {item.occurredAt ? (
-          <>
-            <dt>When</dt>
-            <dd>{formatWhen(item.occurredAt)}</dd>
-          </>
-        ) : null}
-        {item.category ? (
-          <>
-            <dt>Kind</dt>
-            <dd>
-              {item.category === "feed-status"
-                ? feedOnline
-                  ? "Live"
-                  : "Offline"
-                : item.category === "archive-day"
-                  ? "Archive day"
-                  : item.category === "archive"
-                    ? "Archive"
-                    : item.category}
-            </dd>
-          </>
-        ) : null}
-        {item.address ? (
-          <>
-            <dt>{item.category === "feed-status" ? "Place" : "Day"}</dt>
-            <dd className="mono">{item.address}</dd>
-          </>
-        ) : null}
-        {item.description ? (
-          <>
-            <dt>Detail</dt>
-            <dd>{item.description}</dd>
-          </>
-        ) : null}
-        <dt>Id</dt>
-        <dd className="mono">{item.id}</dd>
-      </dl>
-      {item.category === "archive-day" ? (
-        <button type="button" className="btn btn-primary" onClick={() => onPickDay(item)}>
-          Load clips for this day
-        </button>
-      ) : null}
-      {item.category === "feed-status" && item.audioUrl && !feedOnline ? (
-        <p className="bcfy-audio-hint">
-          Feed is offline, so live audio stays stopped. The relay URL is kept for the next time
-          the feed is up. Playback starts muted.
-        </p>
-      ) : null}
-      {item.audioUrl && (item.category !== "feed-status" || feedOnline) ? (
+    <div className="bcfy-listen-body">
+      {playable ? (
         <div className="incident-audio">
           <div className="bcfy-audio-head">
             <div className="section-label" style={{ margin: 0 }}>
-              {item.category === "feed-status"
-                ? "Live audio"
-                : "Archive audio (personal use only)"}
+              {live ? "Live audio" : "Archive audio"}
             </div>
             <button
               type="button"
               className={`btn btn-ghost bcfy-mute${muted ? " is-muted" : ""}`}
-              onClick={() => setMuted((m) => !m)}
+              onClick={() => {
+                const el = audioRef.current;
+                if (!el) return;
+                if (muted) requestSound(el);
+                else requestMute(el);
+              }}
               aria-pressed={muted}
+              aria-label={muted ? "Unmute" : "Mute"}
               title={muted ? "Unmute" : "Mute"}
             >
               {muted ? "Muted" : "Sound on"}
@@ -537,43 +577,40 @@ function ArchiveDetail({
           <audio
             ref={audioRef}
             controls
-            autoPlay={live}
             preload="none"
             muted={muted}
-            src={item.audioUrl}
-            onPlay={() => setPlaying(true)}
-            onPlaying={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
-            onEnded={() => setPlaying(false)}
-            onVolumeChange={(e) => {
-              // Keep React state in sync if the user toggles mute via native controls.
-              setMuted(e.currentTarget.muted || e.currentTarget.volume === 0);
+            aria-label={live ? "Live audio" : "Archive audio"}
+            onVolumeChange={(event) => onVolume(event.currentTarget)}
+            onTimeUpdate={(event) => setTimeSec(event.currentTarget.currentTime)}
+            onError={() => {
+              if (!holdRef.current) directErrorRef.current = true;
             }}
-            onTimeUpdate={(e) => setTimeSec(e.currentTarget.currentTime)}
-          >
-            <a href={item.audioUrl} target="_blank" rel="noreferrer">
-              Open audio
-            </a>
-          </audio>
-          <p className="bcfy-audio-hint">
-            {item.category === "feed-status"
-              ? "Starts muted. Captions keep running while the sound is off. This URL is the relay and mount from the Feed Owner API."
-              : "Starts muted on open — unmute explicitly to hear audio."}
-          </p>
+          />
+          {playbackNote ? (
+            <p className="bcfy-audio-hint" role="alert">
+              {playbackNote}
+            </p>
+          ) : null}
         </div>
-      ) : null}
+      ) : (
+        <p className="incident-empty">
+          {item.category === "feed-status"
+            ? "The feed is offline, so live audio stays stopped."
+            : "Select a clip to play it."}
+        </p>
+      )}
 
       {showCaptionUi && live ? (
         <LiveCaptions
           lines={liveCaptions.lines}
           status={liveCaptions.status}
           running={liveCaptions.running}
-          playing={playing}
+          playing
           onCorrect={liveCaptions.applyCorrection}
         />
       ) : null}
 
-      {showCaptionUi && !live && item.audioUrl && (item.category !== "feed-status" || feedOnline) ? (
+      {showCaptionUi && !live && playable ? (
         <CaptionsPane
           caption={caption}
           active={active}
@@ -583,17 +620,11 @@ function ArchiveDetail({
         />
       ) : null}
 
-      {!captionsEnabled && item.audioUrl ? (
-        <p className="bcfy-captions-note" style={{ marginTop: 12 }}>
+      {!captionsEnabled && playable ? (
+        <p className="bcfy-captions-note">
           Closed captions are off for this source. Enable <strong>Captions / transcription</strong> in
-          Settings (required capability for audio sources).
+          Settings.
         </p>
-      ) : null}
-
-      {item.detailUrl ? (
-        <a className="incident-link" href={item.detailUrl} target="_blank" rel="noreferrer">
-          Open link
-        </a>
       ) : null}
     </div>
   );

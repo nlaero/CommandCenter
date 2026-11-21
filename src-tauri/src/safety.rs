@@ -487,7 +487,7 @@ fn prune_clips(dir: &Path) {
     }
 }
 
-fn encode_base64(data: &[u8]) -> String {
+pub(crate) fn encode_base64(data: &[u8]) -> String {
     const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     let mut index = 0;

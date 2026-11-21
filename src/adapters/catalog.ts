@@ -476,7 +476,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     category: "product",
     name: "Broadcastify (Feed Owner)",
     description:
-      "Your uploaded feed via the Feed Owner API. Penn Hills / Plum Police Dispatch is filled in. Live status, relay audio, and personal-use archives. The live feed starts muted and shows captions while it plays, including while the sound is off. Earlier lines stay in a scrolling list.",
+      "Your uploaded feed via the Feed Owner API. Penn Hills / Plum Police Dispatch is filled in. Live status, relay audio, and personal-use archives. The right side is the player and the captions. The live feed starts muted. Unmute plays the relay. Captions show while the sound is off, and earlier lines stay in a scrolling list.",
     defaultWidget: "broadcastify",
     defaultRefresh: "1m",
     fields: [
