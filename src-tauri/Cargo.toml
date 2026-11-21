@@ -1,6 +1,6 @@
 [package]
 name = "command-center"
-version = "0.1.7"
+version = "0.1.8"
 description = "Local-first personal command center dashboard"
 authors = ["Nathan"]
 edition = "2021"
