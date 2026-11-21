@@ -1066,6 +1066,43 @@ a {
   margin-left: 0;
 }
 
+/* Feed Owner's right side is the player and the captions. The status card
+   grid used by other incident panels would leave that content in the top row. */
+.bcfy-panel .incident-side {
+  display: flex;
+  flex-direction: column;
+  grid-template-rows: unset;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.bcfy-listen-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bcfy-panel .bcfy-listen-body .incident-audio {
+  margin-top: 0;
+  flex: none;
+}
+
+.bcfy-panel .bcfy-listen-body .bcfy-captions {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bcfy-panel .bcfy-listen-body .bcfy-caption-list {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+}
+
 .bcfy-status {
   display: grid;
   place-items: stretch;

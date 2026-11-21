@@ -61,6 +61,7 @@ pub fn run() {
             commands::resolve_location,
             commands::transcribe_audio_local,
             commands::transcribe_media_local,
+            commands::relay_playback_window,
             commands::list_audio_inputs,
             commands::list_local_audio_inputs,
             commands::listen_local_audio,

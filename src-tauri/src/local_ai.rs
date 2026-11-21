@@ -954,10 +954,42 @@ fn sniff_audio_extension(bytes: &[u8], content_type: &str) -> String {
     if bytes.len() >= 3 && &bytes[0..3] == b"ID3" {
         return "mp3".into();
     }
+    // ADTS AAC uses the same 0xFFF sync as MP3, with layer bits 00. Labeling
+    // that as MP3 makes the decoder drop the relay, so captions and playback
+    // both come back empty.
+    if bytes.len() >= 2 && bytes[0] == 0xff && (bytes[1] & 0xf6) == 0xf0 {
+        return "aac".into();
+    }
     if bytes.len() >= 2 && bytes[0] == 0xff && (bytes[1] & 0xe0) == 0xe0 {
         return "mp3".into();
     }
     String::new()
+}
+
+/// One short relay window as 16 kHz mono WAV, for the player.
+/// Does not run Whisper and does not wait on ffmpeg. The URL is not returned.
+pub fn relay_playback_wav(source_url: &str, duration: f64) -> Result<Vec<u8>, String> {
+    if !(source_url.starts_with("https://") || source_url.starts_with("http://")) {
+        return Err("Audio must be an http(s) URL.".into());
+    }
+    if caption_download_blocked(source_url) {
+        return Err("YouTube audio is not downloaded. This panel uses YouTube's captions.".into());
+    }
+    let window = if duration <= 0.0 {
+        2.0
+    } else {
+        duration.clamp(1.0, 8.0)
+    };
+    let audio = prepare_caption_audio(source_url, 0.0, window, false)?;
+    let bytes = fs::read(&audio.path)
+        .map_err(|_| "Couldn't read the relay. Audio was not uploaded.".to_string())?;
+    drop(audio);
+    if bytes.len() < 64 || !is_whisper_wav(&bytes) {
+        return Err(
+            "The relay did not send audio this player can use. Audio was not uploaded.".into(),
+        );
+    }
+    Ok(bytes)
 }
 
 fn decode_audio_bytes(bytes: &[u8], extension: &str) -> Result<(u32, Vec<f32>), String> {
@@ -1857,6 +1889,31 @@ mod tests {
             "{message}"
         );
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn adts_aac_is_not_labeled_mp3() {
+        assert_eq!(sniff_audio_extension(&[0xff, 0xf1, 0x50, 0x80], ""), "aac");
+        assert_eq!(sniff_audio_extension(&[0xff, 0xf9, 0x50, 0x80], ""), "aac");
+        assert_eq!(sniff_audio_extension(&[0xff, 0xfb, 0x90, 0x00], ""), "mp3");
+        assert_eq!(
+            sniff_audio_extension(&[0x00, 0x00], "audio/aacp"),
+            "aac"
+        );
+    }
+
+    #[test]
+    fn relay_playback_returns_wav_without_the_url() {
+        let wav = write_pcm_wav(&[0.1, -0.1].repeat(8_000).as_slice(), 16_000);
+        let base = serve_reply(200, "audio/wav", wav);
+        let url = format!("{base}/penn_hills?p=supersecret");
+        let bytes = relay_playback_wav(&url, 2.0).unwrap();
+        assert!(is_whisper_wav(&bytes), "playback window was not wav");
+        let denied = serve_reply(403, "text/plain", b"no".to_vec());
+        let err = relay_playback_wav(&format!("{denied}/penn_hills?p=supersecret"), 2.0).unwrap_err();
+        assert!(err.contains("403"), "{err}");
+        assert!(!err.contains("supersecret"), "{err}");
+        assert!(!err.contains("[object Object]"), "{err}");
     }
 
     #[test]
