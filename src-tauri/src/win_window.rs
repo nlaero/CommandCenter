@@ -7,6 +7,8 @@
 
 #![cfg_attr(not(any(windows, test)), allow(dead_code))]
 
+use tauri::Manager;
+
 pub const WM_ACTIVATE: u32 = 0x0006;
 pub const WM_GETMINMAXINFO: u32 = 0x0024;
 pub const WM_SYSCOMMAND: u32 = 0x0112;
@@ -104,11 +106,13 @@ pub fn set_data_fullscreen(app: &tauri::AppHandle, on: bool) -> Result<(), Strin
     let app = app.clone();
     let (tx, rx) = std::sync::mpsc::channel();
     // One transition at a time, on the window thread, so saving the previous
-    // window cannot race with restoring it.
-    app.run_on_main_thread(move || {
-        let _ = tx.send(apply_data_fullscreen(&app, on));
-    })
-    .map_err(|err| format!("Could not change full screen: {err}"))?;
+    // window cannot race with restoring it. Clone the handle the call borrows
+    // so the closure can keep the one it sends to the window thread.
+    app.clone()
+        .run_on_main_thread(move || {
+            let _ = tx.send(apply_data_fullscreen(&app, on));
+        })
+        .map_err(|err| format!("Could not change full screen: {err}"))?;
     rx.recv()
         .map_err(|_| "Could not change full screen.".to_string())?
 }
