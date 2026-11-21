@@ -1034,6 +1034,11 @@ pub fn set_display_size(
 ) -> Result<(), CommandError> {
     let width = clamp_display(width, 960, 7680);
     let height = clamp_display(height, 640, 4320);
+    if crate::win_window::data_fullscreen() {
+        crate::win_window::set_data_fullscreen(window.app_handle(), false).map_err(|message| {
+            CommandError { message }
+        })?;
+    }
     if window.is_maximized().unwrap_or(false) {
         window.unmaximize().map_err(|err| CommandError {
             message: err.to_string(),
@@ -1065,6 +1070,18 @@ pub fn display_work_area(window: tauri::WebviewWindow) -> Result<DisplayWorkArea
         width: clamp_display((f64::from(size.width) / scale).floor() as u32, 960, 7680),
         height: clamp_display((f64::from(size.height) / scale).floor() as u32, 640, 4320),
     })
+}
+
+#[tauri::command]
+pub fn data_fullscreen_state() -> bool {
+    crate::win_window::data_fullscreen()
+}
+
+/// Show only the board, with no window frame, on every display this program is using.
+/// Escape and a second call with `on` false put each window back.
+#[tauri::command]
+pub fn set_data_fullscreen(app: tauri::AppHandle, on: bool) -> Result<(), CommandError> {
+    crate::win_window::set_data_fullscreen(&app, on).map_err(|message| CommandError { message })
 }
 
 #[tauri::command]

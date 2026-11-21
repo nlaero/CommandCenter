@@ -1674,6 +1674,34 @@ html.cc-tv .board-canvas .panel-header {
   height: 100%;
 }
 
+/* Full screen is the board only. The maximized window still stops at the taskbar. */
+html.cc-fullscreen {
+  --cc-chrome-h: 0px;
+}
+
+html.cc-fullscreen .app-shell,
+html.cc-fullscreen .app-shell.is-tv,
+html.cc-fullscreen .app-shell.is-tv.is-preview {
+  grid-template-rows: 1fr;
+}
+
+html.cc-fullscreen .chrome,
+html.cc-fullscreen .alerts-pane,
+html.cc-fullscreen .alerts-detail-overlay,
+html.cc-fullscreen .settings-overlay,
+html.cc-fullscreen .update-overlay,
+html.cc-fullscreen .update-banner,
+html.cc-fullscreen .tv-preview-banner {
+  display: none;
+}
+
+html.cc-fullscreen .main-stage,
+html.cc-fullscreen .board-with-alerts,
+html.cc-fullscreen .board-with-alerts-main {
+  min-height: 100%;
+  height: 100%;
+}
+
 .app-shell.is-tv .alerts-drawer {
   min-height: 0;
   height: 100%;

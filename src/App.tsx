@@ -18,6 +18,7 @@ import {
   type CastSession,
 } from "./lib/cast";
 import { applyDisplayPrefs, readDisplayPrefs, useBoardScreens } from "./lib/display";
+import { useDataFullscreen } from "./lib/fullscreen";
 import { spanRows, splitPanels } from "./lib/span";
 import { syncAiMemory } from "./lib/aiMemory";
 import { syncBoard } from "./lib/sync";
@@ -199,6 +200,13 @@ function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, session]);
 
+  const updates = useUpdates();
+  const { enterFullscreen } = useDataFullscreen(() => {
+    setSettingsOpen(false);
+    setSettingsTab(undefined);
+    updates.close();
+  });
+
   const activeBoard = useMemo(
     () => state?.boards.find((b) => b.id === state.activeBoardId) ?? state?.boards[0],
     [state],
@@ -368,6 +376,14 @@ function AppShell() {
               Across screens
             </button>
           ) : null}
+          <button
+            type="button"
+            className="btn"
+            onClick={enterFullscreen}
+            title="Show only the board, with no window frame, on each screen this program is using. Escape brings this window back."
+          >
+            Full screen
+          </button>
           <button
             type="button"
             className="btn btn-primary"
