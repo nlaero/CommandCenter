@@ -39,6 +39,11 @@ pub fn rolling_member_refusal(type_id: &str) -> Option<String> {
             "Weather stays in its own panel. Choose which maps it shows, how many are on screen, and whether those maps rotate inside the weather panel. Weather cannot be added to a rolling panel.".into(),
         );
     }
+    if type_id == "camera.penndot" {
+        return Some(
+            "PennDOT cameras stay in their own panel. Choose how many show at once and whether that view rotates. They cannot be added to a rolling panel.".into(),
+        );
+    }
     if source_scrolls(type_id) {
         return None;
     }
@@ -61,6 +66,9 @@ mod tests {
         let weather = rolling_member_refusal("weather.openmeteo").unwrap();
         assert!(weather.contains("cannot be added to a rolling panel"));
         assert!(source_scrolls("weather.openmeteo"));
+        assert!(rolling_member_refusal("camera.penndot")
+            .unwrap()
+            .contains("cannot be added to a rolling panel"));
         assert!(rolling_member_refusal("scanner.web")
             .unwrap()
             .contains("does not scroll"));

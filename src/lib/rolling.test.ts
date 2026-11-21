@@ -31,6 +31,9 @@ for (const typeId of live) {
 assert.equal(sourceScrolls("broadcastify.calls"), true);
 assert.equal(sourceScrolls("weather.openmeteo"), true);
 assert.ok(liveFeedRefusal("weather.openmeteo")?.includes("cannot be added to a rolling panel"));
+assert.equal(sourceScrolls("camera.penndot"), true);
+assert.ok(liveFeedRefusal("camera.penndot")?.includes("cannot be added to a rolling panel"));
+assert.equal(sourceGroup("camera.penndot"), "Travel");
 assert.equal(
   rollingPanelRefusal(["news.rss", "weather.openmeteo"]),
   liveFeedRefusal("weather.openmeteo"),

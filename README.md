@@ -110,22 +110,28 @@ Command Center will not save the source until that lookup returns a real place. 
 
 ## Traffic / road conditions
 
-One source, centered on the same confirmed place as weather. The map opens on the whole 80-mile region around that place. Selecting a row highlights it. The Region control puts the map back on that circle.
+One source, centered on the same confirmed place as weather. Distance defaults to 80 miles and can be set from 5 to 200. The map frames that circle, and monitoring uses the same distance. Selecting a row highlights it. The Region control puts the map back on that circle. A Cameras list and the camera marks on the map open PennDOT stills inside the same distance.
 
 A row that can change travel time (a closure, crash, lane restriction, meaningful delay, or an icy, snow-covered, or impassable road) also shows in the alerts pane while the window is on the board. Clear and wet road reports stay off the list. The map still draws when a feed is missing.
 
 | Region | Feed | Auth |
 |--------|------|------|
 | Pennsylvania | PennDOT RCRS live incidents and winter conditions (`gisdata.penndot.pa.gov`) | Free username and password, secrets `penndot.username` and `penndot.password` |
-| Ohio | [OHGO](https://publicapi.ohgo.com/api/v1/incidents) incidents and travel delays | Free API key, secret `ohgo.api_key`. Public-domain data. Header `Authorization: APIKEY …` |
+| Pennsylvania cameras | 511PA stills (`www.511pa.com/map/Cctv/…`) | None. The still list does not use the incident username. |
 | Maryland | CHART event and closure JSON (`chartexp1.sha.maryland.gov`) | None |
 | Iowa | [511ia](https://511ia.org/) ArcGIS events and road conditions | None |
 | British Columbia | [DriveBC Open511](https://api.open511.gov.bc.ca/events) | None. Open Government License - BC |
 | Maine, New Hampshire, Vermont | New England Compass incident XML (`nec-por.ne-compass.com`) | None |
 
-The app asks a feed only when the 80-mile circle meets that feed's coverage. A place with no free feed still shows the map, and the note says so. Credentials stay in the OS keyring. The basemap is Esri Dark Gray.
+The app asks a feed only when that circle meets the feed's coverage. A place with no free feed still shows the map, and the note says so. Credentials stay in the OS keyring. The basemap is Esri Dark Gray. Ohio's OHGO key is not on this source right now.
 
-**In the app:** Settings → Panels → Traffic / road conditions. Confirm a place the same way as weather. Save the PennDOT or OHGO credentials only if this region reaches Pennsylvania or Ohio. Add panel.
+**In the app:** Settings → Panels → Traffic / road conditions. Confirm a place the same way as weather. Set the distance. Save the PennDOT username and password only if this region reaches Pennsylvania and you want live incidents. Add panel. Open a camera from the Cameras list or from a mark on the map.
+
+## PennDOT cameras
+
+A second source, separate from traffic. Same confirmed place and the same kind of distance. It shows 511PA stills only, and it does not ask for a PennDOT key. Choose how many cameras are on screen at once, from 1 to 8. Turn on rotation and the view steps through the cameras inside that distance, keeping that many on screen. A still has no sound and no captions. The source stays in its own panel.
+
+**In the app:** Settings → Panels → PennDOT cameras. Confirm a place, set the distance, set how many cameras show, and turn rotation on if you want it. Add panel.
 
 ## USGS earthquakes
 
@@ -339,7 +345,7 @@ ffmpeg has to be on PATH to record the input. Audio is not uploaded. The browser
 
 Public cameras, a private camera, a pasted camera link, and YouTube Live all use the same panel. It plays an HLS playlist (`.m3u8`, including a master playlist), an MP4 or WebM file, a still image, or a YouTube link. The window shows the picture and the camera label. A public camera also shows the agency credit. It does not print the rest of the saved fields.
 
-**Public cameras.** Search the cameras shipped with the app, or confirm a place and the nearest ones come first. A search for a city also checks the published catalog for New York City, Caltrans, or Maryland when that place matches. Picking a camera fills in the link, the label, and how often a still refreshes. Those are New York City DOT stills, Caltrans stills, and Maryland CHART playlists. PennDOT video is not in the list.
+**Public cameras.** Search the cameras shipped with the app, or confirm a place and the nearest ones come first. A search for a city also checks the published catalog for New York City, Caltrans, or Maryland when that place matches. Picking a camera fills in the link, the label, and how often a still refreshes. Those are New York City DOT stills, Caltrans stills, and Maryland CHART playlists. PennDOT stills are the PennDOT cameras source, and they also open from Traffic. PennDOT video is not in this search.
 
 **Private camera.** Pick a brand or system (Frigate, go2rtc, Blue Iris, Scrypted, Synology, UniFi Protect, Reolink, Hikvision / Amcrest / Dahua, Axis, or Ring / Nest / Arlo) and follow the steps, then paste the stream link. A UDP or RTSP address does not play in this panel. The camera system has to give you an HLS playlist, a video file, a still, or a YouTube link. The link is saved with the board on this computer, so leave a password out of it when you can. Ring, Nest, and Arlo do not hand over a stream link; use Scrypted or Home Assistant on this network and paste the local link that bridge shows.
 
@@ -377,7 +383,7 @@ These sit next to the sources above. Each one is its own panel, and each one can
 ## Shell behavior
 
 - Empty board on first launch
-- Settings → Panels lists the panels on the board. Adjust or delete one there. New panel is grouped: weather, storms, lightning, space weather, and ham; rivers, quakes, spills, radiation, and nuclear notices; traffic and transit; ADS-B and flight restrictions; radio, scanners, and cameras; news, X, crime, agency feeds, disease notices, and internet outages; home alarms; and the file / HTTP / SQLite / system-metrics stubs
+- Settings → Panels lists the panels on the board. Adjust or delete one there. New panel is grouped: weather, storms, lightning, space weather, and ham; rivers, quakes, spills, radiation, and nuclear notices; traffic, PennDOT cameras, and transit; ADS-B and flight restrictions; radio, scanners, and cameras; news, X, crime, agency feeds, disease notices, and internet outages; home alarms; and the file / HTTP / SQLite / system-metrics stubs
 - Add panel saves that source onto the board. A source that no panel uses is dropped when you save or delete a panel
 - A rolling panel cycles sources that scroll. Live feeds and weather stay single panels
 - Alerts pane on the right. It opens over the panels when alerts show up, and hides after the time in Settings → Alerts pane (default 1 minute; Off leaves it up). Pin keeps it open and shrinks the panels so they sit beside it. Clear alerts dismisses the current list for this session. New alerts still come in.
@@ -459,6 +465,7 @@ node --experimental-strip-types src/lib/news.test.ts
 node --experimental-strip-types src/lib/safety.test.ts
 node --experimental-strip-types src/lib/spaceWeather.test.ts
 node --experimental-strip-types src/lib/traffic.test.ts
+node --experimental-strip-types src/lib/penndotCameras.test.ts
 node --experimental-strip-types src/lib/feedCaptions.test.ts
 node --experimental-strip-types src/lib/localAudio.test.ts
 node --experimental-strip-types src/lib/formFields.test.ts

@@ -2,11 +2,11 @@ import { withAuth } from "./auth";
 import { AUTH_IN_APP } from "./authFeature";
 import { PENN_HILLS_FEED, isPennHillsPreset } from "./broadcastifyPreset";
 import { confirmedPlaceLabel, isMissingParam, readCoords } from "./location";
+import { fetchPenndotCameraPayload, fetchTrafficPayload, trafficRadius } from "./traffic";
 import { rollingPanelRefusal } from "./rolling";
 import { isWatchType } from "./watchTypes";
 import { fetchNewsInBrowser } from "./news";
 import { fetchSpaceInBrowser } from "./spaceWeather";
-import { fetchTrafficPayload } from "./traffic";
 import { fetchUsgsInBrowser } from "./usgs";
 import { xClientIdError } from "./xFollow";
 import type {
@@ -462,6 +462,32 @@ async function browserFetchTraffic(source: SourceConfig): Promise<SourcePayload>
       label: confirmedPlaceLabel(source.params) ?? undefined,
     },
     readBrowserSecrets(),
+    undefined,
+    trafficRadius(source.params.radiusMi),
+  );
+  return {
+    sourceId: "browser",
+    typeId: source.type,
+    fetchedAt: new Date().toISOString(),
+    attribution: result.attribution,
+    note: result.note,
+    incidents: [],
+    traffic: result.traffic,
+  };
+}
+
+async function browserFetchPenndotCameras(source: SourceConfig): Promise<SourcePayload> {
+  const coords = readCoords(source.params, "lat", "lon");
+  if (!coords) {
+    throw new Error("Confirm a location before PennDOT cameras can load.");
+  }
+  const result = await fetchPenndotCameraPayload(
+    {
+      lat: coords.lat,
+      lon: coords.lon,
+      label: confirmedPlaceLabel(source.params) ?? undefined,
+    },
+    source.params.radiusMi,
   );
   return {
     sourceId: "browser",
@@ -658,6 +684,10 @@ export async function fetchSourcePayload(
     }
     if (src.type === "traffic.roads") {
       const payload = await browserFetchTraffic(src);
+      return { ...payload, sourceId };
+    }
+    if (src.type === "camera.penndot") {
+      const payload = await browserFetchPenndotCameras(src);
       return { ...payload, sourceId };
     }
     if (src.type === "news.rss") {
