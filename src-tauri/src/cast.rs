@@ -787,6 +787,8 @@ fn open_board_window(
             let _ = window.set_size(PhysicalSize::new(screen.width, screen.height));
         }
     }
+    // A screen opened while full screen joins the others on its own display.
+    crate::win_window::cover_window(&window);
     Ok(())
 }
 

@@ -15,6 +15,7 @@ import {
   type WallKind,
 } from "../lib/cast";
 import { useBoardDensity } from "../lib/display";
+import { useDataFullscreen } from "../lib/fullscreen";
 import { spanRows, splitPanels } from "../lib/span";
 import type { AppState, AuthSession, Board, GridItem } from "../types";
 
@@ -36,6 +37,7 @@ export function TvStage({ preview, screenId = null, wall = null }: Props) {
   const stageRef = useRef<HTMLElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const density = useBoardDensity();
+  useDataFullscreen();
 
   useEffect(() => {
     if (!wall) {

@@ -75,6 +75,8 @@ pub fn run() {
             commands::sync_board,
             commands::set_display_size,
             commands::display_work_area,
+            commands::data_fullscreen_state,
+            commands::set_data_fullscreen,
             cast::list_cast_screens,
             cast::scan_airplay,
             cast::cast_start,
