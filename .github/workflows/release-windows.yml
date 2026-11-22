@@ -97,8 +97,11 @@ jobs:
           }
           $installers | ForEach-Object {
             Write-Host ("INSTALLER " + $_.Name + " " + $_.Length + " bytes")
-            if ($_.Length -lt 140000000) {
-              throw "Setup is $($_.Length) bytes. Base English was not packed (expected at least 140000000)."
+            # NSIS compresses the setup. A packed Base English installer is about
+            # 136MB, under the 148MB raw model. The floor stays above the old
+            # Tiny English installer, which was about 75MB.
+            if ($_.Length -lt 120000000) {
+              throw "Setup is $($_.Length) bytes. Base English was not packed (expected at least 120000000)."
             }
           }
 
