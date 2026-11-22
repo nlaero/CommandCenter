@@ -20,7 +20,9 @@ use std::time::{Duration, Instant};
 
 const APP_REPO: &str = "nlaero/CommandCenter";
 const AUTH_REPO: &str = "nlaero/command-center-auth";
-const MAX_DOWNLOAD_BYTES: u64 = 200 * 1024 * 1024;
+// The v0.1.11 setup that ships Small English is 435,678,097 bytes.
+// 600 MiB covers that file and leaves room for a larger build.
+const MAX_DOWNLOAD_BYTES: u64 = 600 * 1024 * 1024;
 const CACHE_TTL: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone, Serialize)]
@@ -1700,6 +1702,25 @@ mod tests {
         let status = app_selection(&ver("0.1.0"), &releases, "windows", "x86_64");
         assert!(!status.update_available);
         assert!(status.message.contains("prerelease"));
+    }
+
+    #[test]
+    fn small_english_setup_fits_the_download_cap() {
+        // GitHub asset size of the v0.1.11 NSIS setup.
+        const PUBLISHED_SETUP_BYTES: u64 = 435_678_097;
+        assert!(
+            PUBLISHED_SETUP_BYTES > 200 * 1024 * 1024,
+            "the published setup must stay above the old 200 MiB cap so this test still guards the bug"
+        );
+        assert!(
+            PUBLISHED_SETUP_BYTES <= MAX_DOWNLOAD_BYTES,
+            "cap {MAX_DOWNLOAD_BYTES} rejects the {PUBLISHED_SETUP_BYTES}-byte setup"
+        );
+        let headroom = MAX_DOWNLOAD_BYTES - PUBLISHED_SETUP_BYTES;
+        assert!(
+            headroom >= 100 * 1024 * 1024,
+            "expected at least 100 MiB of headroom, got {headroom} bytes"
+        );
     }
 
     #[test]
