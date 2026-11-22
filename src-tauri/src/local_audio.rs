@@ -1,5 +1,5 @@
 //! Short recordings from a jack or Bluetooth input on this computer.
-//! The clip stays here and is transcribed with Tiny English.
+//! The clip stays here and is transcribed with Base English.
 //! Nearby-alert recordings and the Broadcastify relay are separate paths.
 
 use crate::local_ai::{self, TranscribeError};
@@ -40,7 +40,7 @@ pub struct LocalAudioInput {
 #[serde(rename_all = "camelCase")]
 pub struct ListenRequest {
     pub device_id: String,
-    /// When false, the window is recorded for playback and Tiny English is not run.
+    /// When false, the window is recorded for playback and Base English is not run.
     #[serde(default = "captions_default")]
     pub captions: bool,
 }
@@ -174,7 +174,7 @@ fn listen_held(root: &Path, request: ListenRequest) -> Result<LocalAudioWindow, 
         Err(TranscribeError::NotInstalled) => Ok(LocalAudioWindow {
             engine: "local-stub".into(),
             status: "needs-model".into(),
-            note: "Tiny English is not installed. Settings → Local AI downloads it onto this computer. Audio stays here.".into(),
+            note: "Base English is not installed. Settings → Local AI downloads it onto this computer. Audio stays here.".into(),
             duration_sec,
             segments: Vec::new(),
             mime: "audio/wav".into(),

@@ -5,8 +5,6 @@ import {
   LOCAL_AUDIO_WINDOW_SEC,
   PREVIEW_CAPTIONS,
   appendCaptionLines,
-  captionFollowAfterScroll,
-  captionListAtLatest,
   captionsWithMemory,
   classifyLocalInput,
   listenLocalAudio,
@@ -14,6 +12,7 @@ import {
   previewToneWav,
   type LocalCaptionLine,
 } from "../lib/localAudio";
+import { useNewestCaptionFollow } from "../lib/useNewestCaptionFollow";
 import { captionsVisible } from "../lib/streamCaptions";
 import type { SourceConfig } from "../types";
 import { CaptionCorrection } from "./LocalAiPanel";
@@ -258,8 +257,8 @@ export function LocalAudioPanel({ sourceId, source }: Props) {
             </div>
             <p className="bcfy-captions-note">
               {desktop
-                ? "Heard on this computer with Tiny English. A fix stays here and applies the next time those words appear."
-                : "Browser preview. The desktop app records this jack or Bluetooth input and captions it with Tiny English on this computer. A fix stays here and applies the next time those words appear."}
+                ? "Heard on this computer with Base English. The newest line is at the top. A fix stays here and applies the next time those words appear."
+                : "Browser preview. The desktop app records this jack or Bluetooth input and captions it with Base English on this computer. The newest line is at the top. A fix stays here and applies the next time those words appear."}
             </p>
             {latest ? (
               <div className="bcfy-caption-live" aria-live="polite">
@@ -298,19 +297,7 @@ export function LocalAudioPanel({ sourceId, source }: Props) {
 }
 
 function CaptionHistory({ lines, activeId }: { lines: LocalCaptionLine[]; activeId: string | null }) {
-  const ref = useRef<HTMLOListElement | null>(null);
-  const programmatic = useRef(false);
-  const [follow, setFollow] = useState(true);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || !follow) return;
-    programmatic.current = true;
-    el.scrollTop = el.scrollHeight;
-    window.setTimeout(() => {
-      programmatic.current = false;
-    }, 60);
-  }, [lines, follow]);
+  const { ref, follow, setFollow, onScroll, shown } = useNewestCaptionFollow(lines);
 
   if (!lines.length) return null;
 
@@ -322,18 +309,9 @@ function CaptionHistory({ lines, activeId }: { lines: LocalCaptionLine[]; active
         aria-label="Caption lines"
         data-follow={follow ? "on" : "off"}
         tabIndex={0}
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          setFollow(
-            captionFollowAfterScroll({
-              following: follow,
-              userScrolled: !programmatic.current,
-              atLatest: captionListAtLatest(el.scrollTop, el.scrollHeight, el.clientHeight),
-            }),
-          );
-        }}
+        onScroll={onScroll}
       >
-        {lines.map((line) => (
+        {shown.map((line) => (
           <li key={line.id} className={line.id === activeId ? "is-active" : undefined}>
             <span className="mono">{formatClock(line.startSec)}</span>
             <span>{line.text}</span>

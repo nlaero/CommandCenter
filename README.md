@@ -15,7 +15,7 @@ Anything that plays audio:
 1. Starts **muted** (user unmutes).
 2. Supports closed captions. They show on their own while the sound is muted. CC is a separate control that keeps them up after you turn the sound on.
 
-Broadcastify Feed Owner plays muted. Captions for the live feed show on their own, including while the sound is off and before the player has produced sound. Unmute plays the relay. CC keeps them up after you turn the sound on. Earlier lines stay in a scrolling list, and a wrong line can be corrected on this computer. Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. An X post with video or audio starts muted, and captions show while the sound is off. An audio input there can be a Feed Owner source already on this computer, which reads that panel's caption history instead of the microphone. Transcription uses Tiny English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public cameras, a private camera, pasted camera links, and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Tiny English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Web scanner is its own window: a direct audio stream, muted until you turn sound on, with captions written on this computer while the sound is muted. It is not the Feed Owner panel and it does not feed nearby alerts. A jack or Bluetooth input starts muted and rolls captions from Tiny English on this computer. Scroll that list and it stays put until you jump to the latest line. A correction stays on this computer and is used the next time those words appear. Do not ship new audio playback without both mute-default and CC.
+Broadcastify Feed Owner plays muted. Captions for the live feed show on their own, including while the sound is off and before the player has produced sound. Unmute plays the relay. CC keeps them up after you turn the sound on. The newest line is at the top of a scrolling list, and a wrong line can be corrected on this computer. Nearby public safety does too: playback starts muted, captions follow the clip, and the alert keeps the transcript. An X post with video or audio starts muted, and captions show while the sound is off. An audio input there can be a Feed Owner source already on this computer, which reads that panel's caption history instead of the microphone. Transcription uses Base English from Settings → Local AI when it is installed, and a short placeholder until then. Crime/incident optional `audioUrl` starts muted; captions for that path are TODO. Public cameras, a private camera, pasted camera links, and YouTube Live start muted. A refreshing still image has no audio, so it is not transcribed and it has no caption line. HLS and video files use captions already in the stream (WebVTT or CEA-708). If there are none, Base English transcribes the audio on this computer, and the line stays empty when there is no speech. YouTube uses its own captions; that audio is not downloaded. Web scanner is its own window: a direct audio stream, muted until you turn sound on, with captions written on this computer while the sound is muted. It is not the Feed Owner panel and it does not feed nearby alerts. A jack or Bluetooth input starts muted and rolls captions from Base English on this computer. Scroll that list and it stays put until you jump to the latest line. A correction stays on this computer and is used the next time those words appear. Do not ship new audio playback without both mute-default and CC.
 
 ## Requirements
 
@@ -235,7 +235,7 @@ The form opens on **Penn Hills / Plum Police Dispatch** (feed `47291`, account `
 
 Players start muted. Keep personal archive audio on-device — no cloud ASR upload.
 
-With captions enabled, the live row starts muted and transcribes while it plays. The newest line sits above a scrolling list of earlier lines. Scroll up and the list stays put until Latest. Fix caption writes the correction to the caption store on this computer, and later lines pick it up. The history keeps the relay listen URL with any password removed, so another source can use that audio. Archive clips still use Transcribe local: Tiny English when it is installed, and a short placeholder until then. Live captions do not invent that placeholder. If Tiny English is not installed, the live line says so. With Tiny English installed, this computer records one short window of the relay and transcribes it here. If that fails, the line shows the reason in plain text. Audio stays on this computer.
+With captions enabled, the live row starts muted and transcribes while it plays. The newest line is at the top of the scrolling list. Scroll down and the list stays put until Latest. Fix caption writes the correction to the caption store on this computer, and later lines pick it up. The history keeps the relay listen URL with any password removed, so another source can use that audio. Archive clips still use Transcribe local: Base English when it is installed, and a short placeholder until then. Live captions do not invent that placeholder. If Base English is not installed, the live line says so. With Base English installed, this computer records one short window of the relay and transcribes it here. If that fails, the line shows the reason in plain text. Audio stays on this computer.
 
 **In the app:** Settings → Panels → Broadcastify (Feed Owner). Confirm the feed, enter the password, optional archive day. Add panel. The window is titled Penn Hills / Plum Police Dispatch. The toolbar shows online/offline and listeners. The list shows the live row and archives. The right side keeps only the audio controls and the captions. The live row starts muted, captions start even if that player has not produced sound yet, and unmute plays the relay. If the audio element cannot play the relay, this computer decodes a short window and plays that. Change day in the toolbar; use CC + Transcribe local on a clip when captions are on.
 
@@ -277,11 +277,11 @@ A Broadcastify listen page, relay, or Calls link is refused. Your uploaded feed 
 | Stream | yes | http or https. No password in the link — it is saved in the board file |
 | Captions | no | Default on. Written on this computer. Shown while the sound is muted. CC keeps them after you turn the sound on |
 
-Playback starts muted. The mute control turns the sound on and off. While the sound is muted, a short window of the stream is transcribed here with Tiny English when that model is installed. The newest line stays up, and earlier lines stay in a scrolling list. Scroll up and the list stays put until Latest. A wrong line can be corrected on this computer. If Tiny English is not installed, the line says so. The line stays empty of invented words. Audio is not uploaded.
+Playback starts muted. The mute control turns the sound on and off. While the sound is muted, a short window of the stream is transcribed here with Base English when that model is installed. The newest line is at the top of the scrolling list. Scroll down and the list stays put until Latest. A wrong line can be corrected on this computer. If Base English is not installed, the line says so. The line stays empty of invented words. Audio is not uploaded.
 
 **In the app:** Settings → Panels → Web scanner. Name the stream, paste the link, Add panel.
 
-The browser preview plays the link too. Captions still run on this computer when Tiny English is installed.
+The browser preview plays the link too. Captions still run on this computer when Base English is installed.
 
 ## X following
 
@@ -289,7 +289,7 @@ Posts from accounts you follow, newest first. Sign in from the panel. Command Ce
 
 The X app callback URL has to be `http://127.0.0.1:8737/callback`. Sign-in asks for `tweet.read`, `users.read`, and `offline.access`. The panel calls `GET /2/users/:id/timelines/reverse_chronological`.
 
-Video and audio start muted. Captions show while the sound is off. CC keeps them up after you turn the sound on. Spoken words are transcribed on this computer with Tiny English when that model is installed. A still image has no audio line.
+Video and audio start muted. Captions show while the sound is off. CC keeps them up after you turn the sound on. Spoken words are transcribed on this computer with Base English when that model is installed. A still image has no audio line.
 
 | Setting | Required | Notes |
 |---------|----------|--------|
@@ -304,9 +304,9 @@ The browser preview signs in locally and shows sample posts. It does not call X,
 
 ## Nearby public safety
 
-Online streams and audio inputs (a jack, Bluetooth, or the sound card). Each feed stores the county and state it covers. There is no zip code list. A short window is recorded on this computer and transcribed with Tiny English when that model is installed. Those captions are the input. The reader takes a dispatch type and a street from the words, then looks the street up in that county and state. If the point sits inside the radius around your confirmed location, it shows on this panel and in the alerts pane.
+Online streams and audio inputs (a jack, Bluetooth, or the sound card). Each feed stores the county and state it covers. There is no zip code list. A short window is recorded on this computer and transcribed with Base English when that model is installed. Those captions are the input. The reader takes a dispatch type and a street from the words, then looks the street up in that county and state. If the point sits inside the radius around your confirmed location, it shows on this panel and in the alerts pane.
 
-A unit ID (Engine 12, Medic 4) is not a person. While that unit is dispatched, responding, or on scene, a later caption that names it stays on the same incident. Cleared, available, or left the scene releases the unit, and its next dispatch or response starts a new incident. The same person may keep one unit every day or move to another; a different person may use that unit ID tomorrow. This Tiny English build cannot learn a voice: whisper.cpp b5454 (`whisper-cli`, `ggml-tiny.en`) writes words and timestamps only, with no speaker key and no voice embedding. Command Center does not run a separate local diarizer and does not upload audio to identify a speaker. The hook is the optional `speaker` field on a transcript segment. It is stored as a person key, never as a unit ID. What is missing is a local diarizer that fills that key per person on this computer.
+A unit ID (Engine 12, Medic 4) is not a person. While that unit is dispatched, responding, or on scene, a later caption that names it stays on the same incident. Cleared, available, or left the scene releases the unit, and its next dispatch or response starts a new incident. The same person may keep one unit every day or move to another; a different person may use that unit ID tomorrow. This Base English build cannot learn a voice: whisper.cpp b5454 (`whisper-cli`, `ggml-base.en`) writes words and timestamps only, with no speaker key and no voice embedding. Command Center does not run a separate local diarizer and does not upload audio to identify a speaker. The hook is the optional `speaker` field on a transcript segment. It is stored as a person key, never as a unit ID. What is missing is a local diarizer that fills that key per person on this computer.
 
 An audio input can also be a Broadcastify Feed Owner source already added in Settings. That choice does not open the microphone. It reads caption windows from that panel while the panel is playing, and the incident can play the relay URL stored with those captions. The URL has no password. If the panel is closed, the feed line says to open it.
 
@@ -317,7 +317,7 @@ Click a call for the transcript and the audio. Each transmission shows the unit 
 | Your location | yes | Same choices as weather: GPS, network, another device source, or an address. Confirmed before save. |
 | Radius | yes | Miles from that place, 1–100. Farther calls stay on the panel and off the alerts pane. |
 | Feeds | yes | Online URL or an audio input. Name, county, and state on each. Up to 8. |
-| Captions | no | Default on. Uses Tiny English from Settings → Local AI. |
+| Captions | no | Default on. Uses Base English from Settings → Local AI. |
 
 ffmpeg has to be on PATH for a real recording. The desktop app records the feed. Audio is not uploaded.
 
@@ -329,7 +329,7 @@ A jack or a Bluetooth input on this computer, such as a scanner on the line-in. 
 
 Playback starts muted. Unmute on the panel to hear the latest recorded window. Captions run while the sound is off. CC keeps them up after the sound is turned on.
 
-Tiny English on this computer writes the lines. They roll in a list. Scroll that list and it stays where you left it until you jump to the latest line. Fix caption stores the correction on this computer. The next time those words show up, the line uses the fix.
+Base English on this computer writes the lines. The newest line is at the top of the list. Scroll down and the list stays where you left it until you jump to the latest line. Fix caption stores the correction on this computer. The next time those words show up, the line uses the fix.
 
 ffmpeg has to be on PATH to record the input. Audio is not uploaded. The browser preview does not record. It rolls sample lines so the list can be tried, and it says so.
 
@@ -337,7 +337,7 @@ ffmpeg has to be on PATH to record the input. Audio is not uploaded. The browser
 |---------|----------|--------|
 | Label | no | Panel title |
 | Audio input | yes | A jack or Bluetooth device on this computer |
-| Captions | no | Default on. Tiny English from Settings → Local AI |
+| Captions | no | Default on. Base English from Settings → Local AI |
 
 **In the app:** Settings → Panels → Local audio. Pick the input. Add panel.
 
@@ -355,7 +355,7 @@ A still image refreshes on the source interval. It has no audio, so the panel do
 
 YouTube Live is its own source, and a YouTube link pasted on a camera plays the same way. Paste a watch link, a youtu.be link, a `/live/…` link, or a channel live URL (`/@name/live` or `/channel/UC…/live`). Picture, label, muted until you turn sound on.
 
-Captions are only for a source that has sound. HLS WebVTT or CEA-708 is used when the playlist already has it, and YouTube uses its own captions. An HLS stream or video file with no caption track is transcribed here with Tiny English from Settings → Local AI. Music and a repeated non-speech phrase are not shown; if the audio has no speech the caption line stays empty. The lines show while the panel is muted. Turn the sound on and they hide, unless CC is on. CC does not have to be pressed for the muted case. A still image never takes this path. YouTube audio is not downloaded for this. Preparing the audio for the local model uses ffmpeg when it is on the computer, and otherwise decodes AAC, MP3, and MP4 here. RTSP and USB cameras still need a native player.
+Captions are only for a source that has sound. HLS WebVTT or CEA-708 is used when the playlist already has it, and YouTube uses its own captions. An HLS stream or video file with no caption track is transcribed here with Base English from Settings → Local AI. Music and a repeated non-speech phrase are not shown; if the audio has no speech the caption line stays empty. The lines show while the panel is muted. Turn the sound on and they hide, unless CC is on. CC does not have to be pressed for the muted case. A still image never takes this path. YouTube audio is not downloaded for this. Preparing the audio for the local model uses ffmpeg when it is on the computer, and otherwise decodes AAC, MP3, and MP4 here. RTSP and USB cameras still need a native player.
 
 ## Rolling panels
 
@@ -429,7 +429,7 @@ The client for the future server version is still in this tree (`src/lib/auth.ts
 
 ## Local AI
 
-The Windows setup includes Tiny English (`ggml-tiny.en.bin`) and the whisper.cpp speech runtime. A new install already has them in `%AppData%\command-center\ai\`. Settings → Local AI shows Tiny English as installed, and live captions do not ask for a download. Remove model deletes that copy. Settings can download it again. On Linux, Settings → Local AI downloads Tiny English onto this computer (about 75 MB, plus the speech runtime). Audio is transcribed here. On `main`, caption fixes — what was heard, and what it should say — stay in `ai-memory.json` next to the config. Sharing that list across computers is part of `multi-user`, not this branch.
+The Windows setup includes Base English (`ggml-base.en.bin`) and the whisper.cpp speech runtime. A new install already has them in `%AppData%\command-center\ai\`. Settings → Local AI shows Base English as installed, and live captions do not ask for a download. Remove model deletes that copy. Settings can download it again. On Linux, Settings → Local AI downloads Base English onto this computer (about 141 MB, plus the speech runtime). Audio is transcribed here. On `main`, caption fixes — what was heard, and what it should say — stay in `ai-memory.json` next to the config. Sharing that list across computers is part of `multi-user`, not this branch.
 
 ## Build installers
 
@@ -439,12 +439,12 @@ npm run tauri:build
 
 Output under `src-tauri/target/release/bundle/`. Flatpak / `.deb` later — not in this shell.
 
-The Windows setup `.exe` is built in GitHub Actions (`.github/workflows/release-windows.yml`). The build downloads the pinned Tiny English model and packs it into the installer. A pull request runs the build and uploads the installer as a build artifact. It does not publish a release. Pushing a `v*` tag publishes that installer on the GitHub release for the tag. The setup installs Command Center and Tiny English.
+The Windows setup `.exe` is built in GitHub Actions (`.github/workflows/release-windows.yml`). The build downloads the pinned Base English model and packs it into the installer. A pull request runs the build and uploads the installer as a build artifact. It does not publish a release. Pushing a `v*` tag publishes that installer on the GitHub release for the tag. The setup installs Command Center and Base English.
 
 To compile that installer on a Windows machine, stage the model first:
 
 ```bash
-node scripts/fetch-tiny-en.mjs
+node scripts/fetch-base-en.mjs
 npm run tauri:build -- --bundles nsis
 ```
 
@@ -475,7 +475,7 @@ node --experimental-strip-types src/lib/publicCameras.test.ts
 node --experimental-strip-types src/lib/privateCameras.test.ts
 node --experimental-strip-types src/lib/streamMedia.test.ts
 npm run build
-node scripts/fetch-tiny-en.test.mjs
+node scripts/fetch-base-en.test.mjs
 ```
 
 ## Future multi-user server

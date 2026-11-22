@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { captionsNewestFirst } from "../lib/captionList";
 import { CaptionCorrection, withCorrections } from "./LocalAiPanel";
 import {
   activeCaptionAt,
@@ -404,7 +405,7 @@ function AlertDetailModal({
               )}
               {caption?.segments.length ? (
                 <ol className="bcfy-caption-list">
-                  {caption.segments.map((seg) => (
+                  {captionsNewestFirst(caption.segments).map((seg) => (
                     <li
                       key={seg.id}
                       className={active?.id === seg.id ? "is-active" : undefined}

@@ -2,7 +2,7 @@
  * Local / on-device captioning for Broadcastify Feed Owner (personal use).
  *
  * Prefer keeping archive audio on-device — do not upload clips to cloud ASR.
- * The desktop app runs the installed Tiny English model. Caption fixes sync
+ * The desktop app runs the installed Base English model. Caption fixes sync
  * through the signed-in server and are applied to the text. Audio is not uploaded.
  */
 
@@ -19,7 +19,7 @@ export type CaptionSegment = {
   text: string;
   /**
    * Opaque voice key from a local diarizer, when one exists.
-   * Tiny English does not set this. It is not a unit ID.
+   * Base English does not set this. It is not a unit ID.
    */
   speaker?: string | null;
 };
@@ -39,7 +39,7 @@ function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-/** Missing Tiny English. Do not invent dispatch text — a public install must not show words nobody said. */
+/** Missing Base English. Do not invent dispatch text — a public install must not show words nobody said. */
 export function stubLocalCaptions(sourceUrl: string, clipId: string): CaptionResult {
   void clipId;
   return {
@@ -48,7 +48,7 @@ export function stubLocalCaptions(sourceUrl: string, clipId: string): CaptionRes
     sourceUrl,
     segments: [],
     note:
-      "Local AI is not installed. Settings → Local AI downloads Tiny English onto this computer. Audio stays here.",
+      "Local AI is not installed. Settings → Local AI downloads Base English onto this computer. Audio stays here.",
     generatedAt: new Date().toISOString(),
   };
 }
@@ -63,7 +63,7 @@ export function activeCaptionAt(
 }
 
 /**
- * Request local transcription. The desktop app runs Tiny English when it is
+ * Request local transcription. The desktop app runs Base English when it is
  * installed. The browser preview applies the same caption fixes to placeholder text.
  */
 export async function transcribeArchiveLocal(args: {

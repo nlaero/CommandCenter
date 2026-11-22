@@ -587,7 +587,7 @@ fn needs_model_captions(url: &str, _clip: &str) -> CaptionResult {
         status: "needs-model".into(),
         source_url: url.to_string(),
         segments: Vec::new(),
-        note: "Local AI is not installed. Settings → Local AI downloads Tiny English onto this computer. Audio stays here.".into(),
+        note: "Local AI is not installed. Settings → Local AI downloads Base English onto this computer. Audio stays here.".into(),
         generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     }
 }

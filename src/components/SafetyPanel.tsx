@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { applyCorrections, readLocalMemory } from "../lib/aiMemory";
 import { useAlerts } from "../lib/alerts";
 import { incidentsToBoardAlerts } from "../lib/boardAlerts";
+import { captionsNewestFirst } from "../lib/captionList";
 import { activeCaptionAt, type CaptionSegment } from "../lib/captions";
 import { confirmedPlaceLabel, readCoords } from "../lib/location";
 import {
@@ -736,7 +737,7 @@ function TransmissionBlock({
       {captionsOn && tx.segments.length ? (
         <div className="bcfy-captions" aria-label="Captions">
           <ol className="bcfy-caption-list">
-            {tx.segments.map((segment) => (
+            {captionsNewestFirst(tx.segments).map((segment) => (
               <li key={segment.id} className={active?.id === segment.id ? "is-active" : undefined}>
                 <span className="mono">
                   {formatClock(segment.startSec)}–{formatClock(segment.endSec)}
