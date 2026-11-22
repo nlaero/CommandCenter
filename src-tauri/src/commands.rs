@@ -12,6 +12,7 @@ use crate::updates::{self, ApplyResult, UpdateReport};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{mpsc, OnceLock};
+use tauri::Emitter;
 use tauri::Manager;
 
 #[derive(Debug, Serialize)]
@@ -998,14 +999,23 @@ pub fn check_updates(force: bool) -> Result<UpdateReport, CommandError> {
 }
 
 #[tauri::command]
-pub fn apply_update(product: String) -> Result<ApplyResult, CommandError> {
+pub fn apply_update(app: tauri::AppHandle, product: String) -> Result<ApplyResult, CommandError> {
     let loaded = config::load_or_create()?;
     let root = std::path::PathBuf::from(&loaded.paths.root);
     Ok(updates::apply(
         &root,
         &loaded.state.auth.base_url,
         &product,
+        &mut |progress| {
+            let _ = app.emit("update-progress", &progress);
+        },
     )?)
+}
+
+#[tauri::command]
+pub fn finish_app_update() -> Result<(), CommandError> {
+    updates::launch_prepared_update()?;
+    std::process::exit(0);
 }
 
 #[tauri::command]

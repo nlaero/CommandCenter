@@ -452,7 +452,7 @@ npm run tauri:build -- --bundles nsis
 
 On launch, Command Center asks GitHub whether [nlaero/CommandCenter](https://github.com/nlaero/CommandCenter/releases) has a release newer than what you are running. A release counts when its version is higher. `v0.1.0-test.1` is older than 0.1.0, so it does not nag. A prerelease that is actually newer still shows up, and the panel says so. If a stable release and a newer prerelease are both published, the install button follows the stable one.
 
-Help → Check for updates… runs that check again. The toolbar button and Settings → Updates open the same panel. If the release has a Windows setup exe, Download and install saves it and starts it. Finish that setup to replace the app. On other systems the panel links the release instead of starting a Windows installer.
+Help → Check for updates… runs that check again. The toolbar button and Settings → Updates open the same panel. If the release has a Windows setup exe, Download and install shows the download in that window. Command Center then closes. The previous version is removed, Windows setup runs, and the new version opens. On other systems the panel links the release instead of starting a Windows installer.
 
 Checking does not publish a release. Installers stay unpublished until asked.
 
@@ -474,6 +474,7 @@ node --experimental-strip-types src/lib/xFollow.test.ts
 node --experimental-strip-types src/lib/publicCameras.test.ts
 node --experimental-strip-types src/lib/privateCameras.test.ts
 node --experimental-strip-types src/lib/streamMedia.test.ts
+node --experimental-strip-types src/lib/updates.test.ts
 npm run build
 node scripts/fetch-base-en.test.mjs
 ```

@@ -13,11 +13,15 @@ import { AUTH_IN_APP } from "../lib/authFeature";
 import {
   applyUpdate,
   checkForUpdates,
+  finishAppUpdate,
   openRelease,
   tauriApp,
+  updateProgressLabel,
+  updateProgressPercent,
   updateSummary,
   type ApplyResult,
   type UpdateProduct,
+  type UpdateProgress,
   type UpdateReport,
 } from "../lib/updates";
 
@@ -39,6 +43,7 @@ type UpdatesApi = {
   checkError: string | null;
   applyNote: Note | null;
   applying: string | null;
+  progress: UpdateProgress | null;
   open: boolean;
   dismissed: boolean;
   hasUpdate: boolean;
@@ -66,9 +71,11 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
   const [checkError, setCheckError] = useState<string | null>(null);
   const [applyNote, setApplyNote] = useState<Note | null>(null);
   const [applying, setApplying] = useState<string | null>(null);
+  const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const openRef = useRef<() => void>(() => undefined);
+  const closingRef = useRef(false);
 
   const check = useCallback(async (force: boolean) => {
     setChecking(true);
@@ -97,33 +104,74 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!tauriApp()) return;
-    let unlisten: (() => void) | undefined;
+    let unlistenMenu: (() => void) | undefined;
+    let unlistenProgress: (() => void) | undefined;
     let cancel = false;
     void import("@tauri-apps/api/event").then(async ({ listen }) => {
-      const stop = await listen("check-updates", () => {
+      const stopMenu = await listen("check-updates", () => {
         openRef.current();
       });
-      if (cancel) stop();
-      else unlisten = stop;
+      const stopProgress = await listen<UpdateProgress>("update-progress", (event) => {
+        if (closingRef.current) return;
+        setProgress(event.payload);
+      });
+      if (cancel) {
+        stopMenu();
+        stopProgress();
+      } else {
+        unlistenMenu = stopMenu;
+        unlistenProgress = stopProgress;
+      }
     });
     return () => {
       cancel = true;
-      unlisten?.();
+      unlistenMenu?.();
+      unlistenProgress?.();
     };
   }, []);
 
   const apply = useCallback(async (product: UpdateProduct) => {
+    closingRef.current = false;
     setApplying(product.id);
     setApplyNote(null);
+    setProgress({
+      product: product.id,
+      phase: "downloading",
+      received: 0,
+      total: null,
+    });
     try {
       const result: ApplyResult = await applyUpdate(product.id);
+      if (result.closesApp) {
+        closingRef.current = true;
+        setProgress((current) => ({
+          product: product.id,
+          phase: "closing",
+          received: current?.received ?? 0,
+          total: current?.total ?? null,
+        }));
+        setApplyNote({ kind: "ok", text: result.message });
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        try {
+          await finishAppUpdate();
+        } catch (err) {
+          closingRef.current = false;
+          setProgress(null);
+          setApplyNote({ kind: "error", text: updateError(err) });
+          setApplying(null);
+        }
+        return;
+      }
       setApplyNote({ kind: "ok", text: result.message });
+      setProgress(null);
       const next = await checkForUpdates(true);
       setReport(next);
     } catch (err) {
+      if (closingRef.current) return;
       setApplyNote({ kind: "error", text: updateError(err) });
+      setProgress(null);
     } finally {
-      setApplying(null);
+      if (!closingRef.current) setApplying(null);
     }
   }, []);
 
@@ -144,12 +192,16 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       checkError,
       applyNote,
       applying,
+      progress,
       open,
       dismissed,
       hasUpdate,
       check,
       openUpdates,
-      close: () => setOpen(false),
+      close: () => {
+        if (applying) return;
+        setOpen(false);
+      },
       dismiss: () => setDismissed(true),
       apply,
       openPage,
@@ -160,6 +212,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       checkError,
       applyNote,
       applying,
+      progress,
       open,
       dismissed,
       hasUpdate,
@@ -185,14 +238,14 @@ export function UpdatesBody() {
       <p className="section-label">GitHub releases</p>
       <p className="update-lead">
         {AUTH_IN_APP
-          ? "Command Center checks GitHub for a newer release of this app and of auth-server. Nothing is downloaded until you choose it here."
-          : "Command Center checks GitHub for a newer release of this app. Nothing is downloaded until you choose it here."}
+          ? "Command Center checks GitHub for a newer release of this app and of auth-server. Nothing is downloaded until you choose it here. The download stays in this window."
+          : "Command Center checks GitHub for a newer release of this app. Nothing is downloaded until you choose it here. The download stays in this window. Command Center then closes, the previous version is removed, and Windows setup opens the new one."}
       </p>
       <div className="form-actions" style={{ marginTop: 0 }}>
         <button
           type="button"
           className="btn"
-          disabled={updates.checking}
+          disabled={updates.checking || updates.applying !== null}
           onClick={() => void updates.check(true)}
         >
           {updates.checking ? "Checking…" : "Check again"}
@@ -218,6 +271,7 @@ export function UpdatesBody() {
             product={product}
             busy={updates.applying === product.id}
             disabled={updates.applying !== null}
+            progress={updates.applying === product.id ? updates.progress : null}
             onApply={() => void updates.apply(product)}
             onOpen={() => {
               if (product.htmlUrl) void updates.openPage(product.htmlUrl);
@@ -233,16 +287,26 @@ function ProductCard({
   product,
   busy,
   disabled,
+  progress,
   onApply,
   onOpen,
 }: {
   product: UpdateProduct;
   busy: boolean;
   disabled: boolean;
+  progress: UpdateProgress | null;
   onApply: () => void;
   onOpen: () => void;
 }) {
   const published = product.publishedAt ? product.publishedAt.slice(0, 10) : null;
+  const percent = progress ? updateProgressPercent(progress) : null;
+  const buttonLabel = !busy
+    ? product.applyLabel
+    : progress?.phase === "closing"
+      ? "Closing…"
+      : progress?.phase === "downloading"
+        ? "Downloading…"
+        : "Working…";
   return (
     <div className="source-row update-row">
       <div>
@@ -270,6 +334,24 @@ function ProductCard({
             {product.error}
           </div>
         ) : null}
+        {progress ? (
+          <div className="update-progress">
+            <div
+              className="update-progress-track"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={percent ?? undefined}
+              aria-label={updateProgressLabel(progress)}
+            >
+              <div
+                className="update-progress-bar"
+                style={{ width: `${percent ?? (progress.phase === "closing" ? 100 : 0)}%` }}
+              />
+            </div>
+            <p className="update-meta update-progress-label">{updateProgressLabel(progress)}</p>
+          </div>
+        ) : null}
         <div className="form-actions">
           {product.canApply && product.applyLabel ? (
             <button
@@ -278,7 +360,7 @@ function ProductCard({
               disabled={disabled}
               onClick={onApply}
             >
-              {busy ? "Working…" : product.applyLabel}
+              {buttonLabel}
             </button>
           ) : null}
           {product.htmlUrl ? (
@@ -334,7 +416,13 @@ function UpdateSurfaces() {
           >
             <header className="settings-header">
               <h2>Updates</h2>
-              <button type="button" className="btn" onClick={() => updates.close()} autoFocus>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => updates.close()}
+                disabled={updates.applying !== null}
+                autoFocus
+              >
                 Close
               </button>
             </header>

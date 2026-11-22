@@ -34,7 +34,11 @@ export type ApplyResult = {
   message: string;
   path: string | null;
   startedInstaller: boolean;
+  closesApp: boolean;
 };
+
+export type { UpdateProgress } from "./updateProgress";
+export { updateProgressLabel, updateProgressPercent } from "./updateProgress";
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -174,10 +178,17 @@ export async function applyUpdate(product: string): Promise<ApplyResult> {
       message: `${name} would download the GitHub release and install it in the desktop app. This browser preview does not download it.`,
       path: null,
       startedInstaller: false,
+      closesApp: false,
     };
   }
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<ApplyResult>("apply_update", { product });
+}
+
+export async function finishAppUpdate(): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("finish_app_update");
 }
 
 export async function openRelease(url: string): Promise<void> {
