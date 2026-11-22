@@ -103,6 +103,7 @@ pub fn run() {
             commands::save_ai_memory,
             commands::check_updates,
             commands::apply_update,
+            commands::finish_app_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Command Center");

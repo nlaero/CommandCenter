@@ -3332,6 +3332,28 @@ label.btn {
   white-space: pre-wrap;
 }
 
+.update-progress {
+  margin-top: 10px;
+}
+
+.update-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.update-progress-bar {
+  height: 100%;
+  background: var(--cc-accent);
+  width: 0;
+  transition: width 150ms linear;
+}
+
+.update-progress-label {
+  margin: 6px 0 0;
+}
+
 .update-banner {
   position: fixed;
   z-index: 25;

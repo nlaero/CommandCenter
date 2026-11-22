@@ -3,7 +3,9 @@
 //! The check looks at published releases only. A tag counts as an update when its
 //! version is higher than what is installed. Prereleases that are older (such as
 //! v0.1.0-test.1 next to 0.1.0) are not offered. Nothing is downloaded until the
-//! user asks.
+//! user asks. A Windows install shows its download in the app, then this process
+//! closes. After it is gone, the previous version is removed and Windows setup
+//! starts. Setup opens the new version.
 
 use crate::local_server;
 use semver::Version;
@@ -11,7 +13,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 const APP_REPO: &str = "nlaero/CommandCenter";
@@ -56,6 +60,18 @@ pub struct ApplyResult {
     pub message: String,
     pub path: Option<String>,
     pub started_installer: bool,
+    /// The desktop app should close after this returns so setup can replace it.
+    pub closes_app: bool,
+}
+
+/// Download progress for the in-app update panel. `phase` is `downloading`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProgress {
+    pub product: String,
+    pub phase: String,
+    pub received: u64,
+    pub total: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -219,16 +235,24 @@ pub fn check(root: &Path, base_url: &str, force: bool) -> Result<UpdateReport, S
     Ok(report)
 }
 
-pub fn apply(root: &Path, base_url: &str, product_id: &str) -> Result<ApplyResult, String> {
+pub fn apply(
+    root: &Path,
+    base_url: &str,
+    product_id: &str,
+    progress: &mut dyn FnMut(UpdateProgress),
+) -> Result<ApplyResult, String> {
     match product_id {
-        "command-center" => apply_app(root),
-        "auth-server" if crate::config::AUTH_IN_APP => apply_auth(root, base_url),
+        "command-center" => apply_app(root, progress),
+        "auth-server" if crate::config::AUTH_IN_APP => apply_auth(root, base_url, progress),
         "auth-server" => Err("This build does not update auth-server.".into()),
         _ => Err("Unknown update.".into()),
     }
 }
 
-fn apply_app(root: &Path) -> Result<ApplyResult, String> {
+fn apply_app(
+    root: &Path,
+    progress: &mut dyn FnMut(UpdateProgress),
+) -> Result<ApplyResult, String> {
     let current = app_version()?;
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
@@ -240,21 +264,23 @@ fn apply_app(root: &Path) -> Result<ApplyResult, String> {
     let asset = selection
         .asset
         .ok_or_else(|| "The release has no Windows installer.".to_string())?;
-    let path = download_asset(root, APP_REPO, &asset)?;
-    start_installer(&path)?;
+    let path = download_asset(root, APP_REPO, &asset, "command-center", progress)?;
+    prepare_windows_handoff(root, &path)?;
     clear_cache();
     Ok(ApplyResult {
         product: "command-center".into(),
-        message: format!(
-            "Saved the installer to {} and started it. Finish the setup window to update Command Center. You can leave this window open until the installer asks you to close it.",
-            path.display()
-        ),
+        message: "Downloaded the update. Command Center will close so the previous version can be removed. Windows setup will then open the new version.".into(),
         path: Some(path.display().to_string()),
         started_installer: true,
+        closes_app: true,
     })
 }
 
-fn apply_auth(root: &Path, base_url: &str) -> Result<ApplyResult, String> {
+fn apply_auth(
+    root: &Path,
+    base_url: &str,
+    progress: &mut dyn FnMut(UpdateProgress),
+) -> Result<ApplyResult, String> {
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
     let (place, version, _detail) = auth_place(root, base_url);
@@ -270,7 +296,7 @@ fn apply_auth(root: &Path, base_url: &str) -> Result<ApplyResult, String> {
         .latest_version
         .clone()
         .ok_or_else(|| "The auth-server release has no version.".to_string())?;
-    let bytes = download_bytes(AUTH_REPO, &asset)?;
+    let bytes = download_bytes(AUTH_REPO, &asset, "auth-server", progress)?;
     let binary = local_server::find_binary()
         .ok_or_else(|| "The auth-server program is not in this install.".to_string())?;
     let running = local_server::status(root).running;
@@ -295,6 +321,7 @@ fn apply_auth(root: &Path, base_url: &str) -> Result<ApplyResult, String> {
         message,
         path: Some(binary.display().to_string()),
         started_installer: false,
+        closes_app: false,
     })
 }
 
@@ -858,14 +885,32 @@ fn release_download_ok(repo: &str, raw: &str) -> Result<(), String> {
     }
 }
 
-fn download_asset(root: &Path, repo: &str, asset: &AssetPick) -> Result<PathBuf, String> {
-    let bytes = download_bytes(repo, asset)?;
+fn download_asset(
+    root: &Path,
+    repo: &str,
+    asset: &AssetPick,
+    product: &str,
+    progress: &mut dyn FnMut(UpdateProgress),
+) -> Result<PathBuf, String> {
     let name = safe_file_name(&asset.name)?;
     let dir = root.join("updates");
     fs::create_dir_all(&dir).map_err(|err| format!("Could not create {}: {err}", dir.display()))?;
     let path = dir.join(&name);
     let partial = dir.join(format!("{name}.partial"));
-    fs::write(&partial, &bytes).map_err(|err| format!("Could not save the installer: {err}"))?;
+    let mut file = fs::File::create(&partial)
+        .map_err(|err| format!("Could not save the installer: {err}"))?;
+    let streamed = read_release(repo, asset, product, progress, |chunk| {
+        file.write_all(chunk)
+            .map_err(|err| format!("Could not save the installer: {err}"))
+    });
+    if let Err(err) = streamed {
+        drop(file);
+        let _ = fs::remove_file(&partial);
+        return Err(err);
+    }
+    file.flush()
+        .map_err(|err| format!("Could not save the installer: {err}"))?;
+    drop(file);
     if path.exists() {
         let _ = fs::remove_file(&path);
     }
@@ -873,13 +918,33 @@ fn download_asset(root: &Path, repo: &str, asset: &AssetPick) -> Result<PathBuf,
     Ok(path)
 }
 
-fn download_bytes(repo: &str, asset: &AssetPick) -> Result<Vec<u8>, String> {
+fn download_bytes(
+    repo: &str,
+    asset: &AssetPick,
+    product: &str,
+    progress: &mut dyn FnMut(UpdateProgress),
+) -> Result<Vec<u8>, String> {
+    let mut body = Vec::new();
+    read_release(repo, asset, product, progress, |chunk| {
+        body.extend_from_slice(chunk);
+        Ok(())
+    })?;
+    Ok(body)
+}
+
+fn read_release(
+    repo: &str,
+    asset: &AssetPick,
+    product: &str,
+    progress: &mut dyn FnMut(UpdateProgress),
+    mut on_chunk: impl FnMut(&[u8]) -> Result<(), String>,
+) -> Result<(), String> {
     if asset.size > MAX_DOWNLOAD_BYTES {
         return Err("The release file is larger than this app will download.".into());
     }
     release_download_ok(repo, &asset.url)?;
-    let client = http_client(Duration::from_secs(120))?;
-    let response = client
+    let client = http_client(Duration::from_secs(900))?;
+    let mut response = client
         .get(&asset.url)
         .send()
         .map_err(|err| format!("Could not download the release. {err}"))?;
@@ -887,32 +952,70 @@ fn download_bytes(repo: &str, asset: &AssetPick) -> Result<Vec<u8>, String> {
     if !status.is_success() {
         return Err(format!("The download returned HTTP {status}."));
     }
-    if let Some(len) = response.content_length() {
-        if len > MAX_DOWNLOAD_BYTES {
-            return Err("The release file is larger than this app will download.".into());
-        }
-    }
-    let bytes = response
-        .bytes()
-        .map_err(|err| format!("Could not download the release. {err}"))?;
-    if bytes.is_empty() {
-        return Err("The download was empty.".into());
-    }
-    if bytes.len() as u64 > MAX_DOWNLOAD_BYTES {
+    let total = response.content_length().filter(|len| *len > 0).or(if asset.size > 0 {
+        Some(asset.size)
+    } else {
+        None
+    });
+    if total.is_some_and(|len| len > MAX_DOWNLOAD_BYTES) {
         return Err("The release file is larger than this app will download.".into());
     }
-    verify_digest(&bytes, asset.digest.as_deref())?;
-    Ok(bytes.to_vec())
+    let mut hasher = Sha256::new();
+    let mut received = 0u64;
+    let mut last_emit = Instant::now() - Duration::from_secs(1);
+    emit_download(progress, product, 0, total);
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let read = response
+            .read(&mut buf)
+            .map_err(|err| format!("Could not download the release. {err}"))?;
+        if read == 0 {
+            break;
+        }
+        received += read as u64;
+        if received > MAX_DOWNLOAD_BYTES {
+            return Err("The release file is larger than this app will download.".into());
+        }
+        hasher.update(&buf[..read]);
+        on_chunk(&buf[..read])?;
+        let finished = total.is_some_and(|len| received >= len);
+        if finished || last_emit.elapsed() >= Duration::from_millis(200) {
+            emit_download(progress, product, received, total);
+            last_emit = Instant::now();
+        }
+    }
+    if received == 0 {
+        return Err("The download was empty.".into());
+    }
+    emit_download(progress, product, received, total.or(Some(received)));
+    verify_sha256(&hex_encode(&hasher.finalize()), asset.digest.as_deref())
+}
+
+fn emit_download(
+    progress: &mut dyn FnMut(UpdateProgress),
+    product: &str,
+    received: u64,
+    total: Option<u64>,
+) {
+    progress(UpdateProgress {
+        product: product.to_string(),
+        phase: "downloading".into(),
+        received,
+        total,
+    });
 }
 
 fn verify_digest(bytes: &[u8], digest: Option<&str>) -> Result<(), String> {
+    verify_sha256(&hex_encode(&Sha256::digest(bytes)), digest)
+}
+
+fn verify_sha256(actual: &str, digest: Option<&str>) -> Result<(), String> {
     let Some(digest) = digest.map(str::trim).filter(|item| !item.is_empty()) else {
         return Ok(());
     };
     let Some(expected) = digest.strip_prefix("sha256:") else {
         return Err("The release digest is not sha256.".into());
     };
-    let actual = hex_encode(&Sha256::digest(bytes));
     if actual.eq_ignore_ascii_case(expected.trim()) {
         Ok(())
     } else {
@@ -944,20 +1047,287 @@ fn safe_file_name(name: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-fn start_installer(path: &Path) -> Result<(), String> {
+/// Passive setup (`/P`) shows Windows setup without a question dialog.
+/// `/R /ARGS` is how this installer opens the app when setup finishes.
+const INSTALLER_ARGS: &[&str] = &["/P", "/R", "/ARGS"];
+/// Silent uninstall. The running app has already exited, so setup is not asked to close it.
+const UNINSTALL_ARGS: &[&str] = &["/S"];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HandoffSpec {
+    pid: u32,
+    uninstall: Option<String>,
+    installer: String,
+    uninstall_args: Vec<String>,
+    installer_args: Vec<String>,
+}
+
+struct PreparedUpdate {
+    script: PathBuf,
+    spec: PathBuf,
+}
+
+fn prepared_update() -> &'static Mutex<Option<PreparedUpdate>> {
+    static PREPARED: std::sync::OnceLock<Mutex<Option<PreparedUpdate>>> = std::sync::OnceLock::new();
+    PREPARED.get_or_init(|| Mutex::new(None))
+}
+
+fn prepare_windows_handoff(root: &Path, installer: &Path) -> Result<(), String> {
     #[cfg(windows)]
     {
-        // The setup program is a window the user finishes. Leave that window visible.
-        std::process::Command::new(path)
-            .spawn()
-            .map(|_| ())
-            .map_err(|err| format!("Could not start the installer: {err}"))
+        let uninstall = uninstaller_for_running_app();
+        let spec = handoff_spec(std::process::id(), uninstall.as_deref(), installer)?;
+        let prepared = write_handoff(&root.join("updates"), &spec)?;
+        let mut guard = prepared_update()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        *guard = Some(prepared);
+        Ok(())
     }
     #[cfg(not(windows))]
     {
-        let _ = path;
+        let _ = (root, installer);
         Err("This computer does not run the Windows installer.".into())
     }
+}
+
+/// Start the prepared handoff and return. The caller then exits this process.
+pub fn launch_prepared_update() -> Result<(), String> {
+    let prepared = {
+        let mut guard = prepared_update()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        guard
+            .take()
+            .ok_or_else(|| "There is no update ready to install.".to_string())?
+    };
+    if let Err(err) = spawn_handoff(&prepared.script, &prepared.spec) {
+        let mut guard = prepared_update()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        *guard = Some(prepared);
+        return Err(err);
+    }
+    Ok(())
+}
+
+fn handoff_spec(pid: u32, uninstall: Option<&Path>, installer: &Path) -> Result<HandoffSpec, String> {
+    let installer = launch_path(installer, is_setup_name)?;
+    let uninstall = match uninstall {
+        Some(path) => Some(launch_path(path, is_uninstaller_name)?.display().to_string()),
+        None => None,
+    };
+    Ok(HandoffSpec {
+        pid,
+        uninstall,
+        installer: installer.display().to_string(),
+        uninstall_args: UNINSTALL_ARGS.iter().map(|item| (*item).to_string()).collect(),
+        installer_args: INSTALLER_ARGS.iter().map(|item| (*item).to_string()).collect(),
+    })
+}
+
+fn launch_path(path: &Path, name_ok: fn(&str) -> bool) -> Result<PathBuf, String> {
+    let Some(text) = path.to_str() else {
+        return Err("The update path is not usable.".into());
+    };
+    if text.is_empty()
+        || text.contains(['"', '\n', '\r'])
+        || path
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+    {
+        return Err("The update path is not usable.".into());
+    }
+    let name = path
+        .file_name()
+        .and_then(|item| item.to_str())
+        .unwrap_or("");
+    if !name_ok(name) || !path.is_file() {
+        return Err("The update path is not usable.".into());
+    }
+    Ok(path.to_path_buf())
+}
+
+fn is_setup_name(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with("-setup.exe")
+}
+
+fn is_uninstaller_name(name: &str) -> bool {
+    name.eq_ignore_ascii_case("uninstall.exe")
+}
+
+fn write_handoff(dir: &Path, spec: &HandoffSpec) -> Result<PreparedUpdate, String> {
+    fs::create_dir_all(dir).map_err(|err| format!("Could not save the update: {err}"))?;
+    let spec_path = dir.join("install-handoff.json");
+    let script_path = dir.join("install-handoff.ps1");
+    let mut json = vec![0xEF, 0xBB, 0xBF];
+    json.extend(
+        serde_json::to_vec_pretty(spec).map_err(|_| "Could not save the update.".to_string())?,
+    );
+    fs::write(&spec_path, json).map_err(|err| format!("Could not save the update: {err}"))?;
+    fs::write(&script_path, handoff_script())
+        .map_err(|err| format!("Could not save the update: {err}"))?;
+    Ok(PreparedUpdate {
+        script: script_path,
+        spec: spec_path,
+    })
+}
+
+fn handoff_script() -> &'static str {
+    r#"$ErrorActionPreference = 'Stop'
+$spec = [System.IO.File]::ReadAllText($args[0]) | ConvertFrom-Json
+$deadline = (Get-Date).AddMinutes(3)
+while ((Get-Date) -lt $deadline) {
+    if (-not (Get-Process -Id ([int]$spec.pid) -ErrorAction SilentlyContinue)) { break }
+    Start-Sleep -Milliseconds 200
+}
+if (Get-Process -Id ([int]$spec.pid) -ErrorAction SilentlyContinue) { exit 1 }
+Start-Sleep -Milliseconds 500
+if ($spec.uninstall -and (Test-Path -LiteralPath ([string]$spec.uninstall))) {
+    try {
+        $unArgs = @($spec.uninstallArgs)
+        for ($try = 0; $try -lt 10; $try++) {
+            $proc = Start-Process -FilePath ([string]$spec.uninstall) -ArgumentList $unArgs -Wait -PassThru
+            if ($proc.ExitCode -eq 0) { break }
+            Start-Sleep -Seconds 1
+        }
+    } catch {
+    }
+}
+$setupArgs = @($spec.installerArgs)
+Start-Process -FilePath ([string]$spec.installer) -ArgumentList $setupArgs | Out-Null
+"#
+}
+
+fn select_uninstaller(
+    running_exe: &Path,
+    sibling_exists: bool,
+    registered: Option<&Path>,
+) -> Option<PathBuf> {
+    let parent = running_exe.parent()?;
+    if sibling_exists {
+        return Some(parent.join("uninstall.exe"));
+    }
+    let registered = registered?;
+    let registered_dir = registered.parent()?;
+    if dirs_equal(parent, registered_dir) {
+        Some(registered.to_path_buf())
+    } else {
+        None
+    }
+}
+
+fn dirs_equal(left: &Path, right: &Path) -> bool {
+    let fold = |path: &Path| {
+        path.components()
+            .map(|part| part.as_os_str().to_string_lossy().to_ascii_lowercase())
+            .collect::<Vec<_>>()
+    };
+    fold(left) == fold(right)
+}
+
+fn uninstaller_for_running_app() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let sibling_exists = exe
+        .parent()
+        .map(|dir| dir.join("uninstall.exe").is_file())
+        .unwrap_or(false);
+    let registered = registry_uninstaller();
+    select_uninstaller(&exe, sibling_exists, registered.as_deref())
+}
+
+fn registry_uninstaller() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        return registry_uninstall_string("HKCU").or_else(|| registry_uninstall_string("HKLM"));
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn registry_uninstall_string(hive: &str) -> Option<PathBuf> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let key = format!(r"{hive}\Software\Microsoft\Windows\CurrentVersion\Uninstall\Command Center");
+    let output = Command::new("reg")
+        .args(["query", &key, "/v", "UninstallString"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let raw = reg_sz_value(&text, "UninstallString")?;
+    let path = parse_uninstall_string(&raw)?;
+    path.is_file().then_some(path)
+}
+
+fn reg_sz_value(output: &str, name: &str) -> Option<String> {
+    for line in output.lines() {
+        let line = line.trim();
+        let rest = line.strip_prefix(name)?.trim_start();
+        let rest = rest.strip_prefix("REG_SZ")?.trim();
+        if rest.is_empty() {
+            continue;
+        }
+        return Some(rest.to_string());
+    }
+    None
+}
+
+fn parse_uninstall_string(raw: &str) -> Option<PathBuf> {
+    let raw = raw.trim();
+    let path = if let Some(rest) = raw.strip_prefix('"') {
+        let end = rest.find('"')?;
+        &rest[..end]
+    } else {
+        raw.split_whitespace().next()?
+    };
+    let path = PathBuf::from(path);
+    let name = path.file_name()?.to_str()?;
+    if is_uninstaller_name(name) {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn spawn_handoff(script: &Path, spec: &Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+    Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+        ])
+        .arg(script)
+        .arg(spec)
+        .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|err| format!("Could not start the update. {err}"))
+}
+
+#[cfg(not(windows))]
+fn spawn_handoff(_script: &Path, _spec: &Path) -> Result<(), String> {
+    Err("This computer does not run the Windows installer.".into())
 }
 
 fn replace_file(dest: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -1439,6 +1809,90 @@ mod tests {
         fs::write(&dest, b"old").unwrap();
         replace_file(&dest, b"new-bytes").unwrap();
         assert_eq!(fs::read(&dest).unwrap(), b"new-bytes");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn uninstall_string_keeps_only_the_uninstaller() {
+        let quoted = r#""C:\Users\nlaer\AppData\Local\Command Center\uninstall.exe""#;
+        assert_eq!(
+            parse_uninstall_string(quoted).unwrap(),
+            PathBuf::from(r"C:\Users\nlaer\AppData\Local\Command Center\uninstall.exe")
+        );
+        assert_eq!(
+            parse_uninstall_string(r#""C:\Program\uninstall.exe" /S"#).unwrap(),
+            PathBuf::from(r"C:\Program\uninstall.exe")
+        );
+        assert_eq!(
+            parse_uninstall_string(r"C:\NoSpaces\uninstall.exe").unwrap(),
+            PathBuf::from(r"C:\NoSpaces\uninstall.exe")
+        );
+        assert!(parse_uninstall_string(r"C:\Windows\System32\cmd.exe").is_none());
+        assert!(parse_uninstall_string("").is_none());
+    }
+
+    #[test]
+    fn reg_query_output_reads_the_uninstall_string() {
+        let output = r#"
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\Command Center
+    UninstallString    REG_SZ    "C:\Users\nlaer\AppData\Local\Command Center\uninstall.exe"
+
+"#;
+        assert_eq!(
+            reg_sz_value(output, "UninstallString").as_deref(),
+            Some(r#""C:\Users\nlaer\AppData\Local\Command Center\uninstall.exe""#)
+        );
+        assert!(reg_sz_value(output, "DisplayName").is_none());
+    }
+
+    #[test]
+    fn running_install_is_the_only_copy_removed() {
+        let install = Path::new(r"C:\Users\nlaer\AppData\Local\Command Center");
+        let exe = install.join("command-center.exe");
+        let registered = install.join("uninstall.exe");
+        assert_eq!(
+            select_uninstaller(&exe, true, Some(&registered)).unwrap(),
+            install.join("uninstall.exe")
+        );
+        assert_eq!(
+            select_uninstaller(&exe, false, Some(&registered)).unwrap(),
+            registered
+        );
+        let dev = Path::new(r"C:\src\CommandCenter\src-tauri\target\debug\command-center.exe");
+        assert!(select_uninstaller(dev, false, Some(&registered)).is_none());
+    }
+
+    #[test]
+    fn handoff_removes_the_previous_version_then_starts_setup() {
+        let dir = std::env::temp_dir().join(format!("cc-handoff-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let installer = dir.join("Command.Center_0.2.0_x64-setup.exe");
+        let uninstall = dir.join("uninstall.exe");
+        fs::write(&installer, b"setup").unwrap();
+        fs::write(&uninstall, b"uninstall").unwrap();
+        let spec = handoff_spec(4242, Some(&uninstall), &installer).unwrap();
+        assert_eq!(spec.pid, 4242);
+        assert_eq!(spec.uninstall_args, vec!["/S".to_string()]);
+        assert_eq!(
+            spec.installer_args,
+            vec!["/P".to_string(), "/R".to_string(), "/ARGS".to_string()]
+        );
+        assert_eq!(spec.uninstall.as_deref(), Some(uninstall.to_str().unwrap()));
+        let script = handoff_script();
+        let uninstall_at = script.find("uninstall").expect("uninstall step");
+        let setup_at = script.rfind("installer").expect("setup step");
+        assert!(script.find("Get-Process").unwrap() < uninstall_at);
+        assert!(uninstall_at < setup_at);
+        assert!(!script.to_ascii_lowercase().contains("messagebox"));
+        assert!(!script.to_ascii_lowercase().contains("read-host"));
+        let prepared = write_handoff(&dir, &spec).unwrap();
+        let saved = fs::read_to_string(&prepared.spec).unwrap();
+        let saved = saved.trim_start_matches('\u{feff}');
+        let parsed: serde_json::Value = serde_json::from_str(saved).unwrap();
+        assert_eq!(parsed["installerArgs"][0], "/P");
+        assert_eq!(parsed["installerArgs"][1], "/R");
+        assert_eq!(parsed["uninstallArgs"][0], "/S");
+        assert!(handoff_spec(1, Some(&dir.join("cmd.exe")), &installer).is_err());
         let _ = fs::remove_dir_all(dir);
     }
 }
