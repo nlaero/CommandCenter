@@ -662,7 +662,7 @@ function CaptionsPane({
       </div>
       <p className="bcfy-captions-note">
         {caption?.note ??
-          "Audio stays on this computer. Install Base English from Settings → Local AI to transcribe here."}
+          "Audio stays on this computer. Install Small English from Settings → Local AI to transcribe here."}
       </p>
       {active ? (
         <div className="bcfy-caption-live" aria-live="polite">

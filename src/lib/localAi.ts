@@ -49,9 +49,9 @@ export async function installLocalAi(): Promise<LocalAiStatus> {
   if (isTauri()) return invoke<LocalAiStatus>("local_ai_install");
   const status: LocalAiStatus = {
     installed: true,
-    modelId: "base.en",
-    modelLabel: "Base English",
-    bytes: 147_964_211,
+    modelId: "small.en",
+    modelLabel: "Small English",
+    bytes: 487_614_201,
     runtimeReady: true,
     path: null,
     message: null,

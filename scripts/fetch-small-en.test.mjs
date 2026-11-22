@@ -11,7 +11,7 @@ import {
   nsisQuote,
   renderBundleNsh,
   renderInstallJson,
-} from "./fetch-base-en.mjs";
+} from "./fetch-small-en.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -25,21 +25,21 @@ test("pinned checksums match Settings → Local AI", () => {
   assert.match(config, /APP_DIR_NAME: &str = "command-center"/);
 });
 
-test("install marker is the Base English layout Settings already reads", () => {
-  const marker = JSON.parse(renderInstallJson(147_964_211));
+test("install marker is the Small English layout Settings already reads", () => {
+  const marker = JSON.parse(renderInstallJson(487_614_201));
   assert.deepEqual(marker, {
-    modelId: "base.en",
-    modelLabel: "Base English",
-    modelBytes: 147_964_211,
-    modelPath: "ai/models/ggml-base.en.bin",
+    modelId: "small.en",
+    modelLabel: "Small English",
+    modelBytes: 487_614_201,
+    modelPath: "ai/models/ggml-small.en.bin",
     runtimePath: "ai/runtime/whisper-cli.exe",
   });
   assert.throws(() => renderInstallJson(0));
 });
 
-test("installer fragment copies Base English into the config dir once", () => {
+test("installer fragment copies Small English into the config dir once", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cc-base-nsh-"));
-  const model = path.join(dir, "ggml-base.en.bin");
+  const model = path.join(dir, "ggml-small.en.bin");
   const runtimeDir = path.join(dir, "runtime");
   const nested = path.join(runtimeDir, "extra");
   fs.mkdirSync(nested, { recursive: true });
@@ -57,10 +57,11 @@ test("installer fragment copies Base English into the config dir once", () => {
     installJson: marker,
   });
   assert.match(script, /SetShellVarContext current/);
-  assert.match(script, /IfFileExists "\$APPDATA\\command-center\\ai\\models\\ggml-base\.en\.bin"/);
-  assert.match(script, /IfFileExists "\$APPDATA\\command-center\\ai\\install\.json" cc_base_en_done/);
-  assert.match(script, /DetailPrint "Installing Base English"/);
+  assert.match(script, /IfFileExists "\$APPDATA\\command-center\\ai\\models\\ggml-small\.en\.bin"/);
+  assert.match(script, /IfFileExists "\$APPDATA\\command-center\\ai\\install\.json" cc_small_en_done/);
+  assert.match(script, /DetailPrint "Installing Small English"/);
   assert.match(script, /Delete "\$APPDATA\\command-center\\ai\\models\\ggml-tiny\.en\.bin"/);
+  assert.match(script, /Delete "\$APPDATA\\command-center\\ai\\models\\ggml-base\.en\.bin"/);
   assert.match(script, /SetOutPath "\$APPDATA\\command-center\\ai\\models"/);
   assert.match(script, /SetOutPath "\$INSTDIR"/);
   assert.match(script, /SetCompress off/);
@@ -69,7 +70,7 @@ test("installer fragment copies Base English into the config dir once", () => {
   assert.ok(script.includes(model));
   assert.ok(script.includes(dll));
   assert.match(script, /command-center\\ai\\runtime\\extra/);
-  assert.equal(nsisQuote("C:\\pay\\ggml-base.en.bin"), '"C:\\pay\\ggml-base.en.bin"');
+  assert.equal(nsisQuote("C:\\pay\\ggml-small.en.bin"), '"C:\\pay\\ggml-small.en.bin"');
   assert.equal(nsisQuote("C:\\pay\\$notavar.bin"), '"C:\\pay\\$$notavar.bin"');
   assert.match(script, /SetOutPath "\$APPDATA\\command-center\\ai\\runtime"/);
   assert.doesNotMatch(script, /\$\$APPDATA/);
@@ -97,9 +98,9 @@ test("runtime copy keeps whisper-cli.exe and the libraries beside it", () => {
 
 test("the Windows installer refuses to build without the staged model", () => {
   const hooks = fs.readFileSync(path.join(repoRoot, "src-tauri", "windows", "hooks.nsh"), "utf8");
-  assert.match(hooks, /base-en\/bundle\.nsh/);
-  assert.match(hooks, /base-en\\bundle\.nsh/);
+  assert.match(hooks, /small-en\/bundle\.nsh/);
+  assert.match(hooks, /small-en\\bundle\.nsh/);
   assert.match(hooks, /NSIS_WIN32_MAKENSIS/);
-  assert.match(hooks, /fetch-base-en\.mjs/);
+  assert.match(hooks, /fetch-small-en\.mjs/);
   assert.match(hooks, /!error/);
 });

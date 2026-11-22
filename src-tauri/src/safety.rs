@@ -137,7 +137,7 @@ fn listen_unguarded(root: &Path, request: ListenRequest) -> Result<ListenResult,
         Err(TranscribeError::NotInstalled) => Ok(ListenResult {
             engine: "local-stub".into(),
             status: "needs-model".into(),
-            note: "Base English is not installed. Settings → Local AI downloads it onto this computer. No alert is read until then. Audio stays here.".into(),
+            note: "Small English is not installed. Settings → Local AI downloads it onto this computer. No alert is read until then. Audio stays here.".into(),
             clip_id: Some(clip_id),
             segments: Vec::new(),
         }),

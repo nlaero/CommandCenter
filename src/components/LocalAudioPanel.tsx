@@ -257,8 +257,8 @@ export function LocalAudioPanel({ sourceId, source }: Props) {
             </div>
             <p className="bcfy-captions-note">
               {desktop
-                ? "Heard on this computer with Base English. The newest line is at the top. A fix stays here and applies the next time those words appear."
-                : "Browser preview. The desktop app records this jack or Bluetooth input and captions it with Base English on this computer. The newest line is at the top. A fix stays here and applies the next time those words appear."}
+                ? "Heard on this computer with Small English. The newest line is at the top. A fix stays here and applies the next time those words appear."
+                : "Browser preview. The desktop app records this jack or Bluetooth input and captions it with Small English on this computer. The newest line is at the top. A fix stays here and applies the next time those words appear."}
             </p>
             {latest ? (
               <div className="bcfy-caption-live" aria-live="polite">
