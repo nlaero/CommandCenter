@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration as StdDuration, Instant};
 
-const UA: &str = "CommandCenter/0.1.9 (personal situational board; +https://github.com/nlaero/CommandCenter)";
+const UA: &str = "CommandCenter/0.1.10 (personal situational board; +https://github.com/nlaero/CommandCenter)";
 const IODA_CREDIT: &str = "Internet Outage Detection and Analysis (IODA), Georgia Tech Research Corporation. All rights reserved.";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
