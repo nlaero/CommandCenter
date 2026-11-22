@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import { programAudioSources, syncSafetyFeeds } from "./feedCaptions.ts";
 import { readFeeds } from "./safety.ts";
 import {
-  PREVIEW_INPUTS,
-  appendCaptionLines,
   captionFollowAfterScroll,
   captionListAtLatest,
+  captionScrollTopAfterUpdate,
+  captionsNewestFirst,
+} from "./captionList.ts";
+import {
+  PREVIEW_INPUTS,
+  appendCaptionLines,
   captionsWithMemory,
   classifyLocalInput,
   localAudioSaveError,
@@ -31,10 +35,31 @@ assert.equal(
 );
 assert.equal(localAudioSaveError({ deviceId: "bluez_input.AA", deviceLabel: "Headset" }), null);
 
-assert.equal(captionListAtLatest(0, 400, 100), false);
-assert.equal(captionListAtLatest(276, 400, 100), false);
-assert.equal(captionListAtLatest(277, 400, 100), true);
+assert.equal(captionListAtLatest(0, 400, 100), true);
+assert.equal(captionListAtLatest(23, 400, 100), true);
+assert.equal(captionListAtLatest(24, 400, 100), false);
 assert.equal(captionListAtLatest(0, 80, 100), true);
+assert.deepEqual(captionsNewestFirst(["one", "two", "three"]), ["three", "two", "one"]);
+assert.deepEqual(captionsNewestFirst(["only"]), ["only"]);
+const stored = ["one", "two"];
+assert.deepEqual(captionsNewestFirst(stored), ["two", "one"]);
+assert.deepEqual(stored, ["one", "two"]);
+assert.equal(
+  captionScrollTopAfterUpdate({ following: true, scrollTop: 80, previousScrollHeight: 400, scrollHeight: 440 }),
+  0,
+);
+assert.equal(
+  captionScrollTopAfterUpdate({ following: false, scrollTop: 80, previousScrollHeight: 0, scrollHeight: 440 }),
+  80,
+);
+assert.equal(
+  captionScrollTopAfterUpdate({ following: false, scrollTop: 80, previousScrollHeight: 400, scrollHeight: 440 }),
+  120,
+);
+assert.equal(
+  captionScrollTopAfterUpdate({ following: false, scrollTop: 80, previousScrollHeight: 400, scrollHeight: 360 }),
+  80,
+);
 assert.equal(
   captionFollowAfterScroll({ following: true, userScrolled: true, atLatest: false }),
   false,

@@ -49,7 +49,7 @@ export function LocalAiPanel({ session }: { session?: AuthSession | null }) {
     try {
       const next = await installLocalAi();
       setStatus(next);
-      setNote({ kind: "ok", text: "Tiny English is on this computer. Audio is not uploaded." });
+      setNote({ kind: "ok", text: "Base English is on this computer. Audio is not uploaded." });
     } catch (err) {
       setNote({ kind: "error", text: errorMessage(err) });
     } finally {
@@ -119,8 +119,8 @@ export function LocalAiPanel({ session }: { session?: AuthSession | null }) {
       <p className="section-label">Local AI</p>
       <p className="auth-copy">
         {AUTH_IN_APP
-          ? "Tiny English runs on this computer. Audio is not uploaded. Caption fixes sync through the server you are signed into, whether that server is on this computer or somewhere else."
-          : "Tiny English runs on this computer. Audio is not uploaded. Caption fixes stay on this computer."}
+          ? "Base English runs on this computer. Audio is not uploaded. Caption fixes sync through the server you are signed into, whether that server is on this computer or somewhere else."
+          : "Base English runs on this computer. Audio is not uploaded. Caption fixes stay on this computer."}
       </p>
 
       {note ? (
@@ -138,13 +138,13 @@ export function LocalAiPanel({ session }: { session?: AuthSession | null }) {
         <>
           <div className="choice-grid">
             <div className="choice-card active">
-              <strong>Tiny English</strong>
-              <span>About 75 MB. Speech stays on this computer. Used for captions.</span>
+              <strong>Base English</strong>
+              <span>About 141 MB. Speech stays on this computer. Used for captions.</span>
             </div>
           </div>
           <div className="form-actions">
             <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void install()}>
-              {busy ? "Installing…" : "Install Tiny English"}
+              {busy ? "Installing…" : "Install Base English"}
             </button>
           </div>
         </>
@@ -153,7 +153,7 @@ export function LocalAiPanel({ session }: { session?: AuthSession | null }) {
           <div className="source-list">
             <div className="source-row update-row">
               <div>
-                <h3>{status?.modelLabel ?? "Tiny English"}</h3>
+                <h3>{status?.modelLabel ?? "Base English"}</h3>
                 <p>
                   {formatBytes(status?.bytes ?? null)} on this computer
                   {status?.path ? ` · ${status.path}` : ""}. Audio is transcribed here.
@@ -167,6 +167,11 @@ export function LocalAiPanel({ session }: { session?: AuthSession | null }) {
             </div>
           </div>
           <div className="form-actions">
+            {status?.modelId !== "base.en" ? (
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void install()}>
+                {busy ? "Installing…" : "Install Base English"}
+              </button>
+            ) : null}
             <button type="button" className="btn" disabled={busy} onClick={() => void uninstall()}>
               Remove model
             </button>

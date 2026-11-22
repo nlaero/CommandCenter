@@ -1,7 +1,7 @@
 /**
  * Local audio captions for a jack or Bluetooth input on this computer.
  *
- * The desktop app records a short window and transcribes it with Tiny English.
+ * The desktop app records a short window and transcribes it with Base English.
  * Caption fixes stay in the local caption store and apply the next time those
  * words are heard. This source does not read or write Broadcastify history,
  * and it does not publish nearby alerts.
@@ -11,7 +11,6 @@ import { cleanCaptionText } from "./streamCaptions.ts";
 
 export const LOCAL_AUDIO_WINDOW_SEC = 12;
 export const MAX_CAPTION_LINES = 120;
-const FOLLOW_SLACK_PX = 24;
 
 export type LocalInputKind = "jack" | "bluetooth";
 
@@ -113,25 +112,6 @@ export function localAudioSaveError(params: Record<string, unknown>): string | n
     return "Choose a jack or Bluetooth input.";
   }
   return null;
-}
-
-/** The list is on the latest line when the user is within a few pixels of the bottom. */
-export function captionListAtLatest(scrollTop: number, scrollHeight: number, clientHeight: number): boolean {
-  if (scrollHeight <= clientHeight + 1) return true;
-  return scrollHeight - scrollTop - clientHeight < FOLLOW_SLACK_PX;
-}
-
-/**
- * Scrolling away pauses auto-follow. Jumping back to the latest line turns it on.
- * A programmatic scroll does not change follow.
- */
-export function captionFollowAfterScroll(input: {
-  following: boolean;
-  userScrolled: boolean;
-  atLatest: boolean;
-}): boolean {
-  if (!input.userScrolled) return input.following;
-  return input.atLatest;
 }
 
 /** Recompute visible lines from the original words. `correct` is the caption store on this computer. */

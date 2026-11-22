@@ -15,6 +15,7 @@ import {
   webScannerUrlError,
   type ScannerPlayback,
 } from "../lib/webScanner";
+import { useNewestCaptionFollow } from "../lib/useNewestCaptionFollow";
 import type { SourceConfig } from "../types";
 
 type Props = {
@@ -231,7 +232,7 @@ function Captions({
         </div>
       </div>
       <p className="bcfy-captions-note">
-        Heard on this computer. They show while the sound is off, and while CC is on. Earlier lines stay in the list.
+        Heard on this computer. They show while the sound is off, and while CC is on. The newest line is at the top. Scroll down and the list stays put until Latest.
       </p>
       {latest ? (
         <div className="bcfy-caption-live" aria-live="polite">
@@ -252,14 +253,7 @@ function Captions({
 }
 
 function CaptionHistory({ lines, activeId }: { lines: ScannerCaptionLine[]; activeId: string | null }) {
-  const ref = useRef<HTMLOListElement | null>(null);
-  const [follow, setFollow] = useState(true);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || !follow) return;
-    el.scrollTop = el.scrollHeight;
-  }, [lines, follow]);
+  const { ref, follow, setFollow, onScroll, shown } = useNewestCaptionFollow(lines);
 
   if (!lines.length) return null;
   return (
@@ -267,14 +261,10 @@ function CaptionHistory({ lines, activeId }: { lines: ScannerCaptionLine[]; acti
       <ol
         ref={ref}
         className="bcfy-caption-list bcfy-caption-history"
-        aria-label="Earlier captions"
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-          setFollow(distance < 24);
-        }}
+        aria-label="Caption lines"
+        onScroll={onScroll}
       >
-        {lines.map((line) => (
+        {shown.map((line) => (
           <li key={line.id} className={line.id === activeId ? "is-active" : undefined}>
             <span className="mono">{formatClock(line.startSec)}</span>
             <span>{line.text}</span>
