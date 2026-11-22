@@ -302,7 +302,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         kind: "url",
         required: true,
         placeholder: "https://…/playlist.m3u8",
-        help: "A JPEG or other still refreshes in the panel. It has no audio, so nothing is transcribed and no caption line is shown. An HLS playlist or video file plays muted. Captions in the stream are used when they exist. Otherwise Base English transcribes the audio here, and the line stays blank when nobody is speaking.",
+        help: "A JPEG or other still refreshes in the panel. It has no audio, so nothing is transcribed and no caption line is shown. An HLS playlist or video file plays muted. Captions in the stream are used when they exist. Otherwise Small English transcribes the audio here, and the line stays blank when nobody is speaking.",
       },
       {
         key: "label",
@@ -664,7 +664,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     category: "product",
     name: "Local audio",
     description:
-      "A jack or Bluetooth input on this computer. Playback starts muted. Rolling captions come from Base English on this computer. The newest line is at the top. Scroll down and the list stays put until you jump to the latest line. A caption fix stays on this computer and is used the next time those words appear.",
+      "A jack or Bluetooth input on this computer. Playback starts muted. Rolling captions come from Small English on this computer. The newest line is at the top. Scroll down and the list stays put until you jump to the latest line. A caption fix stays on this computer and is used the next time those words appear.",
     defaultWidget: "audio",
     fields: [
       {
@@ -688,7 +688,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         kind: "boolean",
         required: false,
         defaultChecked: true,
-        help: "On by default. Base English writes the lines on this computer. A wrong line can be corrected here, and that fix stays on this computer.",
+        help: "On by default. Small English writes the lines on this computer. A wrong line can be corrected here, and that fix stays on this computer.",
       },
     ],
   },
@@ -697,7 +697,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
     category: "product",
     name: "Nearby public safety",
     description:
-      "Reads audio and captions from sources already set up in the program, including a Broadcastify Feed Owner feed. Base English reads each window on this computer. The dispatch type and street are placed in that feed's county and state. Later traffic stays on the incident while a unit is dispatched, responding, or on scene, and a cleared unit's next call is a new incident. A unit ID is not a person. Calls inside your radius open with the transcript and the audio.",
+      "Reads audio and captions from sources already set up in the program, including a Broadcastify Feed Owner feed. Small English reads each window on this computer. The dispatch type and street are placed in that feed's county and state. Later traffic stays on the incident while a unit is dispatched, responding, or on scene, and a cleared unit's next call is a new incident. A unit ID is not a person. Calls inside your radius open with the transcript and the audio.",
     defaultWidget: "safety",
     defaultRefresh: "1m",
     fields: [
@@ -729,7 +729,7 @@ export const ADAPTER_CATALOG: AdapterDefinition[] = [
         kind: "boolean",
         required: false,
         defaultChecked: true,
-        help: "On by default. Audio starts muted. Captions follow the clip with Base English from Settings → Local AI when it is installed on this computer.",
+        help: "On by default. Audio starts muted. Captions follow the clip with Small English from Settings → Local AI when it is installed on this computer.",
       },
     ],
   },

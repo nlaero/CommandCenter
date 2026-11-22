@@ -1,7 +1,7 @@
 /**
  * Local audio captions for a jack or Bluetooth input on this computer.
  *
- * The desktop app records a short window and transcribes it with Base English.
+ * The desktop app records a short window and transcribes it with Small English.
  * Caption fixes stay in the local caption store and apply the next time those
  * words are heard. This source does not read or write Broadcastify history,
  * and it does not publish nearby alerts.

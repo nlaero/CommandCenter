@@ -3,7 +3,7 @@ import { captionFailureText } from "./local-captions.mjs";
 
 const relay = "The relay refused the audio (HTTP 403). Audio was not uploaded.";
 const missing =
-  "Local AI is not installed. Settings → Local AI downloads Base English onto this computer. Audio stays here.";
+  "Local AI is not installed. Settings → Local AI downloads Small English onto this computer. Audio stays here.";
 const model = "The local model could not transcribe that clip. failed to load ggml model";
 
 assert.equal(captionFailureText(new Error(relay)), relay);

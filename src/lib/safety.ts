@@ -53,7 +53,7 @@ export type OpenIncident = {
 };
 
 /**
- * whisper.cpp b5454 `whisper-cli` with ggml-base.en writes words and timestamps
+ * whisper.cpp b5454 `whisper-cli` with ggml-small.en writes words and timestamps
  * only. It does not emit a speaker key or a voice embedding, and this app does
  * not run another local diarizer. A unit ID is never stored as a voice. What is
  * missing is a local diarizer that returns a stable person key per voice on
@@ -61,7 +61,7 @@ export type OpenIncident = {
  * key on the same unit is a different person. Audio is not uploaded.
  */
 export const SPEAKER_GAP =
-  "Base English does not learn who is speaking. whisper.cpp b5454 (whisper-cli, ggml-base.en) writes words and timestamps only, with no speaker key and no voice embedding. A unit ID is not a person: the same person may keep a unit or move to another, and a unit may be someone else the next day. What is missing is a local diarizer that assigns a stable person key per voice on this computer. Audio is not sent out to be identified.";
+  "Small English does not learn who is speaking. whisper.cpp b5454 (whisper-cli, ggml-small.en) writes words and timestamps only, with no speaker key and no voice embedding. A unit ID is not a person: the same person may keep a unit or move to another, and a unit may be someone else the next day. What is missing is a local diarizer that assigns a stable person key per voice on this computer. Audio is not sent out to be identified.";
 
 export type PlacedCall = {
   lat: number;

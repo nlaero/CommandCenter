@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const NOTE = "Transcribed on this computer with Base English. Audio was not uploaded.";
+const NOTE = "Transcribed on this computer with Small English. Audio was not uploaded.";
 const RELAY_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 CommandCenter/0.1";
 
@@ -91,7 +91,7 @@ function readInstall() {
     const cli = path.join(root, marker.runtimePath);
     const model = path.join(root, marker.modelPath);
     if (!fs.existsSync(cli) || !fs.existsSync(model)) return null;
-    return { cli, model, label: marker.modelLabel || "Base English" };
+    return { cli, model, label: marker.modelLabel || "Small English" };
   } catch {
     return null;
   }
@@ -175,7 +175,7 @@ export async function transcribeClip(body) {
       status: "needs-model",
       sourceUrl,
       segments: [],
-      note: "Local AI is not installed. Settings → Local AI downloads Base English onto this computer. Audio stays here.",
+      note: "Local AI is not installed. Settings → Local AI downloads Small English onto this computer. Audio stays here.",
       generatedAt: new Date().toISOString(),
     };
   }
@@ -196,7 +196,7 @@ export async function transcribeClip(body) {
       status: "ready",
       sourceUrl,
       segments,
-      note: NOTE.replace("Base English", installed.label),
+      note: NOTE.replace("Small English", installed.label),
       generatedAt: new Date().toISOString(),
     };
   } catch (err) {

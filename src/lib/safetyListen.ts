@@ -48,7 +48,7 @@ type RawWindow = {
 };
 
 export const BROWSER_PREVIEW_NOTE =
-  "Browser preview. The desktop app transcribes each window with Base English on this computer. This preview runs that reader on a sample: Engine 12 responding and on scene stay one incident, Engine 12 clears, and the next response is a new incident. The person on the unit is not learned from the unit ID.";
+  "Browser preview. The desktop app transcribes each window with Small English on this computer. This preview runs that reader on a sample: Engine 12 responding and on scene stay one incident, Engine 12 clears, and the next response is a new incident. The person on the unit is not learned from the unit ID.";
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;

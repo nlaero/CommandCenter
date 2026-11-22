@@ -1,9 +1,9 @@
 //! On-device speech model. Audio never leaves this computer.
 //!
-//! Install downloads a pinned Whisper runtime and the Base English model,
+//! Install downloads a pinned Whisper runtime and the Small English model,
 //! checks the checksum, and keeps both under the Command Center config directory.
 //! The Windows installer copies this same model and runtime into that directory
-//! (`scripts/fetch-base-en.mjs`) so a new install already has Base English.
+//! (`scripts/fetch-small-en.mjs`) so a new install already has Small English.
 
 use crate::ai_sync::{self, AiMemory};
 use serde::{Deserialize, Serialize};
@@ -15,19 +15,19 @@ use std::process::Stdio;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const MODEL_URL: &str =
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
-/// Same bytes the Windows installer ships. `scripts/fetch-base-en.mjs` refuses a mismatch.
-const MODEL_SHA256: &str = "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002";
-const MODEL_ID: &str = "base.en";
-const MODEL_LABEL: &str = "Base English";
-const MODEL_FILE: &str = "ggml-base.en.bin";
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin";
+/// Same bytes the Windows installer ships. `scripts/fetch-small-en.mjs` refuses a mismatch.
+const MODEL_SHA256: &str = "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d";
+const MODEL_ID: &str = "small.en";
+const MODEL_LABEL: &str = "Small English";
+const MODEL_FILE: &str = "ggml-small.en.bin";
 const LINUX_RUNTIME_URL: &str =
     "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-ubuntu-x64.tar.gz";
 const LINUX_RUNTIME_SHA256: &str =
     "a72becf15d7917f990f6313867a52638b82b7f9ef237fb0c980dac56a135781c";
 const WINDOWS_RUNTIME_URL: &str =
     "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip";
-/// Same archive the Windows installer ships. `scripts/fetch-base-en.mjs` refuses a mismatch.
+/// Same archive the Windows installer ships. `scripts/fetch-small-en.mjs` refuses a mismatch.
 const WINDOWS_RUNTIME_SHA256: &str =
     "6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb";
 const MAX_AUDIO_BYTES: u64 = 20 * 1024 * 1024;
@@ -51,7 +51,7 @@ pub struct TranscriptSegment {
     pub end_sec: f64,
     pub text: String,
     /// Stable person key from a local diarizer. Not a unit ID.
-    /// The pinned Base English model leaves this empty.
+    /// The pinned Small English model leaves this empty.
     pub speaker: Option<String>,
 }
 
@@ -151,7 +151,7 @@ pub(crate) fn transcribe_unguarded(
     transcribe_file(root, source_url, true)
 }
 
-/// Base English words before this computer's caption fixes.
+/// Small English words before this computer's caption fixes.
 /// Local audio keeps those words and applies the caption store once.
 /// This does not take the Whisper lock: a listen that already holds it must call this.
 pub fn transcribe_heard(
@@ -217,7 +217,8 @@ fn production_plan() -> Result<InstallPlan, String> {
         model: Fetch {
             url: MODEL_URL.into(),
             sha256: MODEL_SHA256.into(),
-            max_bytes: 160 * 1024 * 1024,
+            // ggml-small.en.bin is 487_614_201 bytes.
+            max_bytes: 520 * 1024 * 1024,
         },
         runtime,
         kind,
@@ -613,7 +614,7 @@ fn run_whisper(
 
 /// Person key from the local transcript, when the runtime provides one.
 ///
-/// ggml-base.en via whisper.cpp b5454 does not. `whisper-cli -oj` writes
+/// ggml-small.en via whisper.cpp b5454 does not. `whisper-cli -oj` writes
 /// `transcription[].text` and `transcription[].offsets` only. There is no
 /// speaker token in that model and this command does not run a diarizer.
 /// Returning a unit ID here would treat the radio as one voice, which it is not.
@@ -1561,8 +1562,8 @@ mod tests {
         let root = std::env::temp_dir().join(format!("cc-ai-install-{}", unique_stamp()));
         fs::create_dir_all(&root).unwrap();
         let plan = InstallPlan {
-            model_id: "base.en",
-            label: "Base English",
+            model_id: "small.en",
+            label: "Small English",
             model: Fetch {
                 url: format!("{base}/model"),
                 sha256: sha(&model),
@@ -1577,7 +1578,7 @@ mod tests {
         };
         let installed = install_with(&root, &plan).unwrap();
         assert!(installed.installed);
-        assert_eq!(installed.model_label.as_deref(), Some("Base English"));
+        assert_eq!(installed.model_label.as_deref(), Some("Small English"));
         assert!(installed.runtime_ready);
 
         let mismatch = InstallPlan {
@@ -1697,12 +1698,12 @@ mod tests {
         )
         .unwrap();
         make_executable(&script).unwrap();
-        fs::write(root.join("ai/models/ggml-base.en.bin"), b"model").unwrap();
+        fs::write(root.join("ai/models/ggml-small.en.bin"), b"model").unwrap();
         let marker = Marker {
-            model_id: "base.en".into(),
-            model_label: "Base English".into(),
+            model_id: "small.en".into(),
+            model_label: "Small English".into(),
             model_bytes: 5,
-            model_path: "ai/models/ggml-base.en.bin".into(),
+            model_path: "ai/models/ggml-small.en.bin".into(),
             runtime_path: "ai/runtime/whisper-cli".into(),
         };
         fs::write(
@@ -1741,12 +1742,12 @@ mod tests {
         );
         fs::write(&script, body).unwrap();
         make_executable(&script).unwrap();
-        fs::write(root.join("ai/models/ggml-base.en.bin"), b"model").unwrap();
+        fs::write(root.join("ai/models/ggml-small.en.bin"), b"model").unwrap();
         let marker = Marker {
-            model_id: "base.en".into(),
-            model_label: "Base English".into(),
+            model_id: "small.en".into(),
+            model_label: "Small English".into(),
             model_bytes: 5,
-            model_path: "ai/models/ggml-base.en.bin".into(),
+            model_path: "ai/models/ggml-small.en.bin".into(),
             runtime_path: "ai/runtime/whisper-cli".into(),
         };
         fs::write(
@@ -1859,7 +1860,7 @@ mod tests {
         assert_eq!(segments.len(), 1);
         assert_eq!(segments[0].text, "Engine 12 responding");
         assert!((segments[0].start_sec - 24.0).abs() < 0.01);
-        assert!(note.contains("Base English"), "{note}");
+        assert!(note.contains("Small English"), "{note}");
         assert!(note.contains("not uploaded"), "{note}");
         assert!(!note.contains("supersecret"), "{note}");
         let _ = fs::remove_dir_all(&root);
@@ -1929,19 +1930,19 @@ mod tests {
     }
 
     #[test]
-    fn windows_installer_layout_counts_as_base_english() {
+    fn windows_installer_layout_counts_as_small_english() {
         let root = std::env::temp_dir().join(format!("cc-ai-bundle-{}", unique_stamp()));
         fs::create_dir_all(root.join("ai/models")).unwrap();
         fs::create_dir_all(root.join("ai/runtime")).unwrap();
-        fs::write(root.join("ai/models/ggml-base.en.bin"), b"model").unwrap();
+        fs::write(root.join("ai/models/ggml-small.en.bin"), b"model").unwrap();
         fs::write(root.join("ai/runtime/whisper-cli.exe"), b"MZ").unwrap();
         fs::write(
             root.join("ai/install.json"),
             r#"{
-  "modelId": "base.en",
-  "modelLabel": "Base English",
+  "modelId": "small.en",
+  "modelLabel": "Small English",
   "modelBytes": 5,
-  "modelPath": "ai/models/ggml-base.en.bin",
+  "modelPath": "ai/models/ggml-small.en.bin",
   "runtimePath": "ai/runtime/whisper-cli.exe"
 }
 "#,
@@ -1950,15 +1951,15 @@ mod tests {
         let installed = status(&root);
         assert!(installed.installed);
         assert!(installed.runtime_ready);
-        assert_eq!(installed.model_id.as_deref(), Some("base.en"));
-        assert_eq!(installed.model_label.as_deref(), Some("Base English"));
+        assert_eq!(installed.model_id.as_deref(), Some("small.en"));
+        assert_eq!(installed.model_label.as_deref(), Some("Small English"));
         assert_eq!(installed.bytes, Some(5));
         assert!(installed.message.is_none());
         assert!(installed
             .path
             .as_deref()
             .unwrap()
-            .contains("ggml-base.en.bin"));
+            .contains("ggml-small.en.bin"));
 
         fs::remove_file(root.join("ai/runtime/whisper-cli.exe")).unwrap();
         let missing_runtime = status(&root);
